@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "experienceOnly": true,
+  "sources": [
+    {
+      "id": "youtube-packing-3qkmni6vk28",
+      "label": "交換行李經驗影片 1",
+      "url": "https://youtu.be/3QKMni6Vk28"
+    },
+    {
+      "id": "youtube-packing-6aabtzsfqre",
+      "label": "交換行李經驗影片 2",
+      "url": "https://youtu.be/6aabTZsFQRE"
+    }
+  ]
+}

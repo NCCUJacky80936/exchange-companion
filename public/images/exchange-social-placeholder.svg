@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1731 909" role="img" aria-labelledby="title desc">
+  <title id="title">Exchange Companion social placeholder</title>
+  <desc id="desc">A warm hand-drawn travel scrapbook layout with a suitcase, route, airplane, map, and passport.</desc>
+  <rect width="1731" height="909" fill="#FFF8E7"/><path d="M0 0h560L430 170 0 220z" fill="#E9754C"/><path d="M1731 0h-490l100 190 390 125z" fill="#9DBA8A"/>
+  <g fill="none" stroke="#2E3A34" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M170 630c260-250 490-260 750-80 210 145 405 100 620-90" stroke-dasharray="26 24"/>
+    <path d="M788 482l-108-65 24 88-71 50 157-29 82 74-29-104 85-46z" fill="#EFF0E8"/>
+    <path d="M1120 260h360c53 0 96 43 96 96v350c0 53-43 96-96 96h-360c-53 0-96-43-96-96V356c0-53 43-96 96-96z" fill="#E9754C"/>
+    <path d="M1210 260v542M1390 260v542M1200 260v-55c0-44 36-80 80-80h65c44 0 80 36 80 80v55"/>
+    <path d="M1180 480h130v110h-130z" fill="#F4CD62"/><circle cx="1430" cy="470" r="62" fill="#82B9E8"/>
+    <path d="M220 520l350-95 195 300-370 103z" fill="#F4CD62"/><path d="M290 548l290-78M345 623l290-78M400 698l290-78" stroke-width="5" opacity=".5"/>
+    <path d="M205 215h250v325H205z" fill="#82B9E8"/><circle cx="330" cy="345" r="65"/><path d="M265 450h130"/>
+  </g>
+  <g fill="#E9754C"><circle cx="170" cy="630" r="18"/><circle cx="1538" cy="462" r="18"/></g>
+</svg>

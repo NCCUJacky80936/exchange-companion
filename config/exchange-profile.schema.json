@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/exchange-profile.schema.json",
+  "title": "Exchange Companion profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "appName",
+    "ownerName",
+    "homeCity",
+    "homeCountry",
+    "homeTimeZone",
+    "hostCity",
+    "hostCountry",
+    "hostCountryCode",
+    "hostTimeZone",
+    "hostSchool",
+    "program",
+    "startDate",
+    "endDate",
+    "orientationDate",
+    "primaryCurrency",
+    "secondaryCurrency",
+    "language",
+    "visual",
+    "research"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "appName": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "ownerName": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "homeCity": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "homeCountry": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "homeTimeZone": { "type": "string", "minLength": 3, "maxLength": 80 },
+    "hostCity": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "hostCountry": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "hostCountryCode": { "type": "string", "pattern": "^[A-Z]{2}$" },
+    "hostTimeZone": { "type": "string", "minLength": 3, "maxLength": 80 },
+    "hostSchool": { "type": "string", "minLength": 1, "maxLength": 140 },
+    "program": { "type": "string", "minLength": 1, "maxLength": 140 },
+    "startDate": { "type": "string", "format": "date" },
+    "endDate": { "type": "string", "format": "date" },
+    "orientationDate": { "type": "string", "pattern": "^(|\\d{4}-\\d{2}-\\d{2})$" },
+    "primaryCurrency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "secondaryCurrency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "language": { "type": "string", "minLength": 2, "maxLength": 20 },
+    "visual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["routeLabel", "heroImage", "socialImage", "icon", "generatedFor"],
+      "properties": {
+        "routeLabel": { "type": "string", "minLength": 3, "maxLength": 120 },
+        "heroImage": { "type": "string", "pattern": "^/" },
+        "socialImage": { "type": "string", "pattern": "^/" },
+        "icon": { "type": "string", "pattern": "^/" },
+        "generatedFor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["homeCity", "hostCity"],
+          "properties": {
+            "homeCity": { "type": "string", "minLength": 1, "maxLength": 80 },
+            "hostCity": { "type": "string", "minLength": 1, "maxLength": 80 }
+          }
+        }
+      }
+    },
+    "research": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimumVerifiedDate", "preferredOfficialDomains"],
+      "properties": {
+        "minimumVerifiedDate": { "type": "string", "format": "date" },
+        "preferredOfficialDomains": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 3, "maxLength": 160 },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}
