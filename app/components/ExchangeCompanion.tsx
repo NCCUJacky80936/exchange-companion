@@ -548,13 +548,13 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
       <motion.section className="hero-section" initial="hidden" animate="show">
         <div className="hero-copy">
           <motion.div className="airmail-label" variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }}>
-            ACADEMIC YEAR 2026—27
+            EXCHANGE JOURNEY
           </motion.div>
           <motion.p className="eyebrow" variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { delay: 0.08 } } }}>
-            Taipei <ArrowRight size={14} /> Stuttgart
+            {state.journey.homeCity} <ArrowRight size={14} /> {state.journey.hostCity}
           </motion.p>
           <motion.h1 variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0, transition: { delay: 0.14 } } }}>
-            嗨 Austin，<br />德國交換準備得怎麼樣？
+            嗨 {state.journey.ownerName || "交換生"}，<br />交換準備得怎麼樣？
           </motion.h1>
           <motion.p className="hero-lead" variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { delay: 0.22 } } }}>
             把複雜的行政手續、行李和生活準備，整理成今天真的做得完的下一步。
@@ -570,7 +570,7 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
           animate={{ opacity: 1, x: 0, rotate: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
         >
-          <Image src="/images/taipei-stuttgart-hero.png" alt="台灣到 Stuttgart 的手繪交換旅行行李插畫" fill priority sizes="(max-width: 820px) 100vw, 56vw" />
+          <Image src="/images/taipei-stuttgart-hero.png" alt="台灣到德國的手繪交換旅行行李插畫" fill priority sizes="(max-width: 820px) 100vw, 56vw" />
           <div className="countdown-ticket">
             <span>DEPARTURE</span>
             <strong>{countdown === null ? "—" : Math.max(0, countdown)}</strong>
@@ -588,9 +588,9 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
         </div>
         <div className="route-progress" aria-label={`交換準備完成 ${progress}%`}>
           <div className="route-line"><motion.span initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.55 }} /></div>
-          <span className="route-origin">TAIPEI</span>
+          <span className="route-origin">{state.journey.homeCity.toUpperCase()}</span>
           <span className="route-plane" style={{ left: `${Math.min(94, Math.max(4, progress))}%` }}>✈</span>
-          <span className="route-destination">STUTTGART</span>
+          <span className="route-destination">{state.journey.hostCity.toUpperCase()}</span>
         </div>
         <div className="progress-number"><strong>{done}</strong><span>/ {applicable.length} tasks</span></div>
       </section>
@@ -622,12 +622,12 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
             </button>
           </div>
           <div className="journey-card paper-card">
-            <div className="journey-card-top"><span className="stamp">HDM</span><span>WINTER 26</span></div>
+            <div className="journey-card-top"><span className="stamp">EX</span><span>MY JOURNEY</span></div>
             <h3>{state.journey.hostSchool}</h3>
             <p>{state.journey.program}</p>
             <div className="journey-details">
               <span><CalendarDays size={16} />{state.journey.startDate.replaceAll("-", ".")} — {state.journey.endDate.replaceAll("-", ".")}</span>
-              <span><MapIcon size={16} />Stuttgart · 2 semesters</span>
+              <span><MapIcon size={16} />{state.journey.hostCity} · {state.journey.destinations.join("、")}</span>
             </div>
           </div>
           <div className="budget-peek paper-card">
@@ -975,9 +975,9 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
   }
 
   function restoreDefault() {
-    if (!window.confirm("這會清除目前變更並恢復 Austin 的預設示範資料，確定繼續嗎？")) return;
+    if (!window.confirm("這會清除目前變更並恢復通用交換模板，確定繼續嗎？")) return;
     setState(resetState());
-    setMessage("已恢復預設示範資料。");
+    setMessage("已恢復通用交換模板。");
   }
 
   return (
@@ -1096,7 +1096,7 @@ export default function ExchangeCompanion() {
         <div className="sidebar-note">
           <span className="tape" />
           <p className="hand-note">“慢慢準備，<br />也正在靠近。”</p>
-          <small>Taipei → Stuttgart</small>
+          <small>{state.journey.homeCity} → {state.journey.hostCity}</small>
         </div>
         <div className="sidebar-footer"><span>{cloud.privateSyncEnabled ? "FREE CLOUD · PRIVATE" : "LOCAL · PRIVATE"}</span><span>V2.1</span></div>
       </aside>

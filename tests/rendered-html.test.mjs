@@ -22,13 +22,15 @@ test("server-renders the exchange companion shell", async () => {
   assert.match(html, /property="og:image" content="https:\/\/exchange-companion\.example\/og\.png"/i);
   assert.match(html, /交換手帳/);
   assert.match(html, /我的交換|正在打開/);
+  assert.doesNotMatch(html, /Austin|Florian Lampl|Manuel Hodrius/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
 test("keeps private parent files outside the app bundle", async () => {
-  const [page, component, travelPlanner, travelPanels, packageJson] = await Promise.all([
+  const [page, component, defaultData, travelPlanner, travelPanels, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/ExchangeCompanion.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/default-data.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/components/TravelPlanner.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/TravelTripPanels.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
@@ -45,4 +47,5 @@ test("keeps private parent files outside the app bundle", async () => {
   assert.match(travelPanels, /TravelPackingPanel/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.doesNotMatch(`${component}\n${travelPlanner}\n${travelPanels}`, /credentials\.json|token_jacky|護照影本|Zimmer 5703/);
+  assert.doesNotMatch(defaultData, /Austin|Florian Lampl|Manuel Hodrius|Auslandsportal|austin-hdm/i);
 });

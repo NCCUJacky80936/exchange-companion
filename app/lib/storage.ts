@@ -2,13 +2,7 @@ import { defaultState } from "./default-data";
 import type { AppState } from "./types";
 
 const STORAGE_KEY = "exchange-companion:v1";
-const CURRENT_DATA_REVISION = 2;
-const REFRESHED_PROGRESS_TASKS = new Set([
-  "learning-agreement",
-  "visa-appointment",
-  "flight",
-  "buddy",
-]);
+const CURRENT_DATA_REVISION = 3;
 
 function cloneDefault(): AppState {
   return JSON.parse(JSON.stringify(defaultState)) as AppState;
@@ -44,45 +38,10 @@ export function loadState(): AppState {
       return cloneDefault();
     }
     const parsedState = parsed as AppState;
-    const needsProgressRefresh = (parsedState.dataRevision ?? 1) < CURRENT_DATA_REVISION;
-    const mergedTasks = parsedState.tasks.map((task) => {
-      const seededTask = defaultState.tasks.find((item) => item.id === task.id);
-      if (!seededTask) return task;
-
-      if (needsProgressRefresh && REFRESHED_PROGRESS_TASKS.has(task.id)) {
-        const existingChecklist = new Map((task.checklist ?? []).map((item) => [item.id, item]));
-        const existingRecords = new Map((task.records ?? []).map((item) => [item.id, item]));
-        return {
-          ...task,
-          ...seededTask,
-          status: task.status === "done" ? "done" : seededTask.status,
-          checklist: (seededTask.checklist ?? []).map((item) => ({
-            ...item,
-            done: existingChecklist.get(item.id)?.done ?? item.done,
-          })),
-          records: [
-            ...(seededTask.records ?? []),
-            ...(task.records ?? []).filter((item) => !existingRecords.has(item.id) || !(seededTask.records ?? []).some((seeded) => seeded.id === item.id)),
-          ],
-        };
-      }
-
-      return {
-        ...seededTask,
-        ...task,
-        checklist: task.checklist ?? seededTask.checklist ?? [],
-        records: task.records ?? seededTask.records ?? [],
-      };
-    });
-
-    const existingTaskIds = new Set(mergedTasks.map((task) => task.id));
     return normalizeImportedState({
       ...parsedState,
       dataRevision: CURRENT_DATA_REVISION,
-      tasks: [
-        ...mergedTasks,
-        ...defaultState.tasks.filter((task) => !existingTaskIds.has(task.id)),
-      ],
+      tasks: parsedState.tasks,
       travelPlans: parsedState.travelPlans ?? defaultState.travelPlans ?? [],
       studyEvents: parsedState.studyEvents ?? defaultState.studyEvents ?? [],
     });
