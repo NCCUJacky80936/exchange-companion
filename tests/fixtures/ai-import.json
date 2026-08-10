@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-10T00:30:00+08:00",
+  "journeyScope": "QA fixture only",
+  "sources": [
+    {
+      "id": "source-qa-official",
+      "label": "QA 官方來源",
+      "kind": "official",
+      "url": "https://example.com/official",
+      "capturedAt": "2026-08-10"
+    }
+  ],
+  "proposals": [
+    {
+      "id": "proposal-qa-resource",
+      "title": "加入 QA 測試資源",
+      "summary": "只用來驗證提案匯入、來源顯示、忽略與套用流程。",
+      "entity": "resource",
+      "action": "add",
+      "value": {
+        "id": "resource-qa-test",
+        "title": "QA 測試資源",
+        "description": "測試後可重設示範資料移除。",
+        "category": "測試",
+        "type": "official",
+        "url": "https://example.com/official",
+        "verifiedAt": "2026-08-10",
+        "region": "QA"
+      },
+      "confidence": "high",
+      "privacy": "shareable",
+      "evidenceIds": ["source-qa-official"],
+      "status": "pending"
+    }
+  ]
+}
