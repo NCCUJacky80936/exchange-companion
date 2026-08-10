@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "id": "personal-gmail",
+      "provider": "gmail",
+      "account": "your-email@example.com",
+      "queries": [
+        {
+          "id": "host-school",
+          "label": "Host university",
+          "query": "from:(international@host-university.example OR admissions@host-university.example)",
+          "after": "2026-07-01",
+          "before": "2026-09-01"
+        }
+      ]
+    }
+  ],
+  "capture": {
+    "maxMessagesPerQuery": 50,
+    "includeFullBodyInPrivateArchive": false,
+    "includeAttachmentNames": true,
+    "downloadAttachments": false,
+    "privateWorkingDirectory": "work/email-capture"
+  }
+}

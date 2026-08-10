@@ -170,7 +170,7 @@ export function TravelPackingPanel({ plan, onUpdate }: { plan: TravelPlan; onUpd
 
   return (
     <div className="trip-extra-panel">
-      <div className="trip-extra-intro"><div><p className="eyebrow">Pack for this trip only</p><h3>這趟旅行的小行李</h3><p>這份清單只屬於這趟旅行，不會改動德國交換的主要行李工作台。</p></div><button className="button primary" onClick={() => { setAdding(true); setEditingId(""); }}><Plus size={16} />新增物品</button></div>
+      <div className="trip-extra-intro"><div><p className="eyebrow">Pack for this trip only</p><h3>這趟旅行的小行李</h3><p>這份清單只屬於這趟旅行，不會改動交換旅程的主要行李工作台。</p></div><button className="button primary" onClick={() => { setAdding(true); setEditingId(""); }}><Plus size={16} />新增物品</button></div>
       <div className="trip-pack-progress"><div><span style={{ width: `${items.length ? (packedCount / items.length) * 100 : 0}%` }} /></div><strong>{packedCount} / {items.length}</strong><small>已裝進旅行包</small></div>
       {adding ? <PackingForm onSave={save} onCancel={() => setAdding(false)} /> : null}
       {items.length ? <div className="trip-pack-groups">{groups.map((group) => <section key={group}><h4>{group}<span>{items.filter((item) => item.category === group).length}</span></h4>{items.filter((item) => item.category === group).map((item) => editingId === item.id ? <PackingForm key={item.id} item={item} onSave={save} onCancel={() => setEditingId("")} /> : (

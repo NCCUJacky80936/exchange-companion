@@ -1,4 +1,11 @@
 import type { AppState, JourneyPhase } from "./types";
+import { exchangeProfile } from "./profile";
+
+function shiftDate(date: string, days: number): string {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
 
 export const phaseMeta: Record<JourneyPhase, { label: string; number: string; color: string }> = {
   admission: { label: "錄取與學校申請", number: "01", color: "blue" },
@@ -12,20 +19,20 @@ export const phaseMeta: Record<JourneyPhase, { label: string; number: string; co
 
 export const defaultState: AppState = {
   version: 1,
-  dataRevision: 3,
+  dataRevision: 4,
   journey: {
     id: "my-exchange-journey",
     kind: "exchange",
-    title: "我的交換旅程",
-    ownerName: "交換生",
-    homeCity: "Taipei",
-    hostCity: "交換城市",
-    hostSchool: "請在設定中填寫學校",
-    program: "交換計畫",
-    startDate: "2027-03-01",
-    endDate: "2028-02-28",
-    orientationDate: "2027-03-02",
-    destinations: ["Germany"],
+    title: exchangeProfile.appName,
+    ownerName: exchangeProfile.ownerName,
+    homeCity: exchangeProfile.homeCity,
+    hostCity: exchangeProfile.hostCity,
+    hostSchool: exchangeProfile.hostSchool,
+    program: exchangeProfile.program,
+    startDate: exchangeProfile.startDate,
+    endDate: exchangeProfile.endDate,
+    orientationDate: exchangeProfile.orientationDate,
+    destinations: [exchangeProfile.hostCountry],
   },
   tasks: [
     {
@@ -35,7 +42,7 @@ export const defaultState: AppState = {
       phase: "admission",
       status: "not-started",
       priority: "high",
-      dueDate: "2026-10-01",
+      dueDate: shiftDate(exchangeProfile.startDate, -180),
       predecessorIds: [],
       notes: "請依自己的錄取信修改期限與內容。",
       templateKind: "school-admin",
@@ -53,6 +60,7 @@ export const defaultState: AppState = {
       status: "not-started",
       priority: "high",
       predecessorIds: ["accept-place"],
+      dueDate: shiftDate(exchangeProfile.startDate, -150),
       notes: "",
       templateKind: "school-admin",
       checklist: [
@@ -69,6 +77,7 @@ export const defaultState: AppState = {
       status: "not-started",
       priority: "high",
       predecessorIds: ["school-application"],
+      dueDate: shiftDate(exchangeProfile.startDate, -60),
       notes: "",
       templateKind: "course",
       checklist: [
@@ -85,6 +94,7 @@ export const defaultState: AppState = {
       status: "not-started",
       priority: "high",
       predecessorIds: ["accept-place"],
+      dueDate: shiftDate(exchangeProfile.startDate, -120),
       notes: "金額與格式會變動，送件前必須回官方來源重查。",
       templateKind: "payment",
       checklist: [
@@ -101,6 +111,7 @@ export const defaultState: AppState = {
       status: "not-started",
       priority: "high",
       predecessorIds: ["financial-proof", "school-application"],
+      dueDate: shiftDate(exchangeProfile.startDate, -90),
       notes: "不要在手帳中貼入護照號碼、帳戶或完整文件內容。",
       templateKind: "visa",
       checklist: [
@@ -118,6 +129,7 @@ export const defaultState: AppState = {
       status: "not-started",
       priority: "high",
       predecessorIds: ["school-application"],
+      dueDate: shiftDate(exchangeProfile.startDate, -100),
       notes: "本站只記錄狀態；合約、房號與付款資料請留在私人文件夾。",
       templateKind: "housing",
       checklist: [
@@ -134,6 +146,7 @@ export const defaultState: AppState = {
       status: "not-started",
       priority: "high",
       predecessorIds: ["school-application"],
+      dueDate: shiftDate(exchangeProfile.startDate, -45),
       notes: "",
       checklist: [
         { id: "insurance-coverage", label: "確認保障起訖與適用性", done: false },
@@ -149,6 +162,7 @@ export const defaultState: AppState = {
       status: "not-started",
       priority: "medium",
       predecessorIds: ["visa-application", "housing"],
+      dueDate: shiftDate(exchangeProfile.startDate, -45),
       notes: "",
       templateKind: "flight",
       checklist: [
@@ -165,6 +179,7 @@ export const defaultState: AppState = {
       status: "not-started",
       priority: "high",
       predecessorIds: ["visa-application", "insurance", "housing"],
+      dueDate: shiftDate(exchangeProfile.startDate, -7),
       notes: "本網站不提供文件上傳。",
       checklist: [
         { id: "carry-documents", label: "完成隨身紙本文件包", done: false },
@@ -181,6 +196,7 @@ export const defaultState: AppState = {
       status: "not-started",
       priority: "high",
       predecessorIds: ["housing", "flight"],
+      dueDate: exchangeProfile.startDate,
       notes: "",
       templateKind: "housing",
       checklist: [
@@ -191,15 +207,17 @@ export const defaultState: AppState = {
     },
     {
       id: "address-registration",
-      title: "辦理住址登記",
-      description: "依居住城市規定，在期限內備妥護照與房東入住證明辦理登記。",
+      title: "確認抵達後的在地登記義務",
+      description: "查核是否需要住址、居留或學校登記，並依所在地官方規定備妥住宿與身分證明。",
       phase: "arrival-2w",
       status: "not-started",
       priority: "high",
       predecessorIds: ["arrival-checkin"],
-      notes: "德國多數城市要求儘快登記，請以所在地官方規定為準。",
+      notes: "期限、文件與辦理方式依目的地而異，請以所在地官方規定為準。",
+      dueDate: shiftDate(exchangeProfile.startDate, 13),
       checklist: [
-        { id: "landlord-confirmation", label: "取得房東入住證明", done: false },
+        { id: "local-registration", label: "確認是否需要在地登記", done: false },
+        { id: "residence-proof", label: "備妥住宿與身分相關證明", done: false },
         { id: "registration-booking", label: "確認線上或臨櫃流程", done: false },
       ],
       records: [],
@@ -207,16 +225,17 @@ export const defaultState: AppState = {
     {
       id: "arrival-services",
       title: "完成銀行、SIM 與必要生活服務",
-      description: "依個人情況處理銀行、限制帳戶撥款、SIM、交通票與廣電費。",
+      description: "依個人情況處理付款方式、SIM、交通、住宿公共服務與其他必要設定。",
       phase: "arrival-2w",
       status: "not-started",
       priority: "medium",
       predecessorIds: ["address-registration"],
+      dueDate: shiftDate(exchangeProfile.startDate, 14),
       notes: "服務商與價格會變動，不在模板中永久寫死。",
       checklist: [
         { id: "bank", label: "確認日常付款方式", done: false },
         { id: "sim", label: "完成手機網路", done: false },
-        { id: "radio-fee", label: "確認住處廣電費分攤", done: false },
+        { id: "housing-services", label: "確認住宿與公共服務責任", done: false },
       ],
       records: [],
     },
@@ -228,6 +247,7 @@ export const defaultState: AppState = {
       status: "not-started",
       priority: "high",
       predecessorIds: ["learning-agreement"],
+      dueDate: exchangeProfile.orientationDate || exchangeProfile.startDate,
       notes: "旅行衝突檢查會使用你在旅行分頁加入的課程與考試。",
       templateKind: "course",
       checklist: [
@@ -244,6 +264,7 @@ export const defaultState: AppState = {
       status: "not-started",
       priority: "high",
       predecessorIds: ["semester-admin"],
+      dueDate: shiftDate(exchangeProfile.endDate, -30),
       notes: "各服務需要的提前通知天數不同，請個別查核。",
       checklist: [
         { id: "move-out", label: "完成退租與房間檢查", done: false },
@@ -254,14 +275,15 @@ export const defaultState: AppState = {
     },
   ],
   bags: [
-    { id: "checked", name: "托運行李", kind: "checked", limitKg: 23 },
-    { id: "carry", name: "手提行李", kind: "carry-on", limitKg: 8 },
-    { id: "personal", name: "個人物品", kind: "personal", limitKg: 3 },
+    { id: "checked", name: "托運行李", kind: "checked", limitKg: 0, limitSource: "unconfirmed" },
+    { id: "carry", name: "手提行李", kind: "carry-on", limitKg: 0, limitSource: "unconfirmed" },
+    { id: "personal", name: "個人物品", kind: "personal", limitKg: 0, limitSource: "unconfirmed" },
   ],
+  flightAllowances: [],
   packingItems: [
     { id: "passport", name: "護照與隨身文件包", category: "文件", decision: "must", bagId: "personal", quantity: 1, weightKg: 0.45, packed: false },
     { id: "medication", name: "常用藥與英文處方", category: "健康", decision: "must", bagId: "carry", quantity: 1, weightKg: 0.5, packed: false, warning: "特殊藥品與數量需先查核入境規定。" },
-    { id: "adapter", name: "歐規轉接頭", category: "電子", decision: "must", bagId: "carry", quantity: 2, weightKg: 0.12, packed: false },
+    { id: "adapter", name: "符合目的國規格的轉接頭", category: "電子", decision: "must", bagId: "carry", quantity: 2, weightKg: 0.12, packed: false },
     { id: "laptop", name: "筆電與充電器", category: "電子", decision: "must", bagId: "carry", quantity: 1, weightKg: 1.8, packed: false, warning: "鋰電池裝置通常需隨身攜帶。" },
     { id: "power-bank", name: "行動電源", category: "電子", decision: "recommend", bagId: "carry", quantity: 1, weightKg: 0.28, packed: false, warning: "不可托運；容量依航空公司規定。" },
     { id: "glasses", name: "備用眼鏡", category: "健康", decision: "recommend", bagId: "personal", quantity: 1, weightKg: 0.15, packed: false },
@@ -269,23 +291,15 @@ export const defaultState: AppState = {
     { id: "shoes", name: "好走的鞋", category: "衣物", decision: "recommend", bagId: "checked", quantity: 1, weightKg: 0.9, packed: false },
     { id: "bedding", name: "寢具", category: "生活", decision: "buy-there", bagId: "", quantity: 1, weightKg: 0, packed: false },
     { id: "liquids", name: "大瓶盥洗用品", category: "生活", decision: "buy-there", bagId: "", quantity: 1, weightKg: 0, packed: false },
-    { id: "appliances", name: "高功率台灣電器", category: "電子", decision: "skip", bagId: "", quantity: 1, weightKg: 0, packed: false, warning: "先確認 230V 相容性。" },
+    { id: "appliances", name: "高功率家用電器", category: "電子", decision: "skip", bagId: "", quantity: 1, weightKg: 0, packed: false, warning: "先確認目的地電壓、頻率與插座相容性。" },
   ],
-  resources: [
-    { id: "make-it-germany-study", title: "Make it in Germany：留學簽證", description: "德國政府提供的學生簽證與居留流程入口。", category: "簽證", type: "official", url: "https://www.make-it-in-germany.com/en/visa-residence/types/studying", verifiedAt: "2026-08-10", region: "Germany" },
-    { id: "foreign-office-visa", title: "German Federal Foreign Office Visa Navigator", description: "依國籍與目的查找適用簽證與申請入口。", category: "簽證", type: "official", url: "https://digital.diplo.de/visa", verifiedAt: "2026-08-10", region: "Germany" },
-    { id: "daad-insurance", title: "DAAD 健康保險指南", description: "國際學生入學與在德期間的健康保險要求概覽。", category: "醫療", type: "official", url: "https://www.daad.de/en/studying-in-germany/living-in-germany/health-insurance/", verifiedAt: "2026-08-10", region: "Germany" },
-    { id: "customs-medicine", title: "德國海關：藥品", description: "個人用藥與特殊藥品的入境規定。", category: "海關", type: "official", url: "https://www.zoll.de/EN/Private-individuals/Travel/Entering-Germany/Restrictions/Medicinal-products-and-narcotics/medicinal-products-and-narcotics_node.html", verifiedAt: "2026-08-10", region: "Germany" },
-    { id: "customs-food", title: "德國海關：食品", description: "肉類、乳製品與其他食品的入境限制。", category: "海關", type: "official", url: "https://www.zoll.de/EN/Private-individuals/Travel/Entering-Germany/Restrictions/Food-and-feed/food-and-feed_node.html", verifiedAt: "2026-08-10", region: "Germany" },
-    { id: "radio-fee", title: "Rundfunkbeitrag 學生說明", description: "合租時的德國廣電費處理方式與官方回覆入口。", category: "生活", type: "official", url: "https://www.rundfunkbeitrag.de/welcome/english/students-and-apprentices", verifiedAt: "2026-08-10", region: "Germany" },
-    { id: "packing-video-one", title: "德國留學行李經驗影片", description: "文件、藥品、電子用品與衣物的生活經驗整理。", category: "行李", type: "experience", url: "https://youtu.be/3QKMni6Vk28", verifiedAt: "2026-08-10", region: "Experience" },
-    { id: "packing-video-two", title: "歐洲交換行李整理影片", description: "行李規劃與歐洲生活用品的經驗分享。", category: "行李", type: "experience", url: "https://youtu.be/6aabTZsFQRE", verifiedAt: "2026-08-10", region: "Experience" },
-  ],
+  resources: [],
+  resourceIntake: [],
   budget: [
-    { id: "rent", name: "每月住宿預算", amount: 500, cadence: "monthly", paid: false },
-    { id: "food", name: "每月餐食與日用品", amount: 350, cadence: "monthly", paid: false },
-    { id: "transport", name: "每月交通預算", amount: 60, cadence: "monthly", paid: false },
-    { id: "arrival", name: "落地一次性支出", amount: 350, cadence: "once", paid: false },
+    { id: "rent", name: "每月住宿預算（待填）", amount: 0, cadence: "monthly", paid: false },
+    { id: "food", name: "每月餐食與日用品（待填）", amount: 0, cadence: "monthly", paid: false },
+    { id: "transport", name: "每月交通預算（待填）", amount: 0, cadence: "monthly", paid: false },
+    { id: "arrival", name: "落地一次性支出（待填）", amount: 0, cadence: "once", paid: false },
   ],
   emergencyContact: "",
   travelPlans: [],

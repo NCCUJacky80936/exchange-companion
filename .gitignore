@@ -30,6 +30,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -37,5 +38,9 @@ yarn-error.log*
 /dist/
 /.wrangler/
 /outputs/
+/output/
+/.playwright-cli/
 /work/
 *.tsbuildinfo
+__pycache__/
+*.py[cod]

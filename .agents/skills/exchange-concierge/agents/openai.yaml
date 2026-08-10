@@ -1,0 +1,4 @@
+interface:
+  display_name: "Exchange Concierge"
+  short_description: "整理授權資料與官方證據，產生可審核的交換手帳更新提案"
+  default_prompt: "Use $exchange-concierge to reconcile my authorized exchange evidence and create a reviewable import bundle."

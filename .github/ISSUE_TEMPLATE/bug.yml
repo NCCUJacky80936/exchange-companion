@@ -1,0 +1,32 @@
+name: Bug report
+description: 回報網站、初始化、Skill 或部署問題
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: 請勿貼上證件、Email、住址、訂位代碼、token 或其他私人交換資料。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 發生什麼事
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 重現方式
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit 或版本
+  - type: dropdown
+    id: viewport
+    attributes:
+      label: 裝置
+      options:
+        - Desktop
+        - Tablet
+        - Mobile
+        - Not applicable

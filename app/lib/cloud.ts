@@ -34,7 +34,7 @@ export async function ensureCloudSession(): Promise<Session | null> {
   return data.session;
 }
 
-export function isPermanentSession(session: Session | null): boolean {
+export function isPermanentSession(session: Session | null): session is Session {
   return Boolean(session && !session.user.is_anonymous);
 }
 

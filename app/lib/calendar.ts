@@ -1,4 +1,5 @@
 import type { JourneyTask } from "./types";
+import { exchangeProfile } from "./profile";
 
 function compactDate(date: string): string {
   return date.replaceAll("-", "");
@@ -31,22 +32,22 @@ export function googleCalendarUrl(task: JourneyTask): string {
     : `${compactDate(task.dueDate)}/${compactDate(nextDay(task.dueDate))}`;
   const params = new URLSearchParams({
     action: "TEMPLATE",
-    text: `德國交換｜${task.title}`,
+    text: `${exchangeProfile.appName}｜${task.title}`,
     dates,
     details: `${task.description}${task.sourceUrl ? `\n${task.sourceUrl}` : ""}`,
   });
-  if (task.scheduledAt) params.set("ctz", task.timeZone ?? "Europe/Berlin");
+  if (task.scheduledAt) params.set("ctz", task.timeZone ?? exchangeProfile.hostTimeZone);
   if (task.location) params.set("location", task.location);
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
-export function downloadIcs(tasks: JourneyTask[], filename = "germany-exchange-calendar.ics"): void {
+export function downloadIcs(tasks: JourneyTask[], filename = "exchange-companion-calendar.ics"): void {
   const datedTasks = tasks.filter((task) => task.dueDate && task.status !== "not-applicable");
   const events = datedTasks.map((task) => {
     const timing = task.scheduledAt
       ? [
-          `DTSTART;TZID=${task.timeZone ?? "Europe/Berlin"}:${compactDateTime(task.scheduledAt)}00`,
-          `DTEND;TZID=${task.timeZone ?? "Europe/Berlin"}:${compactDateTime(oneHourLater(task.scheduledAt))}00`,
+          `DTSTART;TZID=${task.timeZone ?? exchangeProfile.hostTimeZone}:${compactDateTime(task.scheduledAt)}00`,
+          `DTEND;TZID=${task.timeZone ?? exchangeProfile.hostTimeZone}:${compactDateTime(oneHourLater(task.scheduledAt))}00`,
         ]
       : [
           `DTSTART;VALUE=DATE:${compactDate(task.dueDate!)}`,
@@ -57,7 +58,7 @@ export function downloadIcs(tasks: JourneyTask[], filename = "germany-exchange-c
       `UID:${task.id}@exchange-companion.local`,
       `DTSTAMP:${new Date().toISOString().replaceAll(/[-:]/g, "").replace(/\.\d{3}/, "")}`,
       ...timing,
-      `SUMMARY:${escapeIcs(`德國交換｜${task.title}`)}`,
+      `SUMMARY:${escapeIcs(`${exchangeProfile.appName}｜${task.title}`)}`,
       `DESCRIPTION:${escapeIcs(`${task.description}${task.sourceUrl ? `\n${task.sourceUrl}` : ""}`)}`,
       ...(task.location ? [`LOCATION:${escapeIcs(task.location)}`] : []),
       "END:VEVENT",
@@ -67,7 +68,7 @@ export function downloadIcs(tasks: JourneyTask[], filename = "germany-exchange-c
   const calendar = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Exchange Companion//Germany Exchange//ZH-TW",
+    `PRODID:-//Exchange Companion//${escapeIcs(exchangeProfile.hostCountry)} Exchange//ZH-TW`,
     "CALSCALE:GREGORIAN",
     ...events,
     "END:VCALENDAR",

@@ -54,13 +54,13 @@ export interface JourneyTask {
   verifiedAt?: string;
   templateKind?: TaskTemplateKind;
   scheduledAt?: string;
-  timeZone?: "Asia/Taipei" | "Europe/Berlin";
+  timeZone?: string;
   location?: string;
   contactName?: string;
   contactInfo?: string;
   referenceNumber?: string;
   cost?: number;
-  currency?: "EUR" | "TWD";
+  currency?: string;
   checklist?: TaskChecklistItem[];
   records?: TaskRecordEntry[];
   result?: string;
@@ -71,6 +71,29 @@ export interface Bag {
   name: string;
   kind: "checked" | "carry-on" | "personal";
   limitKg: number;
+  limitSource: "unconfirmed" | "ticket" | "manual";
+}
+
+export interface FlightAllowance {
+  id: string;
+  label: string;
+  airline: string;
+  segment: string;
+  checkedMode: "piece" | "weight" | "none" | "unknown";
+  checkedPieceCount: number;
+  checkedPieceWeightKg: number;
+  checkedTotalWeightKg: number;
+  carryOnMode: "piece" | "none" | "unknown";
+  carryOnPieceCount: number;
+  carryOnPieceWeightKg: number;
+  personalItemMode: "piece" | "none" | "unknown";
+  personalItemPieceCount: number;
+  personalItemPieceWeightKg: number;
+  provenance: "ticket" | "manual";
+  confirmed: boolean;
+  sourceLabel: string;
+  verifiedAt: string;
+  notes: string;
 }
 
 export interface PackingItem {
@@ -90,10 +113,21 @@ export interface ResourceItem {
   title: string;
   description: string;
   category: string;
-  type: "official" | "school" | "city" | "experience";
+  type: "official" | "school" | "city" | "experience" | "personal";
   url: string;
   verifiedAt: string;
   region: string;
+  origin: "user-upload" | "ai-research" | "manual";
+  privacy: "private" | "shareable";
+  sourceLabel: string;
+}
+
+export interface ResourceIntake {
+  id: string;
+  url: string;
+  note: string;
+  status: "pending" | "processed";
+  createdAt: string;
 }
 
 export interface BudgetItem {
@@ -154,7 +188,7 @@ export interface TravelPlan {
   endDate: string;
   travelers: string;
   budget: number;
-  currency: "EUR" | "TWD";
+  currency: string;
   notes: string;
   days: TravelDay[];
   travelNotes: TravelNote[];
@@ -183,13 +217,14 @@ export interface TravelShareLink {
 }
 
 export type EvidenceKind = "official" | "school" | "city" | "email" | "file" | "video" | "research";
-export type AiProposalEntity = "task" | "resource" | "packing-item" | "study-event" | "travel-plan";
+export type AiProposalEntity = "task" | "resource" | "resource-intake" | "packing-item" | "bag" | "flight-allowance" | "study-event" | "travel-plan";
 export type AiProposalStatus = "pending" | "applied" | "dismissed";
 
 export interface EvidenceSource {
   id: string;
   label: string;
   kind: EvidenceKind;
+  evidenceType?: "general" | "ticket";
   url?: string;
   capturedAt: string;
   note?: string;
@@ -221,6 +256,7 @@ export interface AiImportBundle {
 
 export interface AiInbox {
   lastImportedAt?: string;
+  journeyScope?: string;
   sources: EvidenceSource[];
   proposals: AiProposal[];
 }
@@ -260,8 +296,10 @@ export interface AppState {
   journey: Journey;
   tasks: JourneyTask[];
   bags: Bag[];
+  flightAllowances?: FlightAllowance[];
   packingItems: PackingItem[];
   resources: ResourceItem[];
+  resourceIntake?: ResourceIntake[];
   budget: BudgetItem[];
   emergencyContact: string;
   travelPlans?: TravelPlan[];

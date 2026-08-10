@@ -30,6 +30,7 @@ import type {
   TravelDay,
   TravelPlan,
 } from "../lib/types";
+import { exchangeCurrencies, exchangeProfile } from "../lib/profile";
 import { DayMapPanel, mapsUrlForActivity, TravelNotesPanel, TravelPackingPanel } from "./TravelTripPanels";
 
 type TripView = "itinerary" | "notes" | "packing";
@@ -201,7 +202,7 @@ function TravelModal({ plan, onClose, onSave }: { plan: TravelPlan | null; onClo
           <label className="field"><span>開始日期</span><input type="date" name="startDate" defaultValue={plan?.startDate} required /></label>
           <label className="field"><span>結束日期</span><input type="date" name="endDate" defaultValue={plan?.endDate} required /></label>
           <label className="field"><span>同行者</span><input name="travelers" defaultValue={plan?.travelers} placeholder="自己、朋友或家人" /></label>
-          <div className="field"><span>旅行預算</span><div className="inline-fields"><input aria-label="旅行預算金額" name="budget" type="number" min="0" step="1" defaultValue={plan?.budget ?? 0} /><select name="currency" defaultValue={plan?.currency ?? "EUR"} aria-label="旅行預算幣別"><option value="EUR">EUR</option><option value="TWD">TWD</option></select></div></div>
+          <div className="field"><span>旅行預算</span><div className="inline-fields"><input aria-label="旅行預算金額" name="budget" type="number" min="0" step="1" defaultValue={plan?.budget ?? 0} /><select name="currency" defaultValue={plan?.currency ?? exchangeProfile.primaryCurrency} aria-label="旅行預算幣別">{exchangeCurrencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}</select></div></div>
           <label className="field field-full"><span>旅行想法</span><textarea name="notes" rows={3} defaultValue={plan?.notes} placeholder="想做什麼、從哪裡看到的靈感、一定要吃什麼…" /></label>
           <div className="travel-modal-note field-full"><GraduationCap size={19} /><span>儲存後會自動比對上課、考試、Orientation 與交換期限。</span></div>
           <div className="modal-actions field-full"><button type="button" className="button secondary" onClick={onClose}>取消</button><button className="button primary" type="submit"><Check size={17} />{plan ? "儲存變更" : "建立旅行"}</button></div>

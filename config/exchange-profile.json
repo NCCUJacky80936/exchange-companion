@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "appName": "我的交換手帳",
+  "ownerName": "交換生",
+  "homeCity": "Taipei",
+  "homeCountry": "Taiwan",
+  "homeTimeZone": "Asia/Taipei",
+  "hostCity": "Stuttgart",
+  "hostCountry": "Germany",
+  "hostCountryCode": "DE",
+  "hostTimeZone": "Europe/Berlin",
+  "hostSchool": "Your host university",
+  "program": "Exchange program",
+  "startDate": "2027-03-01",
+  "endDate": "2028-02-28",
+  "orientationDate": "2027-03-02",
+  "primaryCurrency": "EUR",
+  "secondaryCurrency": "TWD",
+  "language": "zh-Hant",
+  "visual": {
+    "routeLabel": "Taipei → Stuttgart",
+    "heroImage": "/images/taipei-stuttgart-hero.png",
+    "socialImage": "/og.png",
+    "icon": "/images/doodle-icons/passport-safe.png",
+    "generatedFor": {
+      "homeCity": "Taipei",
+      "hostCity": "Stuttgart"
+    }
+  },
+  "research": {
+    "minimumVerifiedDate": "2026-01-01",
+    "preferredOfficialDomains": []
+  }
+}

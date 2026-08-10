@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "generatedAt": "2026-08-10T00:30:00+08:00",
-  "journeyScope": "QA fixture only",
+  "journeyScope": "exchange:my-exchange-journey:Your host university:Stuttgart:Germany:2027-03-01:2028-02-28",
   "sources": [
     {
       "id": "source-qa-official",
@@ -26,7 +26,10 @@
         "type": "official",
         "url": "https://example.com/official",
         "verifiedAt": "2026-08-10",
-        "region": "QA"
+        "region": "QA",
+        "origin": "ai-research",
+        "privacy": "shareable",
+        "sourceLabel": "QA 官方來源"
       },
       "confidence": "high",
       "privacy": "shareable",

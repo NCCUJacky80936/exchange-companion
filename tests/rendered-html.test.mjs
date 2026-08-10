@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+const profile = JSON.parse(await readFile(new URL("../config/exchange-profile.json", import.meta.url), "utf8"));
+
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
@@ -18,11 +20,11 @@ test("server-renders the exchange companion shell", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /<title>交換手帳｜AI 優先的交換生旅程控制台<\/title>/i);
+  assert.match(html, new RegExp(`<title>${profile.appName}｜AI 優先的交換生旅程控制台<\\/title>`, "i"));
   assert.match(html, /property="og:image" content="https:\/\/exchange-companion\.example\/og\.png"/i);
-  assert.match(html, /交換手帳/);
+  assert.match(html, new RegExp(profile.appName));
   assert.match(html, /我的交換|正在打開/);
-  assert.doesNotMatch(html, /Austin|Florian Lampl|Manuel Hodrius/i);
+  assert.doesNotMatch(html, /Repository Student|Personal Buddy|Private Coordinator/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
@@ -38,6 +40,8 @@ test("keeps private parent files outside the app bundle", async () => {
   assert.match(page, /ExchangeCompanion/);
   assert.match(component, /localStorage|loadState/);
   assert.match(component, /downloadIcs/);
+  assert.match(component, /交給 AI 辨識的網址/);
+  assert.match(component, /packingInspiration/);
   assert.match(component, /TravelPlanner/);
   assert.match(travelPlanner, /Exchange-aware check/);
   assert.match(travelPlanner, /repeatWeekly/);
@@ -46,6 +50,7 @@ test("keeps private parent files outside the app bundle", async () => {
   assert.match(travelPanels, /TravelNotesPanel/);
   assert.match(travelPanels, /TravelPackingPanel/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
-  assert.doesNotMatch(`${component}\n${travelPlanner}\n${travelPanels}`, /credentials\.json|token_jacky|護照影本|Zimmer 5703/);
-  assert.doesNotMatch(defaultData, /Austin|Florian Lampl|Manuel Hodrius|Auslandsportal|austin-hdm/i);
+  assert.doesNotMatch(`${component}\n${travelPlanner}\n${travelPanels}`, /credentials\.json|private_token|passport-scan|private-room-number/i);
+  assert.doesNotMatch(defaultData, /Repository Student|Personal Buddy|Private Coordinator|country-specific-visa-portal|personal-journey-id/i);
+  assert.doesNotMatch(defaultData, /EVA|Turkish|2\s*[×x]\s*23|40kg/i);
 });

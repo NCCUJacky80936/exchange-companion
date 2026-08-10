@@ -1,0 +1,36 @@
+# 部署
+
+## Gate
+
+```bash
+npm run check
+```
+
+並實際檢查 `390×844`、`768×1024`、`1440×900`。確認 `.openai/hosting.json` 沒有別人的 `project_id`，`supabase/config.toml` 沒有別人的正式網址。
+
+## Codex Sites
+
+如果環境提供 Sites hosting，請 Codex 使用 `$create-exchange-companion` 完成最後驗證並建立一個屬於你的新站點。第一次部署後取得的 project binding 只留在自己的部署環境，不要提交到公開模板。
+
+## Cloudflare Workers
+
+第一次使用 Wrangler 時，先登入自己的 Cloudflare 帳號：
+
+```bash
+npx wrangler login
+```
+
+若帳號底下有多個 Cloudflare account，先將目標帳號的 ID 設為本機／部署環境的 `CLOUDFLARE_ACCOUNT_ID`，或在自己的 Wrangler 設定加入 `account_id`；不要把個人帳號 ID 寫回公開模板。
+
+```bash
+npm run deploy:preflight
+npm run deploy:cloudflare
+```
+
+第一個指令只確認目前登入的 Cloudflare 帳號；第二個會重新執行全部檢查、production build，然後部署 `dist/server/wrangler.json`。部署前請先確認當下免費方案與帳號額度。
+
+## 其他 hosting
+
+也可部署到相容的 Cloudflare Workers 環境。若改用其他平台，先確認 Vinext／Worker build 支援、環境變數、PWA、SPA／RSC routes 與分享連結的重整行為。
+
+部署完成後，重新測試首頁、設定、旅行分享、手機安裝與社群預覽。記錄 public URL 與被驗證的 Git commit。

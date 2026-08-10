@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Exchange journey placeholder</title>
+  <desc id="desc">A hand-drawn suitcase, airplane, route, passport, map, and notebook without a specific destination.</desc>
+  <defs>
+    <filter id="rough"><feTurbulence baseFrequency="0.015" numOctaves="2" seed="7" result="noise"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="2"/></filter>
+    <pattern id="dots" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#2E3A34" opacity=".07"/></pattern>
+  </defs>
+  <rect width="1500" height="1000" fill="#FFFEF8"/><rect width="1500" height="1000" fill="url(#dots)"/>
+  <g fill="none" stroke="#2E3A34" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" filter="url(#rough)">
+    <path d="M130 760C340 650 430 380 720 390c210 8 260 210 480 80" stroke-dasharray="24 24"/>
+    <path d="M690 384l-95-58 20 79-60 44 139-25 72 65-25-92 75-41z" fill="#EFF0E8"/>
+    <path d="M890 340h360c48 0 88 40 88 88v310c0 48-40 88-88 88H890c-48 0-88-40-88-88V428c0-48 40-88 88-88z" fill="#E9754C"/>
+    <path d="M965 340v486M1175 340v486M1000 338v-48c0-37 30-67 67-67h75c37 0 67 30 67 67v48"/>
+    <path d="M1020 537h120v100h-120z" fill="#F4CD62"/><circle cx="1230" cy="510" r="56" fill="#82B9E8"/><path d="M1202 520l25-30 18 20 17-13 20 23"/>
+    <path d="M190 650l260-70 165 225-277 76z" fill="#F4CD62"/><path d="M248 673l230-62M294 732l230-62M340 791l230-62" stroke-width="5" opacity=".5"/>
+    <path d="M495 692l-92 55 67 24z" fill="#9DBA8A"/><path d="M585 690h180v245H585z" fill="#82B9E8"/><circle cx="675" cy="785" r="48"/><path d="M621 860h108"/>
+    <path d="M210 165c65-55 165-55 230 0 65 55 165 55 230 0" stroke="#82B9E8"/>
+    <path d="M1030 120l14 34 36 3-28 23 9 35-31-19-31 19 9-35-28-23 36-3z" fill="#F4CD62" stroke="#E9754C"/>
+  </g>
+  <g fill="#E9754C"><circle cx="132" cy="760" r="17"/><circle cx="1200" cy="470" r="17"/></g>
+</svg>

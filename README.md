@@ -1,41 +1,82 @@
-# 交換手帳 Exchange Companion
+# Exchange Companion｜把這個交換手帳變成你自己的
 
-給交換生使用的全旅程控制台。新使用者會從通用交換模板開始；個人進度只保存在自己的裝置或登入後的私人雲端。功能涵蓋交換任務、個人紀錄、準備清單、前置條件、行李重量、官方資源、預算、旅行規劃與 JSON 備份。
+一個可 fork／clone 的交換生網站模板，加上兩個專案內建 Codex Skills。它不是只適用德國或某一間學校：先填入自己的國家、城市、學校與日期，再讓 Codex 依你授權的資料和最新官方來源，自動整理進度、期限、資源、行李與旅行衝突；網站負責呈現、審核、手動調整與保存。
 
-主要導覽與情境插圖使用專案專屬的 AI 原創手繪旅行貼紙；編輯、刪除與關閉等操作則保留標準符號，確保辨識與無障礙操作。任務資料已預留 `templateKind`，可在後續版本加入班機、選課、住宿與簽證等通用模板。
+網站預設完全免費、local-first，不登入也能使用。若需要手機同步與旅行共編，可再連接自己名下的 Supabase 免費專案。每個人的簽證、信件、財力、住址、課表與行政進度預設私密；只有明確選取的資源、行李、去敏航班與旅行計畫能分享。
 
-## Local development
+## 三分鐘開始
 
 ```bash
+git clone https://github.com/NCCUJacky80936/exchange-companion.git
+cd exchange-companion
 npm install
+npm run setup
 npm run dev
 ```
 
-預設網址為 `http://localhost:3000/`。
+打開 `http://localhost:3000/`。`npm run setup` 會詢問交換國家、城市、學校、日期、時區與幣別，並寫入 `config/exchange-profile.json`。
 
-## Validation
+接著在 Codex 對這個 repository 說：
 
-```bash
-npm run lint
-npm test
+> 使用 $create-exchange-companion，依我的交換國家、學校與日期，把這個網站做成我的交換手帳。先告訴我要授權哪些資料，所有更新先讓我確認，再處理製圖、網站驗證與免費上雲。
+
+## 這一包包含什麼
+
+- React、TypeScript、Vinext／Vite 的 responsive PWA。
+- 任務、個人紀錄、前置條件、依本人機票確認的行李額度、可自行新增的實體行李、資源、預算與 JSON 備份。
+- 重要資源庫預設不沿用他人的國家資料；可貼上網址加入私人待辨識清單，再由 `$exchange-concierge` 產生可審閱資源。
+- `config/packing-inspiration.json` 預載兩支交換行李 YouTube 經驗影片，僅用來發現品項；公斤數、海關與航空規定仍以本人機票與官方來源為準。
+- 年度旅行規劃、Google Maps 地址／連結、課表與考試衝突檢查。
+- localStorage 完整本機模式。
+- 可選的 Supabase 私人同步與限旅行範圍的分享／共編。
+- `config/exchange-profile.json`：可重複的國家、學校與視覺設定。
+- `$create-exchange-companion`：從選目的地、研究、製圖、網站到上雲的完整流程。
+- `$exchange-concierge`：從授權信件／檔案／官方網站抓進度，產生可審核的 JSON 提案。
+- 初始化、健康檢查、設定驗證、Skill 驗證與隱私掃描。
+
+## AI 自動整理怎麼運作
+
+```mermaid
+flowchart LR
+  A["選擇國家、城市、學校與日期"] --> B["明確授權信件、檔案或行事曆"]
+  B --> C["Codex 查核學校、政府、城市與經驗來源"]
+  C --> D["產生附來源、日期、可信度與隱私的提案"]
+  D --> E["使用者在網站逐項套用、忽略或復原"]
+  E --> F["本機保存或自選免費雲端同步"]
 ```
 
-## Privacy boundary
+自動化不會靜默覆蓋手動修改。完整信件、附件與證件不會匯入網站；網站只接收提煉後的狀態與提案。
 
-網站程式只位於本資料夾。請勿把父資料夾中的護照、簽證、財力文件、照片、Gmail token、`credentials.json`、銀行或宿舍入口資訊複製到 `public/`、`app/` 或任何建置輸入中。
+## 常用指令
 
-資料預設透過瀏覽器 `localStorage` 保存，可在「設定與備份」匯出與還原 JSON。使用者也能以不需 Email 的手帳帳號代號與密碼啟用私人雲端同步；目前沒有忘記密碼功能。網站不提供正式文件上傳。
+```bash
+npm run setup              # 互動式建立個人交換設定
+npm run doctor             # 檢查本機是否可開始
+npm run dev                # 開啟本機網站
+npm run check              # 上版前完整驗證
+npm run privacy:check      # 確認沒有把敏感資料或個人雲端綁定放進 Git
+```
 
-只有選定的旅行計畫會進入共編資料。分享可設定唯讀／可編輯、任何拿到連結的人／指定手帳帳號與到期日；交換任務、行政紀錄、信件、個人課表與私人文件不會跟著旅行分享。
+## 文件
 
-## V2 travel planner
+- [快速開始](docs/QUICKSTART.md)
+- [從資料到網站的完整流程](docs/WORKFLOW.md)
+- [Skills 使用方式](docs/SKILLS.md)
+- [隱私與分享邊界](docs/PRIVACY.md)
+- [免費雲端設定](docs/CLOUD.md)
+- [部署流程](docs/DEPLOYMENT.md)
+- [架構與可替換範圍](docs/ARCHITECTURE.md)
+- [安全政策](SECURITY.md)
+- [貢獻指南](CONTRIBUTING.md)
 
-「旅行規劃」可新增多趟旅行並逐日安排景點、餐廳、交通、住宿與備忘。每個地點可保存地址／地點名稱與 Google Maps 分享連結；沒有貼連結時會依地址產生搜尋，兩個以上地點則可依當日順序開啟 Google Maps 路線。每趟旅行也有自己的注意事項、備案與小行李清單，不會改動交換用的主要行李工作台。
+## 驗證
 
-旅行會記錄日期、目的地、同行者、預算、預估花費和訂位狀態，也可匯出獨立旅行 JSON 或複製包含地址、提醒和行李狀態的純旅行摘要。
+```bash
+npm run check
+```
 
-旅行日期會自動比對尚未完成的交換任務，以及手動維護的一次性／每週重複課程、考試、Orientation 和不可排程事項。這些比對只提供「可能衝突」提醒，仍由使用者決定是否調整。
+CI 會重跑設定、Skills、隱私、lint 與 production build 測試。請另外實際檢查 `390×844`、`768×1024`、`1440×900` 三種畫面。
 
-## Automation direction
+## License
 
-V2 的主要操作不應是要求使用者逐項建立任務，而是由使用者授權的信箱與交換資料夾讀取行政證據，辨識完成事項、期限、等待狀態、行程與行李額度，再產生「建議更新」供使用者確認。網頁主要負責呈現交換進度、查找可信資源、確認行李與保留個人紀錄；所有自動判讀都要保留來源、查核日期、人工修改與撤回能力。班機、選課、簽證、住宿等通用流程則以模板套用到不同學校與國家。
+[MIT](LICENSE)。AI 生成或自行替換的圖片也必須確認使用權，不要直接搬運素材網站的付費圖或模仿特定在世藝術家。
