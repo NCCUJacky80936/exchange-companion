@@ -38,6 +38,33 @@ export function isPermanentSession(session: Session | null): boolean {
   return Boolean(session && !session.user.is_anonymous);
 }
 
+function accountIdToEmail(accountId: string): string {
+  const normalized = accountId.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{2,31}$/.test(normalized)) throw new Error("invalid_account_id");
+  return `${normalized}@users.exchange-companion.local`;
+}
+
+export async function createPasswordAccount(accountId: string, password: string): Promise<void> {
+  if (password.length < 8) throw new Error("weak_password");
+  const client = getCloudClient();
+  if (!client) throw new Error("cloud_not_configured");
+  const normalized = accountId.trim().toLowerCase();
+  const { data, error } = await client.auth.signUp({
+    email: accountIdToEmail(normalized),
+    password,
+    options: { data: { display_name: normalized, account_id: normalized } },
+  });
+  if (error) throw error;
+  if (!data.session || data.user?.is_anonymous) throw new Error("account_not_created");
+}
+
+export async function signInWithPasswordAccount(accountId: string, password: string): Promise<void> {
+  const client = getCloudClient();
+  if (!client) throw new Error("cloud_not_configured");
+  const { error } = await client.auth.signInWithPassword({ email: accountIdToEmail(accountId), password });
+  if (error) throw error;
+}
+
 export async function sendMagicLink(email: string): Promise<void> {
   const client = getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
@@ -137,8 +164,9 @@ export async function createTravelShareLink(options: {
   if (!client || !session) throw new Error("cloud_not_configured");
 
   if (options.accessMode === "approved_google") {
-    const invitedEmail = options.approvedEmail?.trim().toLowerCase();
-    if (!invitedEmail) throw new Error("approved_email_required");
+    const accountId = options.approvedEmail?.trim().toLowerCase();
+    if (!accountId) throw new Error("approved_account_required");
+    const invitedEmail = accountIdToEmail(accountId);
     const { data: existingMember, error: lookupError } = await client.from("travel_members")
       .select("id")
       .eq("plan_id", options.plan.id)

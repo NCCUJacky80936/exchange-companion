@@ -4,6 +4,7 @@ import type { Session } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   cloudIsConfigured,
+  createPasswordAccount,
   createTravelShareLink,
   ensureCloudSession,
   getCloudClient,
@@ -13,6 +14,7 @@ import {
   redeemTravelShare,
   removeTravelSubscription,
   sendMagicLink,
+  signInWithPasswordAccount,
   signOutCloud,
   subscribeToTravelPlan,
   updatePublishedTravelPlan,
@@ -31,6 +33,8 @@ export interface ExchangeCloudController {
   busy: boolean;
   notice: string;
   setNotice: (notice: string) => void;
+  createAccount: (accountId: string, password: string) => Promise<void>;
+  accountSignIn: (accountId: string, password: string) => Promise<void>;
   emailSignIn: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   enablePrivateSync: (mode: "upload-local" | "use-cloud") => Promise<void>;
@@ -87,7 +91,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       setNotice(plan.cloud?.permission === "viewer" ? "已開啟唯讀旅行。" : "已加入可共同編輯的旅行。 ");
     }).catch((error: { message?: string }) => {
       redeemedToken.current = "";
-      setNotice(error.message?.includes("account_approval_required") ? "這個連結只開放指定帳號，請先用受邀的 Email 登入。" : "分享連結已失效、過期，或你沒有權限。 ");
+      setNotice(error.message?.includes("account_approval_required") ? "這個連結只開放指定手帳帳號，請先用受邀的帳號代號登入。" : "分享連結已失效、過期，或你沒有權限。 ");
     }).finally(() => setBusy(false));
   }, [configured, session, setState]);
 
@@ -136,6 +140,23 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     busy,
     notice,
     setNotice,
+    createAccount: async (accountId: string, password: string) => {
+      try {
+        await runBusy(() => createPasswordAccount(accountId, password));
+        setNotice("免費手帳帳號已建立並登入。請妥善保存密碼；目前不提供 Email 密碼重設。 ");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        setNotice(message.includes("invalid_account_id") ? "帳號代號需為 3–32 個英文字母、數字、底線或連字號。" : message.includes("already") || message.includes("registered") ? "這個帳號代號已有人使用，請直接登入或更換代號。" : "目前無法建立帳號，請稍後再試。 ");
+      }
+    },
+    accountSignIn: async (accountId: string, password: string) => {
+      try {
+        await runBusy(() => signInWithPasswordAccount(accountId, password));
+        setNotice("手帳帳號已登入。 ");
+      } catch {
+        setNotice("帳號代號或密碼不正確。 ");
+      }
+    },
     emailSignIn: (email: string) => runBusy(async () => {
       await sendMagicLink(email);
       setNotice("登入連結已寄出，請回到信箱完成登入。 ");

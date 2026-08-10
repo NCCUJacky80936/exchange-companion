@@ -958,6 +958,8 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
   const fileInput = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState("");
   const [email, setEmail] = useState("");
+  const [accountId, setAccountId] = useState("");
+  const [accountPassword, setAccountPassword] = useState("");
 
   async function importBackup(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -986,11 +988,15 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
       <section className="paper-card settings-card account-card">
         <div className="settings-card-title"><UserRound size={23} /><div><p className="eyebrow">Free account & sync</p><h2>帳戶與手機同步</h2></div></div>
         {!cloud.configured ? <div className="cloud-offline-state"><strong>免費雲端尚未建立</strong><p>現在仍是完整的本機版。所有功能測試完成後才會一次建立並上版，不會在開發中反覆消耗部署額度。</p></div> : cloud.permanentAccount ? <>
-          <div className="account-summary"><span className="avatar">{cloud.session?.user.email?.slice(0, 1).toUpperCase() || "A"}</span><div><strong>{cloud.session?.user.email ?? "已登入帳戶"}</strong><small>{cloud.privateSyncEnabled ? "私人手帳同步中" : "尚未同步私人手帳"}</small></div></div>
+          <div className="account-summary"><span className="avatar">{cloud.session?.user.email?.slice(0, 1).toUpperCase() || "A"}</span><div><strong>{String(cloud.session?.user.user_metadata.account_id ?? cloud.session?.user.email ?? "已登入帳戶")}</strong><small>{cloud.privateSyncEnabled ? "私人手帳同步中" : "尚未同步私人手帳"}</small></div></div>
           <div className="backup-actions">{cloud.privateSyncEnabled ? <button className="button secondary" onClick={cloud.disablePrivateSync}>停止同步</button> : <><button className="button primary" disabled={cloud.busy} onClick={() => void cloud.enablePrivateSync("upload-local")}>用這台裝置建立雲端副本</button><button className="button secondary" disabled={cloud.busy} onClick={() => void cloud.enablePrivateSync("use-cloud")}>載入帳戶既有手帳</button></>}<button className="button text-button" onClick={() => void cloud.signOut()}>登出</button></div>
         </> : <>
-          <p>不登入也能開啟「任何人可用」的旅行分享。若要跨手機同步私人手帳，或開啟只限指定帳號的連結，請用 Email 完成免費驗證。</p>
-          <div className="account-login-actions"><div className="email-login"><input type="email" name="loginEmail" autoComplete="email" spellCheck={false} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="例如：name@gmail.com" aria-label="Email 登入信箱" /><button className="button primary" disabled={!email || cloud.busy} onClick={() => void cloud.emailSignIn(email)}>寄免費登入連結</button></div></div>
+          <p>不登入也能開啟「任何人可用」的旅行分享。若要跨手機同步私人手帳，或開啟只限指定帳號的連結，請建立免費手帳帳號。</p>
+          <div className="account-login-actions">
+            <div className="email-login"><input name="accountId" autoComplete="username" spellCheck={false} value={accountId} onChange={(event) => setAccountId(event.target.value)} placeholder="帳號代號，例如 travel-austin" aria-label="手帳帳號代號" /><input type="password" name="accountPassword" autoComplete="current-password" value={accountPassword} onChange={(event) => setAccountPassword(event.target.value)} placeholder="密碼至少 8 字元" aria-label="手帳帳號密碼" /><button className="button primary" disabled={!accountId || accountPassword.length < 8 || cloud.busy} onClick={() => void cloud.accountSignIn(accountId, accountPassword)}>登入</button><button className="button secondary" disabled={!accountId || accountPassword.length < 8 || cloud.busy} onClick={() => void cloud.createAccount(accountId, accountPassword)}>建立免費帳號</button></div>
+            <small>不需 Email、不會產生寄信費用。請自行保存密碼；目前沒有忘記密碼功能。</small>
+            <details className="admin-email-login"><summary>已移轉的管理者手帳</summary><p>只有專案成員信箱能使用這個入口。</p><div className="email-login"><input type="email" name="loginEmail" autoComplete="email" spellCheck={false} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="專案 Gmail" aria-label="管理者 Email 登入信箱" /><button className="button secondary" disabled={!email || cloud.busy} onClick={() => void cloud.emailSignIn(email)}>寄管理者登入連結</button></div></details>
+          </div>
         </>}
         <p className="settings-message" role="status">{cloud.notice}</p>
       </section>

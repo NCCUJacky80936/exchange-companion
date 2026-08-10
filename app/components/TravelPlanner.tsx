@@ -59,7 +59,7 @@ function ShareTravelModal({ plan, cloud, onPlanPublished, onClose }: { plan: Tra
       await navigator.clipboard.writeText(result.url);
       setMessage("連結已建立並複製。可隨時撤銷；私人交換資料沒有包含在內。 ");
     } catch (error) {
-      setMessage(error instanceof Error && error.message.includes("approved_email") ? "請填入允許使用的 Google／Email 帳號。" : "連結建立失敗，請確認帳戶與雲端連線。 ");
+      setMessage(error instanceof Error && error.message.includes("account") ? "請填入 3–32 字元的手帳帳號代號。" : "連結建立失敗，請確認帳戶與雲端連線。 ");
     }
   }
 
@@ -68,8 +68,8 @@ function ShareTravelModal({ plan, cloud, onPlanPublished, onClose }: { plan: Tra
       <div className="modal-heading"><div><p className="eyebrow">Scoped sharing</p><h2 id="share-travel-title">分享「{plan.title}」</h2></div><button className="icon-button" onClick={onClose} aria-label="關閉"><X size={20} /></button></div>
       {!cloud.configured ? <div className="share-unavailable"><Sparkles size={24} /><div><strong>免費雲端會在最後一次上版時啟用</strong><p>現在先保留匯出與複製摘要；完成全部本機驗證後才建立雲端，避免反覆消耗部署額度。</p></div></div> : !plan.cloud?.published ? <div className="share-publish-step"><p>分享前只會上傳這一趟旅行的行程、地圖、注意事項與旅行行李。簽證、信件、住宿、帳戶、任務進度與私人課表都不會上傳到共編資料。</p><button className="button primary" disabled={cloud.busy} onClick={() => void publish()}><Share2 size={17} />建立這趟旅行的雲端版本</button><small>建立雲端版本不等於公開，下一步才會選擇分享條件。</small></div> : plan.cloud.permission !== "owner" ? <div className="share-unavailable"><Check size={24} /><div><strong>{plan.cloud.permission === "viewer" ? "你目前是唯讀成員" : "你可以編輯這趟旅行"}</strong><p>只有旅行擁有者能建立新的分享連結或指定其他帳號。</p></div></div> : <div className="share-form">
         <label className="field"><span>收到的人可以</span><select value={permission} onChange={(event) => setPermission(event.target.value as "viewer" | "editor")}><option value="viewer">只能查看</option><option value="editor">共同編輯</option></select></label>
-        <label className="field"><span>誰能開啟</span><select value={accessMode} onChange={(event) => setAccessMode(event.target.value as "anyone" | "approved_google")}><option value="anyone">拿到連結的任何人（免登入）</option><option value="approved_google">只有指定帳號（Email 驗證）</option></select></label>
-        {accessMode === "approved_google" ? <label className="field field-full"><span>允許的 Google／Email 帳號</span><input type="email" name="approvedGoogleEmail" autoComplete="email" spellCheck={false} value={approvedEmail} onChange={(event) => setApprovedEmail(event.target.value)} placeholder="例如：friend@gmail.com" /><small>對方需使用這個信箱收到免費登入連結，無須設定密碼。</small></label> : null}
+        <label className="field"><span>誰能開啟</span><select value={accessMode} onChange={(event) => setAccessMode(event.target.value as "anyone" | "approved_google")}><option value="anyone">拿到連結的任何人（免登入）</option><option value="approved_google">只有指定手帳帳號</option></select></label>
+        {accessMode === "approved_google" ? <label className="field field-full"><span>允許的手帳帳號代號</span><input name="approvedAccountId" autoComplete="username" spellCheck={false} value={approvedEmail} onChange={(event) => setApprovedEmail(event.target.value)} placeholder="例如：travel-friend" pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}" /><small>對方需先免費建立相同代號的手帳帳號；不會寄送 Email。</small></label> : null}
         <label className="field field-full"><span>連結到期日（可留空）</span><input type="date" value={expiresAt} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setExpiresAt(event.target.value)} /></label>
         <button className="button primary field-full" disabled={cloud.busy} onClick={() => void createLink()}><Share2 size={17} />建立並複製連結</button>
         {link ? <label className="field field-full"><span>剛建立的連結</span><input readOnly value={link} onFocus={(event) => event.currentTarget.select()} /></label> : null}
