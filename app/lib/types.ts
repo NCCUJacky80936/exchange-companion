@@ -252,6 +252,10 @@ export interface AiProposal {
   status: AiProposalStatus;
   /** Website-only optimistic concurrency metadata; Agents do not author this field. */
   baseRevision?: number;
+  /** Website-only snapshot of the fields this proposal may change. */
+  baselineValue?: Record<string, unknown>;
+  /** Fields that did not exist when the proposal entered the review inbox. */
+  baselineAbsentFields?: string[];
   cloudRunId?: string;
   previousValue?: Record<string, unknown>;
   appliedAt?: string;

@@ -397,7 +397,23 @@ export function importAiBundle(state: AppState, bundle: AiImportBundle, cloudRun
   const existingProposals = new Map((state.aiInbox?.proposals ?? []).map((proposal) => [proposal.id, proposal]));
   bundle.proposals.forEach((proposal) => {
     if (existingProposals.has(proposal.id)) return;
-    existingProposals.set(proposal.id, { ...proposal, status: "pending", baseRevision: bundle.baseRevision, cloudRunId, createdAt: bundle.generatedAt });
+    const target = proposal.action === "update" && proposal.targetId
+      ? entityItems(state, proposal.entity).find((item) => item.id === proposal.targetId) as Record<string, unknown> | undefined
+      : undefined;
+    const changedFields = Object.keys(proposal.value);
+    const baselineValue = Object.fromEntries(changedFields
+      .filter((field) => target && Object.prototype.hasOwnProperty.call(target, field))
+      .map((field) => [field, target?.[field]]));
+    const baselineAbsentFields = changedFields.filter((field) => !target || !Object.prototype.hasOwnProperty.call(target, field));
+    existingProposals.set(proposal.id, {
+      ...proposal,
+      status: "pending",
+      baseRevision: bundle.baseRevision,
+      baselineValue,
+      baselineAbsentFields,
+      cloudRunId,
+      createdAt: bundle.generatedAt,
+    });
   });
   return {
     ...state,
@@ -463,7 +479,19 @@ function entityItems(state: AppState, entity: AiProposalEntity): Array<{ id: str
 
 export function canApplyAiProposal(state: AppState, proposal: AiProposal, currentRevision?: number): { valid: boolean; reason?: string } {
   if (proposal.baseRevision !== undefined && currentRevision !== undefined && proposal.baseRevision !== currentRevision) {
-    return { valid: false, reason: `這筆提案依據雲端版本 ${proposal.baseRevision}，但手帳目前是版本 ${currentRevision}。請讓 Agent 重新讀取最新狀態，避免覆蓋手動修改。` };
+    const items = entityItems(state, proposal.entity);
+    if (proposal.action === "add") {
+      const newId = String(proposal.value.id ?? "");
+      if (!newId || items.some((item) => item.id === newId)) return { valid: false, reason: "手帳更新後已出現相同項目，請重新核對提案。" };
+    } else {
+      const current = items.find((item) => item.id === proposal.targetId) as Record<string, unknown> | undefined;
+      const baseline = proposal.baselineValue;
+      const absent = new Set(proposal.baselineAbsentFields ?? []);
+      const fieldsUnchanged = current && baseline && Object.keys(proposal.value).every((field) => absent.has(field)
+        ? !Object.prototype.hasOwnProperty.call(current, field)
+        : Object.prototype.hasOwnProperty.call(baseline, field) && equalValue(current[field], baseline[field]));
+      if (!fieldsUnchanged) return { valid: false, reason: `這筆提案依據雲端版本 ${proposal.baseRevision}，手帳目前是版本 ${currentRevision}，而且缺少可確認欄位未變的快照。請查看差異後，以目前手帳重新核對。` };
+    }
   }
   if (!validatesEntityValue(proposal.entity, proposal.action, proposal.value)) return { valid: false, reason: "提案欄位格式或值不符合目前網站資料結構。" };
   const items = entityItems(state, proposal.entity);
@@ -494,6 +522,29 @@ export function canApplyAiProposal(state: AppState, proposal: AiProposal, curren
     if (!prospective.predecessorIds.every((id) => typeof id === "string" && taskIds.has(id))) return { valid: false, reason: "提案包含不存在的前置任務。請先加入前置任務或重新產生提案。" };
   }
   return { valid: true };
+}
+
+export function rebaseAiProposal(state: AppState, proposalId: string, currentRevision: number): AppState {
+  const proposal = state.aiInbox?.proposals.find((item) => item.id === proposalId);
+  if (!proposal || proposal.status !== "pending" || !Number.isInteger(currentRevision) || currentRevision < 1) return state;
+  const target = proposal.action === "update" && proposal.targetId
+    ? entityItems(state, proposal.entity).find((item) => item.id === proposal.targetId) as Record<string, unknown> | undefined
+    : undefined;
+  if (proposal.action === "update" && !target) return state;
+  const changedFields = Object.keys(proposal.value);
+  const baselineValue = Object.fromEntries(changedFields
+    .filter((field) => target && Object.prototype.hasOwnProperty.call(target, field))
+    .map((field) => [field, target?.[field]]));
+  const baselineAbsentFields = changedFields.filter((field) => !target || !Object.prototype.hasOwnProperty.call(target, field));
+  return {
+    ...state,
+    aiInbox: {
+      ...(state.aiInbox ?? { sources: [], proposals: [] }),
+      proposals: (state.aiInbox?.proposals ?? []).map((item) => item.id === proposalId
+        ? { ...item, baseRevision: currentRevision, baselineValue, baselineAbsentFields }
+        : item),
+    },
+  };
 }
 
 export function applyAiProposal(state: AppState, proposalId: string, currentRevision?: number): AppState {

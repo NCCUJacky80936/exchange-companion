@@ -3,7 +3,7 @@
 import { Check, CloudDownload, ExternalLink, FileCheck2, Inbox, Link2, LockKeyhole, RefreshCw, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react";
-import { applyAiProposal, canApplyAiProposal, canUndoAiProposal, clearDismissedAiProposals, dismissAiProposal, findAiBundleCollisions, importAiBundle, journeyScopeForState, matchesAiJourneyScope, sensitiveBundleWarnings, undoAiProposal, validateAiImportBundle } from "../lib/ai-import";
+import { applyAiProposal, canApplyAiProposal, canUndoAiProposal, clearDismissedAiProposals, dismissAiProposal, findAiBundleCollisions, importAiBundle, journeyScopeForState, matchesAiJourneyScope, rebaseAiProposal, sensitiveBundleWarnings, undoAiProposal, validateAiImportBundle } from "../lib/ai-import";
 import { createExchangeConciergeHandoff } from "../lib/concierge-handoff";
 import type { ExchangeCloudController } from "../lib/useExchangeCloud";
 import type { AiProposal, AppState } from "../lib/types";
@@ -209,7 +209,12 @@ export default function AiConcierge({ state, setState, cloud }: { state: AppStat
               <h3>{proposal.title}</h3><p>{proposal.summary}</p>
               <div className="proposal-sources">{sources.map((source) => source ? <span key={source.id}><FileCheck2 size={14} />{source.url ? <a href={source.url} target="_blank" rel="noreferrer">{source.label}<ExternalLink size={11} /></a> : source.label}<small>{source.capturedAt}</small></span> : null)}</div>
               <details className="proposal-diff"><summary>查看實際欄位變更</summary><div className="proposal-diff-grid">{Object.entries(proposal.value).map(([key, next]) => <div className="proposal-diff-row" key={key}><strong>{key}</strong><div><small>目前</small><pre>{proposal.action === "add" ? "（新增項目）" : displayValue(current?.[key])}</pre></div><div><small>套用後</small><pre>{displayValue(next)}</pre></div></div>)}</div><p><LockKeyhole size={14} />整份匯入檔都應視為私人工作資料；「可分享」只代表套用後的通用內容有資格被另外選入分享。</p></details>
-              {!applicability.valid ? <p className="proposal-invalid"><LockKeyhole size={15} />{applicability.reason}</p> : null}
+              {!applicability.valid ? <div className="proposal-invalid"><LockKeyhole size={15} /><span>{applicability.reason}</span>{proposal.baseRevision !== undefined && cloud.privateRevision > 0 && proposal.baseRevision !== cloud.privateRevision ? <button className="button text-button" onClick={() => {
+                if (!window.confirm("請先確認上方「實際欄位變更」。要以目前手帳內容作為新的比對基準嗎？這一步只會更新提案基準，不會套用欄位。")) return;
+                cloud.markNextSaveActor("proposal");
+                setState((currentState) => rebaseAiProposal(currentState, proposal.id, cloud.privateRevision));
+                setMessage("已用目前手帳重新核對這筆提案；確認差異後即可套用。");
+              }}><RefreshCw size={14} />以目前手帳重新核對</button> : null}</div> : null}
               <div className="proposal-actions"><button className="button secondary" onClick={() => { cloud.markNextSaveActor("proposal"); setState((current) => dismissAiProposal(current, proposal.id)); }}><X size={16} />忽略</button><button className="button primary" disabled={!applicability.valid} onClick={() => { cloud.markNextSaveActor("proposal"); setState((current) => applyAiProposal(current, proposal.id, cloud.privateRevision || undefined)); }}><Check size={16} />套用到手帳</button></div>
             </article>
           );

@@ -1359,6 +1359,7 @@ export default function ExchangeCompanion() {
   const [section, setSection] = useState<NavSection>(initialSection);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
   const cloud = useExchangeCloud(state, setState);
   const localAppPreview = localAppPreviewEnabled();
 
@@ -1373,6 +1374,22 @@ export default function ExchangeCompanion() {
     else url.searchParams.set("section", section);
     window.history.replaceState({}, "", url);
   }, [section]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) setAccountMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAccountMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [accountMenuOpen]);
 
   if (!isHydrated) {
     return (
@@ -1437,7 +1454,7 @@ export default function ExchangeCompanion() {
           <button className="menu-button" onClick={() => setMobileMenu((value) => !value)} aria-label="開啟導覽"><Menu /></button>
           <div className="mobile-brand"><span className="brand-stamp">旅</span><strong>{exchangeProfile.appName}</strong></div>
           <div className="topbar-trail"><span>MY EXCHANGE</span><ArrowRight size={14} /><strong>{currentNav.label}</strong></div>
-          <div className="topbar-right"><span className="today-label">{todayLabel}</span><button className={`topbar-ai-button ${section === "ai" ? "active" : ""}`} onClick={() => { setSection("ai"); setAccountMenuOpen(false); }} aria-label={`AI 幫我整理${pendingProposalCount ? `，${pendingProposalCount} 個待確認提案` : ""}`}><Bot size={18} />{pendingProposalCount ? <span>{pendingProposalCount}</span> : null}</button><div className="account-menu-wrap"><button className="avatar avatar-button" onClick={() => setAccountMenuOpen((open) => !open)} aria-expanded={accountMenuOpen} aria-haspopup="menu" aria-label="開啟帳戶選單">{cloud.session?.user.email?.slice(0, 1).toUpperCase() || state.journey.ownerName.slice(0, 1).toUpperCase() || "A"}</button>{accountMenuOpen ? <div className="account-popover paper-card" role="menu"><button role="menuitem" onClick={() => { setSection("settings"); setAccountMenuOpen(false); }}><UserRound size={16}/>個人設定</button><button role="menuitem" onClick={() => { setSection("settings"); setAccountMenuOpen(false); window.setTimeout(() => document.getElementById("backup-settings")?.scrollIntoView({behavior:"smooth"}), 80); }}><Download size={16}/>備份與還原</button><button role="menuitem" onClick={() => { setSection("settings"); setAccountMenuOpen(false); window.setTimeout(() => document.getElementById("budget-settings")?.scrollIntoView({behavior:"smooth"}), 80); }}><WalletCards size={16}/>預算</button><button className="danger" role="menuitem" onClick={() => void cloud.signOut()}><LogOut size={16}/>登出</button></div> : null}</div></div>
+          <div className="topbar-right"><span className="today-label">{todayLabel}</span><button className={`topbar-ai-button ${section === "ai" ? "active" : ""}`} onClick={() => { setSection("ai"); setAccountMenuOpen(false); }} aria-label={`AI 幫我整理${pendingProposalCount ? `，${pendingProposalCount} 個待確認提案` : ""}`}><Bot size={18} />{pendingProposalCount ? <span>{pendingProposalCount}</span> : null}</button><div className="account-menu-wrap" ref={accountMenuRef}><button className="avatar avatar-button" onClick={() => setAccountMenuOpen((open) => !open)} aria-expanded={accountMenuOpen} aria-haspopup="menu" aria-controls="account-popover" aria-label="開啟帳戶選單">{cloud.session?.user.email?.slice(0, 1).toUpperCase() || state.journey.ownerName.slice(0, 1).toUpperCase() || "A"}</button>{accountMenuOpen ? <div id="account-popover" className="account-popover paper-card" role="menu"><button role="menuitem" onClick={() => { setSection("settings"); setAccountMenuOpen(false); }}><UserRound size={16}/>個人設定</button><button role="menuitem" onClick={() => { setSection("settings"); setAccountMenuOpen(false); window.setTimeout(() => document.getElementById("backup-settings")?.scrollIntoView({behavior:"smooth"}), 80); }}><Download size={16}/>備份與還原</button><button role="menuitem" onClick={() => { setSection("settings"); setAccountMenuOpen(false); window.setTimeout(() => document.getElementById("budget-settings")?.scrollIntoView({behavior:"smooth"}), 80); }}><WalletCards size={16}/>預算</button><button className="danger" role="menuitem" onClick={() => void cloud.signOut()}><LogOut size={16}/>登出</button></div> : null}</div></div>
         </header>
 
         <main id="main-content">

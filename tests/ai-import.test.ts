@@ -10,6 +10,7 @@ import {
   journeyScopeForState,
   matchesAiJourneyScope,
   pruneExpiredAiHistory,
+  rebaseAiProposal,
   sensitiveBundleWarnings,
   undoAiProposal,
   validateAiImportBundle,
@@ -107,12 +108,71 @@ test("keeps journey identity stable while editable destination facts change", ()
 
 test("rejects stale cloud proposals but accepts the matching revision", () => {
   const state = cleanState();
-  const proposal: AiProposal = { ...validResourceBundle().proposals[0], baseRevision: 7 };
+  const proposal: AiProposal = {
+    ...validResourceBundle().proposals[0],
+    id: "proposal-stale-task-run-1",
+    entity: "task",
+    action: "update",
+    targetId: "accept-place",
+    value: { status: "done" },
+    privacy: "private",
+    baseRevision: 7,
+  };
   assert.equal(canApplyAiProposal(state, proposal, 7).valid, true);
   assert.equal(canApplyAiProposal(state, proposal, 8).valid, false);
   state.aiInbox = { sources: validResourceBundle().sources, proposals: [proposal] };
   assert.equal(applyAiProposal(state, proposal.id, 8), state);
   assert.notEqual(applyAiProposal(state, proposal.id, 7), state);
+});
+
+test("allows a stale proposal only when its affected fields still match the import baseline", () => {
+  const state = cleanState();
+  const bundle = validResourceBundle();
+  bundle.baseRevision = 7;
+  bundle.proposals[0] = {
+    ...bundle.proposals[0],
+    id: "proposal-task-baseline-run-1",
+    entity: "task",
+    action: "update",
+    targetId: "accept-place",
+    value: { status: "done" },
+    privacy: "private",
+  };
+  const imported = importAiBundle(state, bundle);
+  const proposal = imported.aiInbox!.proposals[0];
+  assert.equal(canApplyAiProposal(imported, proposal, 8).valid, true);
+
+  const changed = { ...imported, tasks: imported.tasks.map((task) => task.id === "accept-place" ? { ...task, status: "waiting" as const } : task) };
+  assert.equal(canApplyAiProposal(changed, proposal, 8).valid, false);
+});
+
+test("explicitly rebases an old update proposal without applying it", () => {
+  const state = cleanState();
+  const proposal: AiProposal = {
+    ...validResourceBundle().proposals[0],
+    id: "proposal-rebase-rent-run-1",
+    entity: "budget-item",
+    action: "update",
+    targetId: "rent",
+    value: {
+      amount: 393,
+      currency: "EUR",
+      basis: "confirmed",
+      sourceLabel: "Authorized housing contract",
+      verifiedAt: "2027-01-15",
+      notes: "Monthly rent confirmed; private identifiers removed.",
+    },
+    privacy: "private",
+    baseRevision: 6,
+  };
+  state.aiInbox = { sources: validResourceBundle().sources, proposals: [proposal] };
+  assert.equal(canApplyAiProposal(state, proposal, 7).valid, false);
+  const rebased = rebaseAiProposal(state, proposal.id, 7);
+  const next = rebased.aiInbox!.proposals[0];
+  assert.equal(next.baseRevision, 7);
+  assert.equal(next.status, "pending");
+  assert.equal(rebased.budget.find((item) => item.id === "rent")?.amount, 0);
+  assert.equal(canApplyAiProposal(rebased, next, 7).valid, true);
 });
 
 test("applies and safely undoes a private evidence-backed base-budget proposal", () => {

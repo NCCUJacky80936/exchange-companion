@@ -245,7 +245,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
           .filter((runId) => !(stateToSave.aiInbox?.proposals ?? []).some((proposal) => proposal.cloudRunId === runId && proposal.status === "pending"));
         if (terminalRunIds.length) void acknowledgeConciergeProposalRuns(terminalRunIds);
       }).catch((error: { message?: string; code?: string }) => {
-        if (error.code === "40001" || error.message?.includes("revision_conflict")) {
+        if (error.code === "40001" || error.code === "PT409" || error.message?.includes("revision_conflict")) {
           setSyncConflict(true);
           setNotice("網站與雲端都有新修改，已停止自動覆蓋。請重新載入雲端版本後再整理。 ");
         } else {
@@ -282,7 +282,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       importedCount += bundle.proposals.length;
     }
     if (importedCount) {
-      skipNextPrivateSave.current = true;
+      nextSaveActor.current = "proposal";
       setState(next);
     }
     return importedCount;

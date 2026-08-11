@@ -320,8 +320,8 @@ img[src*="/images/doodle-icons/"] {
 .topbar-ai-button { position: relative; display: grid; width: 38px; height: 38px; cursor: pointer; place-items: center; border: 1.5px solid var(--ink); border-radius: 50%; background: var(--blue-soft); color: var(--ink); }
 .topbar-ai-button.active { background: var(--yellow); box-shadow: 2px 3px 0 var(--ink); transform: translateY(-1px); }
 .topbar-ai-button > span { position: absolute; top: -5px; right: -5px; display: grid; min-width: 18px; height: 18px; place-items: center; border: 1px solid var(--ink); border-radius: 999px; background: var(--terracotta); padding: 0 4px; color: white; font-size: 9px; font-weight: 900; }
-.account-menu-wrap { position: relative; }
-.account-popover { position: absolute; top: calc(100% + 11px); right: 0; z-index: 55; display: grid; width: 205px; overflow: hidden; padding: 7px; box-shadow: 5px 6px 0 rgba(46, 58, 52, 0.25); }
+.account-menu-wrap { position: relative; display: grid; place-items: center; }
+.account-menu-wrap .account-popover { position: fixed; top: 72px; right: max(18px, env(safe-area-inset-right)); z-index: 55; display: grid; width: min(220px, calc(100vw - 24px)); max-height: calc(100dvh - 84px); overflow: auto; padding: 7px; box-shadow: 5px 6px 0 rgba(46, 58, 52, 0.25); }
 .account-popover button { display: flex; width: 100%; cursor: pointer; align-items: center; gap: 9px; border: 0; border-bottom: 1px dashed rgba(46, 58, 52, 0.25); background: transparent; padding: 10px 11px; color: var(--ink); text-align: left; font-weight: 750; }
 .account-popover button:last-child { border-bottom: 0; }
 .account-popover button:hover { background: var(--yellow-soft); }
@@ -1462,7 +1462,7 @@ h3 {
   .topbar-right { gap: 9px; }
   .topbar-ai-button { width: 36px; height: 36px; }
   .account-menu-wrap .avatar { display: grid; width: 36px; height: 36px; }
-  .account-popover { position: fixed; top: 54px; right: 12px; width: min(230px, calc(100vw - 24px)); }
+  .account-menu-wrap .account-popover { top: 54px; right: 12px; width: min(230px, calc(100vw - 24px)); }
   main { min-height: calc(100vh - 60px); padding: 22px 18px 45px; }
   .mobile-bottom-nav { position: fixed; right: 0; bottom: 0; left: 0; z-index: 50; display: grid; height: calc(66px + env(safe-area-inset-bottom)); grid-template-columns: repeat(5, 1fr); border-top: 1.5px solid var(--ink); background: rgba(255, 254, 248, 0.97); padding-bottom: env(safe-area-inset-bottom); }
   .mobile-bottom-nav button { display: grid; cursor: pointer; place-items: center; align-content: center; gap: 2px; border: 0; background: transparent; color: var(--muted); font-size: 10px; }
