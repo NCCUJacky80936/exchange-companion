@@ -7,23 +7,36 @@
 3. 開啟本機網站，確認通用任務、行李、旅行與備份功能。
 4. 決定要授權的資料來源；未授權的資料不讀取。
 5. Codex 整理錄取、學校申請、簽證、住宿、保險、班機、課程和行事曆證據。
-6. Codex 依官方來源補齊目的地規定；若你另外授權自己的電子機票，才依實際航段與票面額度建立行李限制，再以 `config/packing-inspiration.json` 的兩支 YouTube 經驗影片和其他當地經驗補充品項與生活情境。
+6. Codex 依官方來源補齊目的地規定；若你另外授權自己的電子機票，才依實際航段與票面額度建立行李限制。`config/packing-inspiration.json` 的經驗影片只在背景協助找漏項，結果直接融入一般行李提案，不在網站展示影片或創作者連結。
 7. 網站內貼上的網址先保存為私人待辨識項目；Codex 依最新備份讀取後，才提出附來源的資源提案。
-8. `$exchange-concierge` 產生 import bundle；使用者在網站逐項確認。
-9. 使用 image generation 產生原創目的地 Hero、社群預覽和情境插圖。
-10. 驗證桌機、平板、手機、鍵盤、焦點、reduced motion、建置與隱私。
-11. 需要時才建立自己的免費 Supabase，最後部署一次。
+8. 在網站 AI 整理頁按「交給 Exchange Concierge 整理」，下載自我說明的 `exchange-concierge-input-YYYY-MM-DD.json` 並複製交接指令。`state` 保存完整進度，`editableSurfaces` 說明任務、基礎預算、資源、行李、課表和旅行欄位，`setupSnapshot` 保存第一次建站背景。
+9. 把該交接檔留在同一個 Codex task；需要信件時先由 `$exchange-email-intake` 在目前使用者授權範圍內擷取，再讓 `$exchange-concierge` 產生 `outputs/exchange-companion-import.json`。每個分頁都必須標示已更新、沒有新證據或需要確認。
+10. 回到網站匯入 bundle；使用者逐項確認，或批次套用目前可安全套用的待審提案。
+11. 使用 image generation 產生原創目的地 Hero、社群預覽和情境插圖。
+12. 驗證桌機、平板、手機、鍵盤、焦點、reduced motion、建置與隱私。
+13. 需要時才建立自己的免費 Supabase，最後部署一次。
 
 ## B. 日後更新進度
 
-1. 從網站匯出最新 JSON 備份。
+1. 從網站 AI 整理頁下載最新的 Exchange Concierge 交接 JSON；它是本次網站進度的 source of truth。
 2. 明確指定這次要讀的信箱、資料夾或日期範圍。
 3. 使用 `$exchange-concierge` 增量比對新證據與官方變動。
 4. 只產生 delta 提案，不重建整份手帳。
 5. 在網站套用、忽略或復原。
 6. 若已啟用私人雲端，套用後由使用者帳號同步。
 
-## C. 可分享與不可分享
+日後更新不會反覆改國家、時區、主要幣別、固定介面文字或圖片；這些只有第一次建立網站，或使用者明確要求重新設定／改版時，才由 `$create-exchange-companion` 修改 repository 並重新建置。
+
+只有在網站重新匯入產出的 bundle 後，AI 整理結果才算真正更新網站；Codex 在對話中完成摘要並不等於頁面已變更。
+
+## C. 登入與訪客入口
+
+- 純本機、未設定雲端時可直接使用 localStorage。
+- 正式雲端版先顯示登入頁；帳號手帳載入完成後才開放私人主畫面。
+- 旅行分享連結是唯一匿名入口，訪客只能接觸該連結授權的旅行資料。
+- 登出會立即離開私人主畫面，下一次登入再載入該帳號的手帳。
+
+## D. 可分享與不可分享
 
 可分享：公開資源、一般行李、去敏航班、選定旅行計畫。
 

@@ -19,6 +19,7 @@ Turn this template into one person's exchange website while keeping every manual
 
 - **First setup**: collect the minimum profile fields, run `npm install`, then run `npm run setup` and `npm run doctor`.
 - **Research and progress import**: invoke `$exchange-concierge` and create a reviewable import bundle. Do not directly overwrite browser storage.
+- **Mailbox evidence**: invoke `$exchange-email-intake` for the current user's authorized account/message/query scope, then pass its evidence report to `$exchange-concierge`.
 - **Visual customization**: follow [visuals-and-web.md](references/visuals-and-web.md), use the installed image-generation skill for original artwork, and validate each crop in the real interface.
 - **Cloud and sharing**: follow [cloud-deployment.md](references/cloud-deployment.md) only when the user explicitly asks for accounts, sync, collaboration, or deployment.
 - **Existing site update**: read the newest exported website backup first and reconcile rather than resetting the user's manual records.
@@ -73,7 +74,9 @@ Preserve manual records as durable evidence. A newer automated pass may propose 
 
 ### 5. Produce the visual identity
 
-Use the existing hand-drawn European travel scrapbook system unless the user chooses another direction. After a route change, the setup tool uses neutral placeholder art. Generate new destination-specific hero and social images without text, update the visual paths and `visual.generatedFor` in `config/exchange-profile.json`, then validate that every file exists. Keep functional controls recognizable and accessible.
+Use the existing hand-drawn European travel scrapbook system unless the user chooses another direction. During first setup, use AI to personalize the destination-specific hero, social images, icons, and fixed interface copy; after a route change, the setup tool uses neutral placeholder art. Update the visual paths and `visual.generatedFor` in `config/exchange-profile.json`, then validate that every file exists. Keep functional controls recognizable and accessible.
+
+After first setup is accepted, treat country, school, time zones, primary currencies, fixed copy, and artwork as locked repository configuration. Routine `exchange-concierge-input` handoffs include this setup snapshot only so a new session understands context; do not rewrite it unless the user explicitly requests reconfiguration or redesign.
 
 ### 6. Validate the local website
 

@@ -20,6 +20,7 @@ export const phaseMeta: Record<JourneyPhase, { label: string; number: string; co
 export const defaultState: AppState = {
   version: 1,
   dataRevision: 4,
+  setupCompleted: false,
   journey: {
     id: "my-exchange-journey",
     kind: "exchange",
@@ -89,7 +90,7 @@ export const defaultState: AppState = {
     {
       id: "financial-proof",
       title: "準備簽證財力證明",
-      description: "依目的國最新規定確認限制帳戶、獎學金或其他可接受的財力證明。",
+      description: "依目的國最新規定確認存款、獎學金、擔保或其他可接受的財力證明。",
       phase: "visa",
       status: "not-started",
       priority: "high",
@@ -296,10 +297,10 @@ export const defaultState: AppState = {
   resources: [],
   resourceIntake: [],
   budget: [
-    { id: "rent", name: "每月住宿預算（待填）", amount: 0, cadence: "monthly", paid: false },
-    { id: "food", name: "每月餐食與日用品（待填）", amount: 0, cadence: "monthly", paid: false },
-    { id: "transport", name: "每月交通預算（待填）", amount: 0, cadence: "monthly", paid: false },
-    { id: "arrival", name: "落地一次性支出（待填）", amount: 0, cadence: "once", paid: false },
+    { id: "rent", name: "每月住宿預算（待填）", category: "housing", amount: 0, currency: exchangeProfile.primaryCurrency, cadence: "monthly", basis: "unset", paid: false, notes: "", sourceLabel: "", verifiedAt: "" },
+    { id: "food", name: "每月餐食與日用品（待填）", category: "food", amount: 0, currency: exchangeProfile.primaryCurrency, cadence: "monthly", basis: "unset", paid: false, notes: "", sourceLabel: "", verifiedAt: "" },
+    { id: "transport", name: "每月交通預算（待填）", category: "transport", amount: 0, currency: exchangeProfile.primaryCurrency, cadence: "monthly", basis: "unset", paid: false, notes: "", sourceLabel: "", verifiedAt: "" },
+    { id: "arrival", name: "落地一次性支出（待填）", category: "arrival", amount: 0, currency: exchangeProfile.primaryCurrency, cadence: "once", basis: "unset", paid: false, notes: "", sourceLabel: "", verifiedAt: "" },
   ],
   emergencyContact: "",
   travelPlans: [],

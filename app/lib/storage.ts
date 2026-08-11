@@ -1,8 +1,16 @@
 import { defaultState } from "./default-data";
-import type { AppState, FlightAllowance } from "./types";
+import { exchangeProfile } from "./profile";
+import { pruneExpiredAiHistory } from "./ai-import";
+import type { AppState, BudgetItem, FlightAllowance, JourneyPhase, JourneyTask, Priority, ResourceItem, TaskStatus, TaskTemplateKind } from "./types";
 
 const LEGACY_STORAGE_KEY = "exchange-companion:v1";
-const CURRENT_DATA_REVISION = 4;
+const CURRENT_DATA_REVISION = 6;
+const TASK_PHASES = new Set<JourneyPhase>(["admission", "visa", "pre-departure", "arrival-72h", "arrival-2w", "semester", "return"]);
+const TASK_STATUSES = new Set<TaskStatus>(["not-started", "in-progress", "waiting", "done", "not-applicable"]);
+const TASK_PRIORITIES = new Set<Priority>(["high", "medium", "low"]);
+const TASK_TEMPLATES = new Set<TaskTemplateKind>(["general", "flight", "course", "visa", "housing", "payment", "school-admin"]);
+const BUDGET_CATEGORIES = new Set<BudgetItem["category"]>(["housing", "food", "transport", "arrival", "other"]);
+const BUDGET_BASES = new Set<BudgetItem["basis"]>(["unset", "estimate", "confirmed"]);
 
 function journeyStorageKey(): string {
   const journey = defaultState.journey;
@@ -24,6 +32,26 @@ function cloneDefault(): AppState {
   return JSON.parse(JSON.stringify(defaultState)) as AppState;
 }
 
+function normalizeTask(task: JourneyTask, index: number): JourneyTask {
+  const candidate = task as Partial<JourneyTask>;
+  const checklist = Array.isArray(candidate.checklist) ? candidate.checklist.filter((item) => item && typeof item.id === "string" && typeof item.label === "string").map((item) => ({ ...item, done: Boolean(item.done) })) : [];
+  const records = Array.isArray(candidate.records) ? candidate.records.filter((item) => item && typeof item.id === "string" && typeof item.date === "string" && typeof item.note === "string") : [];
+  return {
+    ...candidate,
+    id: typeof candidate.id === "string" && candidate.id ? candidate.id : `recovered-task-${index + 1}`,
+    title: typeof candidate.title === "string" && candidate.title ? candidate.title : "待確認任務",
+    description: typeof candidate.description === "string" ? candidate.description : "",
+    phase: TASK_PHASES.has(candidate.phase as JourneyPhase) ? candidate.phase as JourneyPhase : "pre-departure",
+    status: TASK_STATUSES.has(candidate.status as TaskStatus) ? candidate.status as TaskStatus : "not-started",
+    priority: TASK_PRIORITIES.has(candidate.priority as Priority) ? candidate.priority as Priority : "medium",
+    predecessorIds: Array.isArray(candidate.predecessorIds) ? candidate.predecessorIds.filter((id): id is string => typeof id === "string") : [],
+    notes: typeof candidate.notes === "string" ? candidate.notes : "",
+    templateKind: TASK_TEMPLATES.has(candidate.templateKind as TaskTemplateKind) ? candidate.templateKind : "general",
+    checklist,
+    records,
+  };
+}
+
 function normalizeBags(state: AppState): AppState["bags"] {
   const legacyDefaults = (state.dataRevision ?? 0) < 4
     && state.bags.length === 3
@@ -37,13 +65,40 @@ function normalizeBags(state: AppState): AppState["bags"] {
   }));
 }
 
+export function resourceSearchTags(resource: ResourceItem): string[] {
+  const explicit = Array.isArray(resource.searchTags) ? resource.searchTags.filter((tag): tag is string => typeof tag === "string" && Boolean(tag.trim())) : [];
+  const text = `${resource.title} ${resource.category} ${resource.description} ${resource.details ?? ""}`;
+  const derived: string[] = [];
+  if (/航空|航班|飛機|機票|行李|登機|托運|手提/i.test(text)) derived.push("飛機", "航班", "機票", "航空", "行李", "登機箱", "手提", "托運");
+  if (/簽證|visa|居留|passport/i.test(text)) derived.push("簽證", "visa", "居留", "護照", "申請");
+  if (/住宿|宿舍|房租|押金|rent|housing/i.test(text)) derived.push("住宿", "宿舍", "房租", "押金", "入住");
+  if (/課程|選課|學分|考試|orientation/i.test(text)) derived.push("學校", "選課", "課程", "學分", "考試", "迎新");
+  if (/交通|車票|火車|公車|地鐵|ticket/i.test(text)) derived.push("交通", "票券", "火車", "公車", "地鐵");
+  return [...new Set([...explicit, ...derived].map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 20);
+}
+
 export function normalizeImportedState(state: AppState): AppState {
-  const normalizedBags = normalizeBags(state);
-  return {
+  const fallback = cloneDefault();
+  const tasks = Array.isArray(state.tasks) ? state.tasks.map(normalizeTask) : fallback.tasks;
+  const bags = Array.isArray(state.bags) ? state.bags : fallback.bags;
+  const normalizedBags = normalizeBags({ ...state, bags });
+  const travelPlans = Array.isArray(state.travelPlans) ? state.travelPlans : [];
+  const resources = Array.isArray(state.resources) ? state.resources : [];
+  const budget = Array.isArray(state.budget) ? state.budget : fallback.budget;
+  return pruneExpiredAiHistory({
     ...state,
     dataRevision: CURRENT_DATA_REVISION,
+    setupCompleted: typeof state.setupCompleted === "boolean"
+      ? state.setupCompleted
+      : !["Your host university", "交換學校"].includes(state.journey?.hostSchool ?? ""),
+    journey: {
+      ...fallback.journey,
+      ...(state.journey ?? {}),
+      destinations: Array.isArray(state.journey?.destinations) ? state.journey.destinations.filter((item): item is string => typeof item === "string") : fallback.journey.destinations,
+    },
+    tasks,
     bags: normalizedBags,
-    travelPlans: (state.travelPlans ?? []).map((plan) => ({
+    travelPlans: travelPlans.map((plan) => ({
       ...plan,
       travelNotes: plan.travelNotes ?? [],
       packingItems: plan.packingItems ?? [],
@@ -55,9 +110,14 @@ export function normalizeImportedState(state: AppState): AppState {
         })),
       })),
     })),
-    studyEvents: state.studyEvents ?? [],
+    studyEvents: Array.isArray(state.studyEvents) ? state.studyEvents : [],
     flightAllowances: (state.flightAllowances ?? []).map((allowance) => {
       const legacy = allowance as FlightAllowance & { carryOnKg?: number; personalItemKg?: number };
+      const carrierKey = allowance.airline.toLowerCase().split(/\s+/).find((part) => part.length >= 3) ?? "";
+      const matchingPublicRule = carrierKey && resources.some((resource) => `${resource.title} ${resource.url}`.toLowerCase().includes(carrierKey)
+        && /40\s*[x×]\s*30\s*[x×]\s*10/i.test(`${resource.description} ${resource.details ?? ""}`));
+      const documentedUnweightedPersonalItem = allowance.personalItemMode === "unknown"
+        && (/40\s*[x×]\s*30\s*[x×]\s*10/i.test(allowance.notes ?? "") || Boolean(matchingPublicRule));
       return {
         id: allowance.id,
         label: allowance.label,
@@ -70,29 +130,54 @@ export function normalizeImportedState(state: AppState): AppState {
         carryOnMode: allowance.carryOnMode ?? (legacy.carryOnKg && legacy.carryOnKg > 0 ? "piece" : "unknown"),
         carryOnPieceCount: allowance.carryOnPieceCount ?? (legacy.carryOnKg && legacy.carryOnKg > 0 ? 1 : 0),
         carryOnPieceWeightKg: allowance.carryOnPieceWeightKg ?? legacy.carryOnKg ?? 0,
-        personalItemMode: allowance.personalItemMode ?? (legacy.personalItemKg && legacy.personalItemKg > 0 ? "piece" : "unknown"),
-        personalItemPieceCount: allowance.personalItemPieceCount ?? (legacy.personalItemKg && legacy.personalItemKg > 0 ? 1 : 0),
+        personalItemMode: documentedUnweightedPersonalItem ? "piece" : allowance.personalItemMode ?? (legacy.personalItemKg && legacy.personalItemKg > 0 ? "piece" : "unknown"),
+        personalItemPieceCount: documentedUnweightedPersonalItem ? 1 : allowance.personalItemPieceCount ?? (legacy.personalItemKg && legacy.personalItemKg > 0 ? 1 : 0),
         personalItemPieceWeightKg: allowance.personalItemPieceWeightKg ?? legacy.personalItemKg ?? 0,
         provenance: allowance.provenance ?? "manual",
-        confirmed: allowance.confirmed ?? false,
+        confirmed: documentedUnweightedPersonalItem ? true : allowance.confirmed ?? false,
         sourceLabel: allowance.sourceLabel,
         verifiedAt: allowance.verifiedAt,
         notes: allowance.notes,
       };
     }),
-    resources: state.resources.map((resource) => ({
+    resources: resources.map((resource) => ({
       ...resource,
+      details: resource.details ?? "",
       origin: resource.origin ?? "manual",
       privacy: resource.privacy ?? "private",
       sourceLabel: resource.sourceLabel ?? "舊版手動資料",
+      searchTags: resourceSearchTags(resource),
     })),
-    resourceIntake: state.resourceIntake ?? [],
-    aiInbox: state.aiInbox ?? { sources: [], proposals: [] },
-  };
+    resourceIntake: Array.isArray(state.resourceIntake) ? state.resourceIntake : [],
+    budget: budget.map((item, index) => {
+      const legacy = item as Partial<BudgetItem>;
+      const fallbackItem = fallback.budget.find((candidate) => candidate.id === legacy.id) ?? fallback.budget[index];
+      const amount = typeof legacy.amount === "number" && Number.isFinite(legacy.amount) && legacy.amount >= 0 ? legacy.amount : 0;
+      return {
+        id: typeof legacy.id === "string" && legacy.id ? legacy.id : `budget-${index + 1}`,
+        name: typeof legacy.name === "string" && legacy.name ? legacy.name : fallbackItem?.name ?? "其他預算",
+        category: BUDGET_CATEGORIES.has(legacy.category as BudgetItem["category"]) ? legacy.category as BudgetItem["category"] : fallbackItem?.category ?? "other",
+        amount,
+        currency: typeof legacy.currency === "string" && /^[A-Z]{3}$/.test(legacy.currency) ? legacy.currency : exchangeProfile.primaryCurrency,
+        cadence: legacy.cadence === "once" || legacy.cadence === "monthly" ? legacy.cadence : fallbackItem?.cadence ?? "once",
+        basis: BUDGET_BASES.has(legacy.basis as BudgetItem["basis"]) ? legacy.basis as BudgetItem["basis"] : amount > 0 ? "estimate" : "unset",
+        paid: Boolean(legacy.paid),
+        notes: typeof legacy.notes === "string" ? legacy.notes : "",
+        sourceLabel: typeof legacy.sourceLabel === "string" ? legacy.sourceLabel : amount > 0 ? "舊版手動紀錄" : "",
+        verifiedAt: typeof legacy.verifiedAt === "string" ? legacy.verifiedAt : "",
+      };
+    }),
+    aiInbox: state.aiInbox ? {
+      ...state.aiInbox,
+      journeyScope: state.aiInbox.journeyScope?.startsWith(`exchange:${state.journey.id}:`)
+        ? `exchange:${state.journey.id}`
+        : state.aiInbox.journeyScope,
+    } : { sources: [], proposals: [] },
+  });
 }
 
-export function loadState(): AppState {
-  if (typeof window === "undefined") return cloneDefault();
+export function loadState(useLocalStorage = true): AppState {
+  if (typeof window === "undefined" || !useLocalStorage) return cloneDefault();
   try {
     const key = journeyStorageKey();
     let raw = window.localStorage.getItem(key);

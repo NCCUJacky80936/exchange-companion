@@ -112,6 +112,7 @@ export interface ResourceItem {
   id: string;
   title: string;
   description: string;
+  details: string;
   category: string;
   type: "official" | "school" | "city" | "experience" | "personal";
   url: string;
@@ -120,6 +121,7 @@ export interface ResourceItem {
   origin: "user-upload" | "ai-research" | "manual";
   privacy: "private" | "shareable";
   sourceLabel: string;
+  searchTags?: string[];
 }
 
 export interface ResourceIntake {
@@ -133,9 +135,15 @@ export interface ResourceIntake {
 export interface BudgetItem {
   id: string;
   name: string;
+  category: "housing" | "food" | "transport" | "arrival" | "other";
   amount: number;
+  currency: string;
   cadence: "once" | "monthly";
+  basis: "unset" | "estimate" | "confirmed";
   paid: boolean;
+  notes: string;
+  sourceLabel: string;
+  verifiedAt: string;
 }
 
 export type TravelActivityKind = "place" | "food" | "transport" | "stay" | "note";
@@ -217,7 +225,7 @@ export interface TravelShareLink {
 }
 
 export type EvidenceKind = "official" | "school" | "city" | "email" | "file" | "video" | "research";
-export type AiProposalEntity = "task" | "resource" | "resource-intake" | "packing-item" | "bag" | "flight-allowance" | "study-event" | "travel-plan";
+export type AiProposalEntity = "journey" | "task" | "resource" | "resource-intake" | "packing-item" | "bag" | "flight-allowance" | "budget-item" | "study-event" | "travel-plan";
 export type AiProposalStatus = "pending" | "applied" | "dismissed";
 
 export interface EvidenceSource {
@@ -242,16 +250,47 @@ export interface AiProposal {
   privacy: "private" | "shareable";
   evidenceIds: string[];
   status: AiProposalStatus;
+  /** Website-only optimistic concurrency metadata; Agents do not author this field. */
+  baseRevision?: number;
+  cloudRunId?: string;
   previousValue?: Record<string, unknown>;
   appliedAt?: string;
+  /** Website-only retention timestamp; Agents do not author this field. */
+  createdAt?: string;
 }
 
 export interface AiImportBundle {
   schemaVersion: 1;
   generatedAt: string;
   journeyScope: string;
+  baseRevision?: number;
   sources: EvidenceSource[];
   proposals: AiProposal[];
+}
+
+export interface ConciergeConnectionInfo {
+  id: string;
+  label: string;
+  journeyId: string;
+  scopes: string[];
+  createdAt: string;
+  lastUsedAt?: string;
+  expiresAt: string;
+  revokedAt?: string;
+}
+
+export interface ConciergeConnectionFile {
+  schemaVersion: 1;
+  kind: "exchange-concierge-connection";
+  endpoint: string;
+  token: string;
+  journeyId: string;
+  journeyScope: string;
+  createdAt: string;
+  expiresAt: string;
+  permissions: string[];
+  requiredSkill: "$exchange-concierge";
+  warning: string;
 }
 
 export interface AiInbox {
@@ -293,6 +332,7 @@ export interface Journey {
 export interface AppState {
   version: 1;
   dataRevision?: number;
+  setupCompleted?: boolean;
   journey: Journey;
   tasks: JourneyTask[];
   bags: Bag[];

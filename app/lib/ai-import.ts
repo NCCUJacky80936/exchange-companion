@@ -4,7 +4,9 @@ import type {
   AiProposalEntity,
   AppState,
   Bag,
+  BudgetItem,
   FlightAllowance,
+  Journey,
   JourneyTask,
   PackingItem,
   ResourceItem,
@@ -14,12 +16,12 @@ import type {
 } from "./types";
 
 const SOURCE_KINDS = new Set(["official", "school", "city", "email", "file", "video", "research"]);
-const ENTITIES = new Set<AiProposalEntity>(["task", "resource", "resource-intake", "packing-item", "bag", "flight-allowance", "study-event", "travel-plan"]);
+const ENTITIES = new Set<AiProposalEntity>(["journey", "task", "resource", "resource-intake", "packing-item", "bag", "flight-allowance", "budget-item", "study-event", "travel-plan"]);
 const ACTIONS = new Set(["add", "update"]);
 const CONFIDENCE = new Set(["high", "medium", "low"]);
 const PRIVACY = new Set(["private", "shareable"]);
 const STATUSES = new Set(["pending"]);
-const ROOT_FIELDS = new Set(["schemaVersion", "generatedAt", "journeyScope", "sources", "proposals"]);
+const ROOT_FIELDS = new Set(["schemaVersion", "generatedAt", "journeyScope", "baseRevision", "sources", "proposals"]);
 const SOURCE_FIELDS = new Set(["id", "label", "kind", "evidenceType", "url", "capturedAt", "note"]);
 const PROPOSAL_FIELDS = new Set(["id", "title", "summary", "entity", "action", "targetId", "value", "confidence", "privacy", "evidenceIds", "status"]);
 const CHECKLIST_FIELDS = new Set(["id", "label", "done"]);
@@ -174,12 +176,34 @@ function validFlightAllowanceSemantics(value: Record<string, unknown>): boolean 
       : (mode === "none" || mode === "unknown") && count === 0 && weight === 0;
   };
   const cabinValid = itemRuleValid(value.carryOnMode, value.carryOnPieceCount, value.carryOnPieceWeightKg);
-  const personalValid = itemRuleValid(value.personalItemMode, value.personalItemPieceCount, value.personalItemPieceWeightKg);
+  const personalCount = Number(value.personalItemPieceCount);
+  const personalWeight = Number(value.personalItemPieceWeightKg);
+  const personalValid = value.personalItemMode === "piece"
+    ? Number.isInteger(personalCount) && personalCount > 0 && personalWeight >= 0
+    : itemRuleValid(value.personalItemMode, value.personalItemPieceCount, value.personalItemPieceWeightKg);
   const completenessValid = value.confirmed === false || (value.checkedMode !== "unknown" && value.carryOnMode !== "unknown" && value.personalItemMode !== "unknown");
   return checkedValid && cabinValid && personalValid && completenessValid;
 }
 
+function validBudgetSemantics(value: Record<string, unknown>, partial = false): boolean {
+  const amountIsChanging = Object.prototype.hasOwnProperty.call(value, "amount");
+  const basis = value.basis;
+  if (partial && !amountIsChanging && basis === undefined) return true;
+  if (amountIsChanging && Number(value.amount) > 0) {
+    return (basis === "estimate" || basis === "confirmed") && isCurrency(value.currency) && isText(value.sourceLabel, 300) && isDate(value.verifiedAt);
+  }
+  if (basis === "estimate" || basis === "confirmed") return isText(value.sourceLabel, 300) && isDate(value.verifiedAt);
+  return basis === undefined || basis === "unset";
+}
+
 function validatesEntityField(entity: AiProposalEntity, key: string, value: unknown): boolean {
+  if (entity === "journey") {
+    if (["title", "ownerName", "homeCity", "hostCity", "hostSchool", "program"].includes(key)) return isText(value, 300);
+    if (key === "startDate" || key === "endDate") return isDate(value);
+    if (key === "orientationDate") return value === "" || isDate(value);
+    if (key === "destinations") return isStringArray(value) && value.length > 0 && value.every((item) => item.trim().length > 0);
+    return false;
+  }
   if (entity === "task") {
     const textFields = new Set(["title", "description", "phase", "status", "priority", "notes", "sourceLabel", "location", "contactName", "contactInfo", "referenceNumber", "result", "templateKind", "timeZone"]);
     if (key === "id") return isText(value, 160);
@@ -202,13 +226,14 @@ function validatesEntityField(entity: AiProposalEntity, key: string, value: unkn
   if (entity === "resource") {
     if (key === "id") return isText(value, 160);
     if (key === "title") return isText(value, 200);
-    if (["description", "category", "region"].includes(key)) return isText(value, key === "description" ? 4_000 : 200);
+    if (["description", "details", "category", "region"].includes(key)) return isText(value, key === "description" ? 4_000 : key === "details" ? 8_000 : 200);
     if (key === "type") return new Set(["official", "school", "city", "experience", "personal"]).has(String(value));
     if (key === "url") return value === "" || isHttpUrl(value);
     if (key === "verifiedAt") return isDate(value);
     if (key === "origin") return new Set(["user-upload", "ai-research", "manual"]).has(String(value));
     if (key === "privacy") return new Set(["private", "shareable"]).has(String(value));
     if (key === "sourceLabel") return isText(value, 300);
+    if (key === "searchTags") return isStringArray(value) && value.length <= 20 && value.every((item) => item.trim().length > 0 && item.length <= 80);
     return false;
   }
   if (entity === "resource-intake") {
@@ -249,6 +274,20 @@ function validatesEntityField(entity: AiProposalEntity, key: string, value: unkn
     if (key === "notes") return typeof value === "string" && value.length <= 4_000;
     return false;
   }
+  if (entity === "budget-item") {
+    if (key === "id") return isText(value, 160);
+    if (key === "name") return isText(value, 200);
+    if (key === "category") return new Set(["housing", "food", "transport", "arrival", "other"]).has(String(value));
+    if (key === "amount") return isNumber(value);
+    if (key === "currency") return isCurrency(value);
+    if (key === "cadence") return new Set(["once", "monthly"]).has(String(value));
+    if (key === "basis") return new Set(["unset", "estimate", "confirmed"]).has(String(value));
+    if (key === "paid") return isBoolean(value);
+    if (key === "notes") return typeof value === "string" && value.length <= 4_000;
+    if (key === "sourceLabel") return typeof value === "string" && value.length <= 300;
+    if (key === "verifiedAt") return value === "" || isDate(value);
+    return false;
+  }
   if (entity === "study-event") {
     if (key === "id") return isText(value, 160);
     if (key === "title") return isText(value, 200);
@@ -277,23 +316,28 @@ function validatesEntityField(entity: AiProposalEntity, key: string, value: unkn
 
 function validatesEntityValue(entity: AiProposalEntity, action: "add" | "update", value: Record<string, unknown>): boolean {
   if (!Object.keys(value).length) return false;
+  if (entity === "journey" && action !== "update") return false;
   if (action === "update" && Object.prototype.hasOwnProperty.call(value, "id")) return false;
-  const required = entity === "task" ? ["id", "title", "description", "phase", "status", "priority", "predecessorIds", "notes"]
-    : entity === "resource" ? ["id", "title", "description", "category", "type", "url", "verifiedAt", "region", "origin", "privacy", "sourceLabel"]
+  const required = entity === "journey" ? []
+    : entity === "task" ? ["id", "title", "description", "phase", "status", "priority", "predecessorIds", "notes"]
+    : entity === "resource" ? ["id", "title", "description", "details", "category", "type", "url", "verifiedAt", "region", "origin", "privacy", "sourceLabel"]
       : entity === "resource-intake" ? ["id", "url", "note", "status", "createdAt"]
         : entity === "packing-item" ? ["id", "name", "category", "decision", "bagId", "quantity", "weightKg", "packed"]
           : entity === "bag" ? ["id", "name", "kind", "limitKg", "limitSource"]
             : entity === "flight-allowance" ? ["id", "label", "airline", "segment", "checkedMode", "checkedPieceCount", "checkedPieceWeightKg", "checkedTotalWeightKg", "carryOnMode", "carryOnPieceCount", "carryOnPieceWeightKg", "personalItemMode", "personalItemPieceCount", "personalItemPieceWeightKg", "provenance", "confirmed", "sourceLabel", "verifiedAt", "notes"]
-              : entity === "study-event" ? ["id", "title", "kind", "startDate", "mandatory", "notes"]
-                : ["id", "kind", "title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days", "travelNotes", "packingItems", "createdAt", "updatedAt"];
+              : entity === "budget-item" ? ["id", "name", "category", "amount", "currency", "cadence", "basis", "paid", "notes", "sourceLabel", "verifiedAt"]
+                : entity === "study-event" ? ["id", "title", "kind", "startDate", "mandatory", "notes"]
+                  : ["id", "kind", "title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days", "travelNotes", "packingItems", "createdAt", "updatedAt"];
   if (action === "add" && !hasKeys(value, required)) return false;
   if (!Object.entries(value).every(([key, field]) => validatesEntityField(entity, key, field))) return false;
+  if (entity === "journey" && typeof value.startDate === "string" && typeof value.endDate === "string" && value.endDate < value.startDate) return false;
   if (entity === "study-event" && typeof value.startDate === "string" && typeof value.endDate === "string" && value.endDate < value.startDate) return false;
   if (entity === "resource" && action === "add") {
     if (value.type !== "personal" && !isHttpUrl(value.url)) return false;
     if (value.type === "personal" && value.privacy !== "private") return false;
   }
   if (entity === "flight-allowance" && action === "add" && !validFlightAllowanceSemantics(value)) return false;
+  if (entity === "budget-item" && !validBudgetSemantics(value, action === "update")) return false;
   if (entity === "travel-plan" && typeof value.startDate === "string" && typeof value.endDate === "string") {
     if (value.endDate < value.startDate) return false;
     if (!validTravelDays(value.days, value.startDate, value.endDate)) return false;
@@ -302,7 +346,8 @@ function validatesEntityValue(entity: AiProposalEntity, action: "add" | "update"
 }
 
 export function validateAiImportBundle(value: unknown): value is AiImportBundle {
-  if (!isRecord(value) || !hasOnlyKeys(value, ROOT_FIELDS) || value.schemaVersion !== 1 || !isTimestamp(value.generatedAt) || !isText(value.journeyScope, 300)) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ROOT_FIELDS) || value.schemaVersion !== 1 || !isTimestamp(value.generatedAt) || !isText(value.journeyScope, 300)
+    || (value.baseRevision !== undefined && (!Number.isInteger(value.baseRevision) || Number(value.baseRevision) < 1))) return false;
   if (!Array.isArray(value.sources) || !Array.isArray(value.proposals)) return false;
   const serialized = JSON.stringify(value);
   if (serialized.length > 2_000_000 || SECRET_PATTERNS.some((pattern) => pattern.test(serialized))) return false;
@@ -326,7 +371,9 @@ export function validateAiImportBundle(value: unknown): value is AiImportBundle 
       || (proposal.action === "update" && !isText(proposal.targetId, 160))
       || (proposal.action === "add" && proposal.targetId !== undefined)
       || !validatesEntityValue(proposal.entity as AiProposalEntity, proposal.action as "add" | "update", proposal.value)
+      || (proposal.entity === "journey" && proposal.privacy !== "private")
       || (proposal.entity === "resource-intake" && proposal.privacy !== "private")
+      || (proposal.entity === "budget-item" && proposal.privacy !== "private")
       || (proposal.entity === "resource" && proposal.value.privacy !== undefined && proposal.privacy !== proposal.value.privacy)
       || (proposal.entity === "resource" && proposal.action === "add" && (proposal.value.origin === "manual"
         || (proposal.value.origin === "user-upload" && (proposal.value.privacy !== "private" || !proposal.evidenceIds.some((id) => ["file", "email"].includes(String(sourceMap.get(id)?.kind)))))
@@ -344,13 +391,13 @@ export function validateAiImportBundle(value: unknown): value is AiImportBundle 
   });
 }
 
-export function importAiBundle(state: AppState, bundle: AiImportBundle): AppState {
+export function importAiBundle(state: AppState, bundle: AiImportBundle, cloudRunId?: string): AppState {
   const existingSources = new Map((state.aiInbox?.sources ?? []).map((source) => [source.id, source]));
   bundle.sources.forEach((source) => { if (!existingSources.has(source.id)) existingSources.set(source.id, source); });
   const existingProposals = new Map((state.aiInbox?.proposals ?? []).map((proposal) => [proposal.id, proposal]));
   bundle.proposals.forEach((proposal) => {
     if (existingProposals.has(proposal.id)) return;
-    existingProposals.set(proposal.id, { ...proposal, status: "pending" });
+    existingProposals.set(proposal.id, { ...proposal, status: "pending", baseRevision: bundle.baseRevision, cloudRunId, createdAt: bundle.generatedAt });
   });
   return {
     ...state,
@@ -364,8 +411,7 @@ export function importAiBundle(state: AppState, bundle: AiImportBundle): AppStat
 }
 
 export function journeyScopeForState(state: AppState): string {
-  const journey = state.journey;
-  return ["exchange", journey.id, journey.hostSchool, journey.hostCity, journey.destinations.join(","), journey.startDate, journey.endDate].join(":");
+  return `exchange:${state.journey.id}`;
 }
 
 export function matchesAiJourneyScope(state: AppState, bundle: AiImportBundle): boolean {
@@ -403,17 +449,22 @@ function addOrUpdate<T extends { id: string }>(items: T[], proposal: AiProposal)
 }
 
 function entityItems(state: AppState, entity: AiProposalEntity): Array<{ id: string }> {
+  if (entity === "journey") return [state.journey];
   if (entity === "task") return state.tasks;
   if (entity === "resource") return state.resources;
   if (entity === "resource-intake") return state.resourceIntake ?? [];
   if (entity === "packing-item") return state.packingItems;
   if (entity === "bag") return state.bags;
   if (entity === "flight-allowance") return state.flightAllowances ?? [];
+  if (entity === "budget-item") return state.budget;
   if (entity === "study-event") return state.studyEvents ?? [];
   return state.travelPlans ?? [];
 }
 
-export function canApplyAiProposal(state: AppState, proposal: AiProposal): { valid: boolean; reason?: string } {
+export function canApplyAiProposal(state: AppState, proposal: AiProposal, currentRevision?: number): { valid: boolean; reason?: string } {
+  if (proposal.baseRevision !== undefined && currentRevision !== undefined && proposal.baseRevision !== currentRevision) {
+    return { valid: false, reason: `這筆提案依據雲端版本 ${proposal.baseRevision}，但手帳目前是版本 ${currentRevision}。請讓 Agent 重新讀取最新狀態，避免覆蓋手動修改。` };
+  }
   if (!validatesEntityValue(proposal.entity, proposal.action, proposal.value)) return { valid: false, reason: "提案欄位格式或值不符合目前網站資料結構。" };
   const items = entityItems(state, proposal.entity);
   if (proposal.action === "update" && (!proposal.targetId || !items.some((item) => item.id === proposal.targetId))) return { valid: false, reason: "找不到要更新的原始項目，請重新整理提案。" };
@@ -423,6 +474,7 @@ export function canApplyAiProposal(state: AppState, proposal: AiProposal): { val
   const current = proposal.action === "update" ? items.find((item) => item.id === proposal.targetId) : undefined;
   const prospective = current ? { ...current, ...proposal.value } : proposal.value;
   const evidence = proposal.evidenceIds.map((id) => state.aiInbox?.sources.find((source) => source.id === id)).filter(Boolean);
+  if (proposal.entity === "journey" && typeof prospective.startDate === "string" && typeof prospective.endDate === "string" && prospective.endDate < prospective.startDate) return { valid: false, reason: "交換結束日期早於開始日期。" };
   if (proposal.entity === "study-event" && typeof prospective.startDate === "string" && typeof prospective.endDate === "string" && prospective.endDate < prospective.startDate) return { valid: false, reason: "結束日期早於開始日期。" };
   if (proposal.entity === "travel-plan" && typeof prospective.startDate === "string" && typeof prospective.endDate === "string") {
     if (prospective.endDate < prospective.startDate) return { valid: false, reason: "旅行結束日期早於開始日期。" };
@@ -435,6 +487,8 @@ export function canApplyAiProposal(state: AppState, proposal: AiProposal): { val
   if (proposal.entity === "resource" && prospective.type !== "personal" && !isHttpUrl(prospective.url)) return { valid: false, reason: "公開／官方資源必須保留可開啟的 HTTP(S) 來源。" };
   if (proposal.entity === "resource" && prospective.type === "personal" && prospective.privacy !== "private") return { valid: false, reason: "使用者上傳資料提煉的資源必須保持私人。" };
   if (proposal.entity === "resource-intake" && proposal.privacy !== "private") return { valid: false, reason: "待辨識網址在處理前必須保持私人。" };
+  if (proposal.entity === "budget-item" && proposal.privacy !== "private") return { valid: false, reason: "個人預算提案必須保持私人。" };
+  if (proposal.entity === "budget-item" && !validBudgetSemantics(prospective)) return { valid: false, reason: "預算金額必須附上幣別、依據狀態、來源標籤與查核日期；沒有證據時請保留待設定。" };
   if (proposal.entity === "task" && Array.isArray(prospective.predecessorIds)) {
     const taskIds = new Set(state.tasks.map((task) => task.id));
     if (!prospective.predecessorIds.every((id) => typeof id === "string" && taskIds.has(id))) return { valid: false, reason: "提案包含不存在的前置任務。請先加入前置任務或重新產生提案。" };
@@ -442,20 +496,22 @@ export function canApplyAiProposal(state: AppState, proposal: AiProposal): { val
   return { valid: true };
 }
 
-export function applyAiProposal(state: AppState, proposalId: string): AppState {
+export function applyAiProposal(state: AppState, proposalId: string, currentRevision?: number): AppState {
   const proposal = state.aiInbox?.proposals.find((item) => item.id === proposalId);
   if (!proposal || proposal.status !== "pending") return state;
-  if (!canApplyAiProposal(state, proposal).valid) return state;
+  if (!canApplyAiProposal(state, proposal, currentRevision).valid) return state;
   let next = state;
   const currentEntity = proposal.action === "update" && proposal.targetId
     ? entityItems(state, proposal.entity).find((item) => item.id === proposal.targetId)
     : undefined;
+  if (proposal.entity === "journey") next = { ...next, journey: { ...next.journey, ...proposal.value, id: next.journey.id, kind: next.journey.kind } as Journey };
   if (proposal.entity === "task") next = { ...next, tasks: addOrUpdate<JourneyTask>(next.tasks, proposal) };
   if (proposal.entity === "resource") next = { ...next, resources: addOrUpdate<ResourceItem>(next.resources, proposal) };
   if (proposal.entity === "resource-intake") next = { ...next, resourceIntake: addOrUpdate<ResourceIntake>(next.resourceIntake ?? [], proposal) };
   if (proposal.entity === "packing-item") next = { ...next, packingItems: addOrUpdate<PackingItem>(next.packingItems, proposal) };
   if (proposal.entity === "bag") next = { ...next, bags: addOrUpdate<Bag>(next.bags, proposal) };
   if (proposal.entity === "flight-allowance") next = { ...next, flightAllowances: addOrUpdate<FlightAllowance>(next.flightAllowances ?? [], proposal) };
+  if (proposal.entity === "budget-item") next = { ...next, budget: addOrUpdate<BudgetItem>(next.budget, proposal) };
   if (proposal.entity === "study-event") next = { ...next, studyEvents: addOrUpdate<StudyEvent>(next.studyEvents ?? [], proposal) };
   if (proposal.entity === "travel-plan") next = { ...next, travelPlans: addOrUpdate<TravelPlan>(next.travelPlans ?? [], proposal) };
   return {
@@ -513,12 +569,14 @@ export function undoAiProposal(state: AppState, proposalId: string): AppState {
     ? removeById(items, entityId)
     : restorePatchedFields(items, proposal);
   let next = state;
+  if (proposal.entity === "journey") next = { ...next, journey: restorePatchedFields<Journey>([next.journey], proposal)[0] };
   if (proposal.entity === "task") next = { ...next, tasks: revert(next.tasks) };
   if (proposal.entity === "resource") next = { ...next, resources: revert(next.resources) };
   if (proposal.entity === "resource-intake") next = { ...next, resourceIntake: revert(next.resourceIntake ?? []) };
   if (proposal.entity === "packing-item") next = { ...next, packingItems: revert(next.packingItems) };
   if (proposal.entity === "bag") next = { ...next, bags: revert(next.bags) };
   if (proposal.entity === "flight-allowance") next = { ...next, flightAllowances: revert(next.flightAllowances ?? []) };
+  if (proposal.entity === "budget-item") next = { ...next, budget: revert(next.budget) };
   if (proposal.entity === "study-event") next = { ...next, studyEvents: revert(next.studyEvents ?? []) };
   if (proposal.entity === "travel-plan") next = { ...next, travelPlans: revert(next.travelPlans ?? []) };
   return {
@@ -558,4 +616,23 @@ export function clearDismissedAiProposals(state: AppState): AppState {
       sources: state.aiInbox.sources.filter((source) => usedSources.has(source.id)),
     },
   };
+}
+
+export function pruneExpiredAiHistory(state: AppState, now = Date.now()): AppState {
+  if (!state.aiInbox) return state;
+  const fallback = state.aiInbox.lastImportedAt ? Date.parse(state.aiInbox.lastImportedAt) : now;
+  const proposals = state.aiInbox.proposals.filter((proposal) => {
+    if (proposal.status === "pending" || proposal.status === "dismissed") {
+      const created = proposal.createdAt ? Date.parse(proposal.createdAt) : fallback;
+      return !Number.isFinite(created) || now - created <= 5 * 86_400_000;
+    }
+    if (proposal.status === "applied") {
+      const applied = proposal.appliedAt ? Date.parse(proposal.appliedAt) : now;
+      return !Number.isFinite(applied) || now - applied <= 7 * 86_400_000;
+    }
+    return false;
+  });
+  if (proposals.length === state.aiInbox.proposals.length) return state;
+  const usedSources = new Set(proposals.flatMap((proposal) => proposal.evidenceIds));
+  return { ...state, aiInbox: { ...state.aiInbox, proposals, sources: state.aiInbox.sources.filter((source) => usedSources.has(source.id)) } };
 }

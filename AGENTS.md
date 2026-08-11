@@ -6,6 +6,9 @@ This repository is a public, reusable exchange-site template. Do not assume the 
 
 - Use `.agents/skills/create-exchange-companion/SKILL.md` for first setup, destination research, visual production, website customization, free cloud preparation, and deployment.
 - Use `.agents/skills/exchange-concierge/SKILL.md` for authorized evidence collection, progress reconciliation, current research, packing recommendations, and reviewable import bundles.
+- Use `.agents/skills/exchange-email-intake/SKILL.md` whenever mailbox evidence is requested. It must use only the current user's explicitly authorized accounts, exact messages, queries, and date ranges, then pass a privacy-safe evidence report to Exchange Concierge.
+
+First-use country, school, time zone, currencies, fixed interface copy, and artwork are repository setup. Routine handoff runs treat that setup snapshot as locked unless the user explicitly requests reconfiguration or redesign.
 
 ## Safety
 

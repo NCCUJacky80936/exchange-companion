@@ -1,0 +1,4 @@
+interface:
+  display_name: "Exchange Email Intake"
+  short_description: "依目前使用者明確授權的範圍安全擷取交換信件證據並交給 AI 整理"
+  default_prompt: "Use $exchange-email-intake to search only my explicitly authorized exchange email scope and pass a privacy-safe evidence report to Exchange Concierge."

@@ -12,7 +12,20 @@ npm run check
 
 如果環境提供 Sites hosting，請 Codex 使用 `$create-exchange-companion` 完成最後驗證並建立一個屬於你的新站點。第一次部署後取得的 project binding 只留在自己的部署環境，不要提交到公開模板。
 
+`NEXT_PUBLIC_SUPABASE_URL` 與 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` 雖由 Sites 保存，但也必須在 production build 當下提供給前端打包。更新既有站點時，先讀取該站目前的環境設定，再只在建置程序中傳入；不要寫入 `.env`、Git 或公開模板。完成部署後必須用全新瀏覽器狀態確認第一個畫面是登入／建立帳號，而不是本機主畫面。
+
+若正式站顯示「免費雲端尚未建立」或登入按鈕停用，應視為建置失敗並停止發布；不要把這種降級畫面當成可接受的正式版本。
+
 ## Cloudflare Workers
+
+正式站若啟用 Agent 雲端連結，先把 `supabase/migrations/` 套用到自己的 Supabase 專案，再部署 `exchange-concierge-sync` Edge Function。這個 Function 使用 Supabase 自動提供的 server-side secret，不能把 secret 寫入前端環境或 Git：
+
+```bash
+npx supabase db push
+npx supabase functions deploy exchange-concierge-sync --no-verify-jwt
+```
+
+Edge Function 會自行驗證登入者或可撤銷的 Agent token；Agent token 只能讀取一趟旅程的最新版本並提交 pending proposals。
 
 第一次使用 Wrangler 時，先登入自己的 Cloudflare 帳號：
 

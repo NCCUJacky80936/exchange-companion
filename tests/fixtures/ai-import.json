@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "generatedAt": "2026-08-10T00:30:00+08:00",
-  "journeyScope": "exchange:my-exchange-journey:Your host university:Stuttgart:Germany:2027-03-01:2028-02-28",
+  "journeyScope": "exchange:my-exchange-journey",
   "sources": [
     {
       "id": "source-qa-official",
@@ -22,6 +22,7 @@
         "id": "resource-qa-test",
         "title": "QA 測試資源",
         "description": "測試後可重設示範資料移除。",
+        "details": "這筆內容用來確認 AI 摘要、詳細說明、來源與查核日期可以完整匯入資源卡。",
         "category": "測試",
         "type": "official",
         "url": "https://example.com/official",

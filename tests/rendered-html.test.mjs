@@ -21,7 +21,7 @@ test("server-renders the exchange companion shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, new RegExp(`<title>${profile.appName}｜AI 優先的交換生旅程控制台<\\/title>`, "i"));
-  assert.match(html, /property="og:image" content="https:\/\/exchange-companion\.example\/og\.png"/i);
+  assert.match(html, new RegExp(`property="og:image" content="https:\\/\\/exchange-companion\\.example${profile.visual.socialImage.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`, "i"));
   assert.match(html, new RegExp(profile.appName));
   assert.match(html, /我的交換|正在打開/);
   assert.doesNotMatch(html, /Repository Student|Personal Buddy|Private Coordinator/i);
@@ -41,7 +41,7 @@ test("keeps private parent files outside the app bundle", async () => {
   assert.match(component, /localStorage|loadState/);
   assert.match(component, /downloadIcs/);
   assert.match(component, /交給 AI 辨識的網址/);
-  assert.match(component, /packingInspiration/);
+  assert.doesNotMatch(component, /packingInspiration|預載的行李品項靈感|inspiration-links/);
   assert.match(component, /TravelPlanner/);
   assert.match(travelPlanner, /Exchange-aware check/);
   assert.match(travelPlanner, /repeatWeekly/);

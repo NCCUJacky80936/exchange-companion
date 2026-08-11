@@ -10,11 +10,12 @@ import {
   Download,
   ExternalLink,
   FileText,
-  HeartPulse,
   Info,
   Luggage,
+  LogOut,
   Map as MapIcon,
   Menu,
+  Bot,
   PackageCheck,
   Pencil,
   PiggyBank,
@@ -26,10 +27,12 @@ import {
   Trash2,
   Upload,
   UserRound,
+  WalletCards,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
+import Link from "next/link";
 import {
   type ChangeEvent,
   type FormEvent,
@@ -44,14 +47,17 @@ import {
 } from "react";
 import { downloadIcs, googleCalendarUrl } from "../lib/calendar";
 import { bagWeightMap, evaluateBaggageAllowances } from "../lib/baggage";
+import { cloudIsConfigured } from "../lib/cloud";
 import { phaseMeta } from "../lib/default-data";
-import { packingInspiration } from "../lib/packing-inspiration";
 import { exchangeCurrencies, exchangeProfile, exchangeTimeZones } from "../lib/profile";
 import { loadState, normalizeImportedState, resetState, saveState, validateImport } from "../lib/storage";
 import { useExchangeCloud, type ExchangeCloudController } from "../lib/useExchangeCloud";
+import AuthGate from "./AuthGate";
+import OnboardingWizard from "./OnboardingWizard";
 import type {
   AppState,
   Bag,
+  BudgetItem,
   FlightAllowance,
   JourneyPhase,
   JourneyTask,
@@ -69,7 +75,25 @@ const AiConcierge = lazy(() => import("./AiConcierge"));
 const TravelPlanner = lazy(() => import("./TravelPlanner"));
 
 function SectionFallback() {
-  return <div className="section-fallback" role="status"><span className="brand-stamp">{exchangeProfile.hostCountryCode}</span><strong>正在打開手帳頁面…</strong></div>;
+  return <div className="section-fallback" role="status"><span className="brand-stamp">旅</span><strong>正在打開手帳頁面…</strong></div>;
+}
+
+function GuestTravelShell({ state, setState, cloud }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; cloud: ExchangeCloudController }) {
+  const guestState = useMemo<AppState>(() => ({
+    ...state,
+    tasks: [],
+    resources: [],
+    resourceIntake: [],
+    packingItems: [],
+    flightAllowances: [],
+    budget: [],
+    emergencyContact: "",
+    studyEvents: [],
+    aiInbox: { sources: [], proposals: [] },
+    travelPlans: (state.travelPlans ?? []).filter((plan) => plan.id === cloud.sharedPlanId),
+  }), [cloud.sharedPlanId, state]);
+
+  return <div className="guest-travel-shell"><header className="guest-travel-topbar"><div className="auth-brand"><span className="brand-stamp">TRIP</span><div><strong>共同旅行手冊</strong><small>只顯示這趟被分享的行程</small></div></div><Link className="button secondary" href="/">登入我的手帳</Link></header><main><Suspense fallback={<SectionFallback />}><TravelPlanner state={guestState} setState={setState} cloud={cloud} /></Suspense></main></div>;
 }
 
 const statusMeta: Record<TaskStatus, { label: string; className: string }> = {
@@ -86,6 +110,20 @@ const decisionMeta: Record<PackingDecision, { label: string; className: string }
   "buy-there": { label: "當地買", className: "tag-sage" },
   skip: { label: "不建議帶", className: "tag-gray" },
 };
+
+const budgetBasisLabel: Record<BudgetItem["basis"], string> = {
+  unset: "待設定",
+  estimate: "個人估算",
+  confirmed: "已有依據",
+};
+
+function resourceGroup(category: string): string {
+  if (/簽證|居留|行政|財力|保險/.test(category)) return "申請與行政";
+  if (/學校|學業|日曆|選課|課程|考試/.test(category)) return "學校與學業";
+  if (/住宿|生活|醫療|緊急/.test(category)) return "住宿與生活";
+  if (/交通|航班|飛機|行李|海關/.test(category)) return "交通與行李";
+  return "其他";
+}
 
 const navItems: Array<{ id: NavSection; label: string; shortLabel: string; doodleIcon: string }> = [
   { id: "home", label: "我的交換", shortLabel: "首頁", doodleIcon: "/images/doodle-icons/home-safe.png" },
@@ -104,6 +142,14 @@ function initialSection(): NavSection {
   if (params.has("share")) return "travel";
   const requested = params.get("section") as NavSection | null;
   return requested && validSections.has(requested) ? requested : "home";
+}
+
+function localAppPreviewEnabled(): boolean {
+  return process.env.NODE_ENV !== "production" && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "app";
+}
+
+function localOnboardingPreviewEnabled(): boolean {
+  return process.env.NODE_ENV !== "production" && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "onboarding";
 }
 
 const templateMeta: Record<TaskTemplateKind, { label: string; icon: string }> = {
@@ -305,7 +351,7 @@ function TaskModal({
           </label>
           <label className="field field-full">
             <span>前置任務</span>
-            <select name="predecessor" defaultValue={task.predecessorIds[0] ?? ""}>
+            <select name="predecessor" defaultValue={task.predecessorIds?.[0] ?? ""}>
               <option value="">無</option>
               {tasks.filter((item) => item.id !== task.id).map((item) => (
                 <option value={item.id} key={item.id}>{item.title}</option>
@@ -423,7 +469,7 @@ function TaskCard({
   onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const blockedBy = task.predecessorIds
+  const blockedBy = (task.predecessorIds ?? [])
     .map((id) => allTasks.find((item) => item.id === id))
     .filter((item): item is JourneyTask => Boolean(item && item.status !== "done" && item.status !== "not-applicable"));
   const overdue = Boolean(task.dueDate && dayDifference(task.dueDate) < 0 && task.status !== "done");
@@ -451,7 +497,7 @@ function TaskCard({
       </button>
       <div className="task-body">
         <div className="task-title-row">
-          <Image className="task-doodle-icon" src={templateMeta[task.templateKind ?? "general"].icon} alt="" width={39} height={39} />
+          <Image className="task-doodle-icon" src={(templateMeta[task.templateKind ?? "general"] ?? templateMeta.general).icon} alt="" width={39} height={39} />
           <h3>{task.title}</h3>
           {task.priority === "high" ? <span className="priority-dot" title="高優先度" /> : null}
         </div>
@@ -461,7 +507,7 @@ function TaskCard({
         ) : null}
         {task.notes ? <div className="hand-note">↳ {task.notes}</div> : null}
         <div className="task-meta">
-          <label className={`status-select ${statusMeta[task.status].className}`}>
+          <label className={`status-select ${(statusMeta[task.status] ?? statusMeta["not-started"]).className}`}>
             <span className="sr-only">更新狀態</span>
             <select value={task.status} onChange={(event) => onStatus(event.target.value as TaskStatus)}>
               {Object.entries(statusMeta).map(([id, meta]) => <option value={id} key={id}>{meta.label}</option>)}
@@ -538,14 +584,18 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
   const applicable = state.tasks.filter((task) => task.status !== "not-applicable");
   const done = applicable.filter((task) => task.status === "done").length;
   const progress = Math.round((done / applicable.length) * 100);
-  const countdown = todayIso ? dayDifference(state.journey.startDate, todayIso) : null;
+  const countdown = state.journey.startDate && todayIso ? dayDifference(state.journey.startDate, todayIso) : null;
   const nextTasks = [...applicable]
     .filter((task) => task.status !== "done")
     .sort((a, b) => (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"))
     .slice(0, 3);
   const overdue = todayIso ? applicable.filter((task) => task.dueDate && dayDifference(task.dueDate, todayIso) < 0 && task.status !== "done").length : 0;
   const waiting = applicable.filter((task) => task.status === "waiting").length;
-  const monthly = state.budget.filter((item) => item.cadence === "monthly").reduce((sum, item) => sum + item.amount, 0);
+  const monthlyByCurrency = state.budget.filter((item) => item.cadence === "monthly").reduce<Record<string, number>>((totals, item) => ({
+    ...totals,
+    [item.currency]: (totals[item.currency] ?? 0) + item.amount,
+  }), {});
+  const monthlySummary = Object.entries(monthlyByCurrency).map(([currency, amount]) => `${currency} ${amount.toLocaleString()}`).join(" + ") || `${exchangeProfile.primaryCurrency} 0`;
 
   return (
     <div className="page-stack">
@@ -555,7 +605,7 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
             EXCHANGE JOURNEY
           </motion.div>
           <motion.p className="eyebrow" variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { delay: 0.08 } } }}>
-            {state.journey.homeCity} <ArrowRight size={14} /> {state.journey.hostCity}
+            {state.journey.homeCity || "出發地待補"} <ArrowRight size={14} /> {state.journey.hostCity || "目的地待補"}
           </motion.p>
           <motion.h1 variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0, transition: { delay: 0.14 } } }}>
             嗨 {state.journey.ownerName || "交換生"}，<br />交換準備得怎麼樣？
@@ -592,9 +642,9 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
         </div>
         <div className="route-progress" aria-label={`交換準備完成 ${progress}%`}>
           <div className="route-line"><motion.span initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.55 }} /></div>
-          <span className="route-origin">{state.journey.homeCity.toUpperCase()}</span>
+          <span className="route-origin">{(state.journey.homeCity || "HOME").toUpperCase()}</span>
           <span className="route-plane" style={{ left: `${Math.min(94, Math.max(4, progress))}%` }}>✈</span>
-          <span className="route-destination">{state.journey.hostCity.toUpperCase()}</span>
+          <span className="route-destination">{(state.journey.hostCity || "DESTINATION").toUpperCase()}</span>
         </div>
         <div className="progress-number"><strong>{done}</strong><span>/ {applicable.length} tasks</span></div>
       </section>
@@ -627,16 +677,16 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
           </div>
           <div className="journey-card paper-card">
             <div className="journey-card-top"><span className="stamp">EX</span><span>MY JOURNEY</span></div>
-            <h3>{state.journey.hostSchool}</h3>
-            <p>{state.journey.program}</p>
+            <h3>{state.journey.hostSchool || "交換學校待 AI 補齊"}</h3>
+            <p>{state.journey.program || "交換計畫尚未設定"}</p>
             <div className="journey-details">
-              <span><CalendarDays size={16} />{state.journey.startDate.replaceAll("-", ".")} — {state.journey.endDate.replaceAll("-", ".")}</span>
+              <span><CalendarDays size={16} />{state.journey.startDate ? state.journey.startDate.replaceAll("-", ".") : "開始日待補"} — {state.journey.endDate ? state.journey.endDate.replaceAll("-", ".") : "結束日待補"}</span>
               <span><MapIcon size={16} />{state.journey.hostCity} · {state.journey.destinations.join("、")}</span>
             </div>
           </div>
           <div className="budget-peek paper-card">
             <PiggyBank size={25} />
-            <div><span>每月基礎預算</span><strong>約 {exchangeProfile.primaryCurrency} {monthly.toLocaleString()}</strong></div>
+            <div><span>每月基礎預算</span><strong>約 {monthlySummary}</strong></div>
             <button className="icon-button" onClick={() => setSection("settings")} aria-label="查看預算"><ArrowRight size={17} /></button>
           </div>
         </div>
@@ -704,7 +754,7 @@ function JourneyPage({ state, setState }: { state: AppState; setState: React.Dis
       ...current,
       tasks: current.tasks
         .filter((task) => task.id !== id)
-        .map((task) => ({ ...task, predecessorIds: task.predecessorIds.filter((predecessor) => predecessor !== id) })),
+        .map((task) => ({ ...task, predecessorIds: (task.predecessorIds ?? []).filter((predecessor) => predecessor !== id) })),
     }));
   }
 
@@ -851,7 +901,7 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
     if ((checkedMode === "piece" && (!Number.isInteger(checkedPieceCount) || checkedPieceCount <= 0 || checkedPieceWeightKg <= 0))
       || (checkedMode === "weight" && checkedTotalWeightKg <= 0)
       || pieceRuleInvalid(carryOnMode, carryOnPieceCount, carryOnPieceWeightKg)
-      || pieceRuleInvalid(personalItemMode, personalItemPieceCount, personalItemPieceWeightKg)
+      || (personalItemMode === "piece" && (!Number.isInteger(personalItemPieceCount) || personalItemPieceCount <= 0))
       || (confirmed && [checkedMode, carryOnMode, personalItemMode].includes("unknown"))) {
       setAllowanceMessage("請依選擇的計算方式填完整數字；若仍有待確認項目，不能標示為已抄自機票。");
       return;
@@ -919,7 +969,7 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
         ? `托運合計 ${allowance.checkedTotalWeightKg}kg`
         : allowance.checkedMode === "none" ? "不含托運" : "托運待確認";
     const pieceSummary = (mode: "piece" | "none" | "unknown", count: number, weight: number, label: string) => mode === "piece"
-      ? `${count} × ${weight}kg ${label}`
+      ? weight > 0 ? `${count} × ${weight}kg ${label}` : `${count} 件${label}（未列獨立重量）`
       : mode === "none" ? `不含${label}` : `${label}待確認`;
     const carry = pieceSummary(allowance.carryOnMode, allowance.carryOnPieceCount, allowance.carryOnPieceWeightKg, "手提");
     const personal = pieceSummary(allowance.personalItemMode, allowance.personalItemPieceCount, allowance.personalItemPieceWeightKg, "個人物品");
@@ -930,7 +980,6 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
     <div className="page-stack">
       <header className="page-header packing-header">
         <div><p className="eyebrow">Pack lighter, live easier</p><h1>行李工作台</h1><p>用實際公斤數分配每件行李，也知道哪些東西到了目的地再買就好。</p></div>
-        <button className="button primary" onClick={() => setShowAdd((value) => !value)}>{showAdd ? <X size={18} /> : <Plus size={18} />}{showAdd ? "取消新增" : "新增物品"}</button>
       </header>
 
       <section className={`flight-allowance-card paper-card ${checkedOverLimit ? "over-limit" : ""}`}>
@@ -951,8 +1000,8 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
         </div>
       </section>
 
-      <AnimatePresence>{showAllowanceForm ? <motion.form className="allowance-form paper-card" onSubmit={addAllowance} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-        <div className="form-title"><div><p className="eyebrow">Manual fallback</p><h2>新增本人機票的行李規則</h2></div></div>
+      <AnimatePresence>{showAllowanceForm ? <motion.div className="modal-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={(event) => event.target === event.currentTarget && setShowAllowanceForm(false)}><motion.form className="modal-card allowance-form paper-card" onSubmit={addAllowance} initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0,y:8}}>
+        <div className="modal-heading field-full"><div><p className="eyebrow">Manual fallback</p><h2>新增本人機票的行李規則</h2></div><button className="icon-button" type="button" onClick={() => setShowAllowanceForm(false)} aria-label="關閉"><X size={20}/></button></div>
         <label className="field"><span>規則名稱</span><input name="label" required placeholder="例如：去程第一張機票" /></label>
         <label className="field"><span>航空公司</span><input name="airline" required placeholder="依機票顯示" /></label>
         <label className="field"><span>適用航段</span><input name="segment" required placeholder="例如：TPE → FRA" /></label>
@@ -969,7 +1018,7 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
         <label className="field field-full confirmation-field"><input name="copiedFromTicket" type="checkbox" /><span>我確認以上每個欄位都抄自自己的機票／訂位確認單</span></label>
         <label className="field field-full"><span>備註（不要填票號或訂位代碼）</span><textarea name="notes" rows={2} /></label>
         <button className="button primary" type="submit"><Plus size={16} />加入本人規則</button>
-      </motion.form> : null}</AnimatePresence>
+      </motion.form></motion.div> : null}</AnimatePresence>
       {allowanceMessage ? <p className="settings-message" role="status">{allowanceMessage}</p> : null}
 
       <section className="packing-summary">
@@ -979,12 +1028,13 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
       </section>
 
       <div className="bag-section-heading"><div><p className="eyebrow">Physical pieces</p><h2>實際會帶的每一件行李</h2></div><button className="button secondary" type="button" onClick={() => setShowBagForm((value) => !value)}>{showBagForm ? <X size={16} /> : <Plus size={16} />}{showBagForm ? "取消" : "新增一件行李"}</button></div>
-      <AnimatePresence>{showBagForm ? <motion.form className="bag-form paper-card" onSubmit={addBag} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
+      <AnimatePresence>{showBagForm ? <motion.div className="modal-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={(event) => event.target === event.currentTarget && setShowBagForm(false)}><motion.form className="modal-card bag-form paper-card" onSubmit={addBag} initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0,y:8}}>
+        <div className="modal-heading field-full"><div><p className="eyebrow">Physical piece</p><h2>新增一件行李</h2></div><button className="icon-button" type="button" onClick={() => setShowBagForm(false)} aria-label="關閉"><X size={20}/></button></div>
         <label className="field"><span>行李名稱</span><input name="name" required placeholder="例如：托運行李 2" /></label>
         <label className="field"><span>類型</span><select name="kind" defaultValue="checked"><option value="checked">托運</option><option value="carry-on">手提</option><option value="personal">個人物品</option></select></label>
         <label className="field"><span>手動上限 kg（可留 0）</span><input name="limitKg" type="number" min="0" step="0.5" defaultValue="0" /></label>
         <button className="button primary" type="submit"><Plus size={16} />加入</button>
-      </motion.form> : null}</AnimatePresence>
+      </motion.form></motion.div> : null}</AnimatePresence>
       <section className="bag-grid">
         {state.bags.map((bag, index) => {
           const weight = bagWeights.get(bag.id) ?? 0;
@@ -1005,8 +1055,8 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
 
       <AnimatePresence>
         {showAdd ? (
-          <motion.form className="add-packing-form paper-card" onSubmit={addItem} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-            <div className="form-title"><span className="tape" /><div><p className="eyebrow">Add to the list</p><h2>新增行李物品</h2></div></div>
+          <motion.div className="modal-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={(event) => event.target === event.currentTarget && setShowAdd(false)}><motion.form className="modal-card add-packing-form paper-card" onSubmit={addItem} initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0,y:8}}>
+            <div className="modal-heading field-full"><div><p className="eyebrow">Add to the list</p><h2>新增行李物品</h2></div><button className="icon-button" type="button" onClick={() => setShowAdd(false)} aria-label="關閉"><X size={20}/></button></div>
             <label className="field"><span>物品名稱</span><input name="name" required placeholder="例如：登山鞋" /></label>
             <label className="field"><span>分類</span><input name="category" required placeholder="衣物、電子、文件…" /></label>
             <label className="field"><span>建議</span><select name="decision" defaultValue="recommend">{Object.entries(decisionMeta).map(([id, meta]) => <option value={id} key={id}>{meta.label}</option>)}</select></label>
@@ -1014,10 +1064,11 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
             <label className="field"><span>單件重量 kg</span><input name="weightKg" type="number" min="0" step="0.01" defaultValue="0.2" /></label>
             <label className="field"><span>數量</span><input name="quantity" type="number" min="1" step="1" defaultValue="1" /></label>
             <button className="button primary" type="submit"><Plus size={18} />加入清單</button>
-          </motion.form>
+          </motion.form></motion.div>
         ) : null}
       </AnimatePresence>
 
+      <div className="packing-items-heading"><div><p className="eyebrow">Packing inventory</p><h2>物品清單</h2></div><button className="button primary" onClick={() => setShowAdd(true)}><Plus size={18}/>新增物品</button></div>
       <div className="toolbar paper-card">
         <label className="search-field"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜尋行李物品" /></label>
         <div className="filter-pills">
@@ -1045,11 +1096,6 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
         ))}
       </section>
 
-      <aside className="packing-inspiration paper-card">
-        <div><p className="eyebrow">Experience inspiration</p><h2>預載的行李品項靈感</h2><p>這兩支影片可協助 AI 發現容易漏帶的東西；實際建議仍要依目的國、季節、住宿與本人需求調整。影片不能用來判定公斤數、海關或航空規定。</p></div>
-        <div className="inspiration-links">{packingInspiration.sources.map((source) => <a href={source.url} target="_blank" rel="noreferrer" key={source.id}>{source.label}<ExternalLink size={14} /></a>)}</div>
-      </aside>
-
       <aside className="customs-note">
         <ShieldAlert size={28} />
         <div><p className="eyebrow">Before you zip it up</p><h2>海關與航空限制要最後再確認一次</h2><p>藥品、食品、液體、鋰電池與現金的限制會因目的地、物品和航班而不同。本站提供提醒，但請以目的國海關和實際承運航空公司的最新規則為準。</p></div>
@@ -1068,6 +1114,7 @@ function ResourceModal({ resource, onClose, onSave }: { resource: ResourceItem |
       id: resource?.id ?? `resource-${Date.now()}`,
       title: form.get("title")?.toString().trim() ?? "",
       description: form.get("description")?.toString().trim() ?? "",
+      details: form.get("details")?.toString().trim() ?? "",
       category: form.get("category")?.toString().trim() ?? "一般",
       type: resourceType,
       url: form.get("url")?.toString().trim() ?? "",
@@ -1076,6 +1123,7 @@ function ResourceModal({ resource, onClose, onSave }: { resource: ResourceItem |
       origin: resource?.origin ?? "manual",
       privacy: resourceType === "personal" ? "private" : form.get("privacy") as ResourceItem["privacy"],
       sourceLabel: form.get("sourceLabel")?.toString().trim() || "手動新增",
+      searchTags: form.get("searchTags")?.toString().split(/[,，#\s]+/).map((tag) => tag.trim().toLowerCase()).filter(Boolean).slice(0, 20) ?? [],
     });
   }
 
@@ -1084,7 +1132,9 @@ function ResourceModal({ resource, onClose, onSave }: { resource: ResourceItem |
       <div className="modal-heading"><div><p className="eyebrow">Verified bookmark</p><h2 id="resource-modal-title">{resource ? "編輯資源" : "新增資源"}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="關閉"><X size={20} /></button></div>
       <form className="form-grid" onSubmit={submit}>
         <label className="field field-full"><span>名稱</span><input name="title" defaultValue={resource?.title} required /></label>
-        <label className="field field-full"><span>說明</span><textarea name="description" rows={3} defaultValue={resource?.description} required /></label>
+        <label className="field field-full"><span>摘要／最重要的重點</span><textarea name="description" rows={3} defaultValue={resource?.description} placeholder="用幾句話說明這份資料能解決什麼問題" required /></label>
+        <label className="field field-full"><span>詳細說明</span><textarea name="details" rows={6} defaultValue={resource?.details} placeholder="適用對象、準備資料、操作步驟、期限與需要重新確認的地方" required /></label>
+        <label className="field field-full"><span>搜尋關鍵字（不會顯示在卡片上）</span><input name="searchTags" defaultValue={resource?.searchTags?.join("、")} placeholder="例如：飛機、航班、登機箱、手提、托運" /></label>
         <label className="field"><span>分類</span><input name="category" defaultValue={resource?.category} placeholder="簽證、住宿、學業…" required /></label>
         <label className="field"><span>來源類型</span><select name="type" value={resourceType} onChange={(event) => setResourceType(event.target.value as ResourceItem["type"])}><option value="official">官方</option><option value="school">學校</option><option value="city">城市</option><option value="experience">經驗分享</option><option value="personal">個人上傳資料</option></select></label>
         <label className="field field-full"><span>網址{resourceType === "personal" ? "（可留空，不放私人檔案路徑）" : ""}</span><input name="url" type="url" defaultValue={resource?.url} placeholder="https://…" required={resourceType !== "personal"} /></label>
@@ -1104,8 +1154,8 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
   const [editingResource, setEditingResource] = useState<ResourceItem | null | undefined>(undefined);
   const [intakeMessage, setIntakeMessage] = useState("");
   const deferredQuery = useDeferredValue(query.toLowerCase());
-  const categories = ["全部", ...new Set(state.resources.map((resource) => resource.category))];
-  const filtered = state.resources.filter((resource) => (category === "全部" || resource.category === category) && (!deferredQuery || `${resource.title} ${resource.description} ${resource.region}`.toLowerCase().includes(deferredQuery)));
+  const categories = ["全部", ...new Set(state.resources.map((resource) => resourceGroup(resource.category)))];
+  const filtered = state.resources.filter((resource) => (category === "全部" || resourceGroup(resource.category) === category) && (!deferredQuery || `${resource.title} ${resource.description} ${resource.details ?? ""} ${resource.region} ${resource.sourceLabel} ${(resource.searchTags ?? []).join(" ")}`.toLowerCase().includes(deferredQuery)));
   const typeLabel = { official: "官方", school: "學校", city: "城市", experience: "經驗分享", personal: "個人資料" };
 
   function addResourceUrl(event: FormEvent<HTMLFormElement>) {
@@ -1154,7 +1204,7 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
 
   return (
     <div className="page-stack">
-      <header className="page-header resources-header"><div><p className="eyebrow">Verified bookmarks</p><h1>重要資源庫</h1><p>只保留這位使用者授權上傳或依他的國家、城市與學校查到的資料；每個會變動的資訊都留下來源與查核日期。</p><div className="page-header-actions"><button className="button primary" onClick={() => setEditingResource(null)}><Plus size={17} />手動新增資源</button></div></div><div className="resource-stamp"><span>RESEARCH SINCE</span><strong>{exchangeProfile.research.minimumVerifiedDate.slice(0, 7).replace("-", ".")}</strong></div></header>
+      <header className="page-header resources-header"><div className="resources-header-copy"><p className="eyebrow">Verified bookmarks</p><h1>重要資源庫</h1><p>每份資料先整理成可快速判斷的摘要，再保留適用對象、準備事項與步驟；會變動的資訊仍附上來源與查核日期。</p></div><div className="resources-header-tools"><button className="button primary" onClick={() => setEditingResource(null)}><Plus size={17} />手動新增資源</button><div className="resource-stamp"><span>RESEARCH SINCE</span><strong>{exchangeProfile.research.minimumVerifiedDate.slice(0, 7).replace("-", ".")}</strong></div></div></header>
       <section className="paper-card resource-intake-card">
         <div><p className="eyebrow">Send a link to AI</p><h2>交給 AI 辨識的網址</h2><p>網址會先私人保存在這台裝置，不會立刻公開或加入資源庫。Exchange Concierge 讀取最新備份後，會附來源提出可審核的資源。</p></div>
         <form onSubmit={addResourceUrl}><label className="field"><span>網址</span><input name="url" type="url" required placeholder="https://…" /></label><label className="field"><span>希望 AI 注意什麼（選填）</span><input name="note" maxLength={1000} placeholder="例如：確認交換生申請期限" /></label><button className="button secondary" type="submit"><Plus size={16} />加入待辨識</button></form>
@@ -1163,22 +1213,30 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
       </section>
       <div className="toolbar paper-card resource-toolbar">
         <label className="search-field"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜尋簽證、住宿、醫療或交通" /></label>
-        <div className="filter-pills scroll-pills">{categories.map((item) => <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
+        <label className="compact-select resource-category-select">
+          <span className="sr-only">資源分類</span>
+          <select value={category} onChange={(event) => setCategory(event.target.value)}>
+            {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+          <ChevronDown size={16} />
+        </label>
+        <div className="filter-pills scroll-pills" aria-label="資源分類">{categories.map((item) => <button type="button" key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
       </div>
       <section className="resource-grid">
         {!filtered.length ? <div className="paper-card empty-state"><Sparkles size={24} /><div><h2>等待加入你的目的地資源</h2><p>請使用專案內的 AI 整理流程，依交換國家、城市與學校查核官方資料；你也可以先手動新增來源。</p></div></div> : null}
         {filtered.map((resource, index) => (
           <motion.article className={`resource-card paper-card resource-${resource.type}`} key={resource.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * 0.035, 0.3) }}>
             <div className="resource-card-top"><div className="resource-badges"><span className={`source-badge ${resource.type}`}>{typeLabel[resource.type]}</span><span className={`source-badge ${resource.privacy}`}>{resource.privacy === "private" ? "私人" : "可分享"}</span></div><div className="resource-card-actions"><button className="icon-button" onClick={() => setEditingResource(resource)} aria-label={`編輯 ${resource.title}`}><Pencil size={16} /></button><button className="icon-button danger" onClick={() => deleteResource(resource)} aria-label={`刪除 ${resource.title}`}><Trash2 size={16} /></button></div></div>
-            <span className="resource-category">{resource.category}</span>
+            <span className="resource-category">{resourceGroup(resource.category)} · {resource.category}</span>
             <h2>{resource.title}</h2>
-            <p>{resource.description}</p>
+            <div className="resource-summary"><span>{resource.origin === "ai-research" ? "AI 摘要" : "重點摘要"}</span><p>{resource.description}</p>{resource.details ? <p className="resource-summary-detail">{resource.details}</p> : null}</div>
+            {resource.details ? <details className="resource-details"><summary>查看詳細說明</summary><p>{resource.details}</p></details> : null}
             <div className="resource-footer"><span><MapIcon size={14} />{resource.region}</span><span><Check size={14} />查核 {resource.verifiedAt.replaceAll("-", ".")}</span><span>{resource.sourceLabel}</span></div>
             {resource.url ? <a className="resource-open-link" href={resource.url} target="_blank" rel="noreferrer">開啟來源 <ExternalLink size={14} /></a> : null}
           </motion.article>
         ))}
       </section>
-      <aside className="experience-rule paper-card"><Info size={24} /><div><h2>規定和經驗，不混在一起</h2><p>官方、學校與城市來源用來確認程序；YouTube 等經驗分享只協助理解生活情境。價格、期限和法律要求一律回到原始官方頁面重新確認。</p></div></aside>
+      <aside className="experience-rule paper-card"><Info size={24} /><div><h2>規定和經驗，不混在一起</h2><p>官方、學校與城市來源用來確認程序；個人經驗只協助補充生活情境與容易遺漏的準備。價格、期限和法律要求一律回到原始官方頁面重新確認。</p></div></aside>
       <AnimatePresence>{editingResource !== undefined ? <ResourceModal resource={editingResource} onClose={() => setEditingResource(undefined)} onSave={saveResource} /> : null}</AnimatePresence>
     </div>
   );
@@ -1187,8 +1245,13 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
 function SettingsPage({ state, setState, cloud }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; cloud: ExchangeCloudController }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState("");
-  const [accountId, setAccountId] = useState("");
-  const [accountPassword, setAccountPassword] = useState("");
+
+  function updateBudgetItem(id: string, patch: Partial<BudgetItem>) {
+    setState((current) => ({
+      ...current,
+      budget: current.budget.map((item) => item.id === id ? { ...item, ...patch } : item),
+    }));
+  }
 
   async function importBackup(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -1219,13 +1282,7 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
         {!cloud.configured ? <div className="cloud-offline-state"><strong>免費雲端尚未建立</strong><p>現在仍是完整的本機版。所有功能測試完成後才會一次建立並上版，不會在開發中反覆消耗部署額度。</p></div> : cloud.permanentAccount ? <>
           <div className="account-summary"><span className="avatar">{cloud.session?.user.email?.slice(0, 1).toUpperCase() || "A"}</span><div><strong>{String(cloud.session?.user.user_metadata.account_id ?? cloud.session?.user.email ?? "已登入帳戶")}</strong><small>{cloud.privateSyncEnabled ? "私人手帳同步中" : "尚未同步私人手帳"}</small></div></div>
           <div className="backup-actions">{cloud.privateSyncEnabled ? <button className="button secondary" onClick={cloud.disablePrivateSync}>停止同步</button> : <><button className="button primary" disabled={cloud.busy} onClick={() => void cloud.enablePrivateSync("upload-local")}>用這台裝置建立雲端副本</button><button className="button secondary" disabled={cloud.busy} onClick={() => void cloud.enablePrivateSync("use-cloud")}>載入帳戶既有手帳</button></>}<button className="button text-button" onClick={() => void cloud.signOut()}>登出</button></div>
-        </> : <>
-          <p>不登入也能開啟「任何人可用」的旅行分享。若要跨手機同步私人手帳，或開啟只限指定帳號的連結，請建立免費手帳帳號。</p>
-          <div className="account-login-actions">
-            <div className="email-login"><input name="accountId" autoComplete="username" spellCheck={false} value={accountId} onChange={(event) => setAccountId(event.target.value)} placeholder="帳號代號，例如 travel-austin" aria-label="手帳帳號代號" /><input type="password" name="accountPassword" autoComplete="current-password" value={accountPassword} onChange={(event) => setAccountPassword(event.target.value)} placeholder="密碼至少 8 字元" aria-label="手帳帳號密碼" /><button className="button primary" disabled={!accountId || accountPassword.length < 8 || cloud.busy} onClick={() => void cloud.accountSignIn(accountId, accountPassword)}>登入</button><button className="button secondary" disabled={!accountId || accountPassword.length < 8 || cloud.busy} onClick={() => void cloud.createAccount(accountId, accountPassword)}>建立免費帳號</button></div>
-            <small>不需 Email、不會產生寄信費用。請自行保存密碼；目前沒有忘記密碼功能。</small>
-          </div>
-        </>}
+        </> : <p>請先從登入頁建立帳號或登入，才會載入私人手帳。</p>}
         <p className="settings-message" role="status">{cloud.notice}</p>
       </section>
       <section className="settings-grid">
@@ -1246,7 +1303,7 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
           </div>
         </div>
 
-        <div className="paper-card settings-card backup-card">
+        <div className="paper-card settings-card backup-card" id="backup-settings">
           <div className="settings-card-title"><FileText size={23} /><div><p className="eyebrow">Local & private</p><h2>資料備份</h2></div></div>
           <p>備份包含本站的任務、行李、預算與設定，不包含父資料夾中的任何私人文件。</p>
           <div className="backup-actions">
@@ -1259,15 +1316,26 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
         </div>
       </section>
 
-      <section className="paper-card settings-card budget-card">
+      <section className="paper-card settings-card budget-card" id="budget-settings">
         <div className="settings-card-title"><PiggyBank size={23} /><div><p className="eyebrow">Money map</p><h2>基礎預算</h2></div></div>
         <div className="budget-table">
           {state.budget.map((item) => (
             <div className="budget-row" key={item.id}>
-              <button className={`drawn-check ${item.paid ? "checked" : ""}`} onClick={() => setState((current) => ({ ...current, budget: current.budget.map((budget) => budget.id === item.id ? { ...budget, paid: !budget.paid } : budget) }))} aria-label={`${item.paid ? "取消" : "標記"}支付 ${item.name}`}>{item.paid ? <Check size={16} /> : null}</button>
-              <strong>{item.name}</strong>
-              <span>{item.cadence === "monthly" ? "每月" : "一次性"}</span>
-              <label>{exchangeProfile.primaryCurrency} <input type="number" min="0" step="0.5" value={item.amount} onChange={(event) => setState((current) => ({ ...current, budget: current.budget.map((budget) => budget.id === item.id ? { ...budget, amount: Number(event.target.value) } : budget) }))} aria-label={`${item.name} 金額`} /></label>
+              <div className="budget-row-main">
+                <button className={`drawn-check ${item.paid ? "checked" : ""}`} onClick={() => updateBudgetItem(item.id, { paid: !item.paid })} aria-label={`${item.paid ? "取消" : "標記"}支付 ${item.name}`}>{item.paid ? <Check size={16} /> : null}</button>
+                <div className="budget-name"><strong>{item.name}</strong><small className={`budget-basis ${item.basis}`}>{budgetBasisLabel[item.basis]}{item.verifiedAt ? ` · ${item.verifiedAt}` : ""}</small></div>
+                <span>{item.cadence === "monthly" ? "每月" : "一次性"}</span>
+                <label className="budget-amount"><select value={item.currency} onChange={(event) => updateBudgetItem(item.id, { currency: event.target.value })} aria-label={`${item.name} 幣別`}>{Array.from(new Set([...exchangeCurrencies, item.currency])).map((currency) => <option key={currency} value={currency}>{currency}</option>)}</select><input type="number" min="0" step="0.5" value={item.amount} onChange={(event) => updateBudgetItem(item.id, { amount: Number(event.target.value), basis: item.basis === "unset" ? "estimate" : item.basis, sourceLabel: item.sourceLabel || "網站手動輸入", verifiedAt: item.verifiedAt || new Date().toISOString().slice(0, 10) })} aria-label={`${item.name} 金額`} /></label>
+              </div>
+              <details className="budget-details">
+                <summary>依據與備註</summary>
+                <div className="budget-detail-grid">
+                  <label className="field"><span>金額狀態</span><select value={item.basis} onChange={(event) => updateBudgetItem(item.id, { basis: event.target.value as BudgetItem["basis"] })}><option value="unset">待設定</option><option value="estimate">個人估算</option><option value="confirmed">已有依據</option></select></label>
+                  <label className="field"><span>來源標籤</span><input value={item.sourceLabel} onChange={(event) => updateBudgetItem(item.id, { sourceLabel: event.target.value })} placeholder="例如：住宿合約／個人預算" /></label>
+                  <label className="field"><span>查核日期</span><input type="date" value={item.verifiedAt} onChange={(event) => updateBudgetItem(item.id, { verifiedAt: event.target.value })} /></label>
+                  <label className="field field-full"><span>備註</span><textarea rows={2} value={item.notes} onChange={(event) => updateBudgetItem(item.id, { notes: event.target.value })} placeholder="記錄估算方式、是否含押金，或需要重新確認的地方。" /></label>
+                </div>
+              </details>
             </div>
           ))}
         </div>
@@ -1287,14 +1355,16 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
 
 export default function ExchangeCompanion() {
   const isHydrated = useSyncExternalStore(subscribeHydration, () => true, () => false);
-  const [state, setState] = useState<AppState>(() => loadState());
+  const [state, setState] = useState<AppState>(() => loadState(!cloudIsConfigured()));
   const [section, setSection] = useState<NavSection>(initialSection);
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const cloud = useExchangeCloud(state, setState);
+  const localAppPreview = localAppPreviewEnabled();
 
   useEffect(() => {
-    if (isHydrated) saveState(state);
-  }, [state, isHydrated]);
+    if (isHydrated && (!cloud.configured || (cloud.permanentAccount && cloud.accountDataReady))) saveState(state);
+  }, [cloud.accountDataReady, cloud.configured, cloud.permanentAccount, state, isHydrated]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -1307,11 +1377,31 @@ export default function ExchangeCompanion() {
   if (!isHydrated) {
     return (
       <div className="boot-shell" role="status">
-        <span className="brand-stamp">{exchangeProfile.hostCountryCode}</span>
+        <span className="brand-stamp">旅</span>
         <strong>交換手帳</strong>
         <p>正在打開「我的交換」…</p>
       </div>
     );
+  }
+
+  if (cloud.configured && (!cloud.authReady || cloud.shareStatus === "loading")) {
+    return <div className="boot-shell" role="status"><span className="brand-stamp">旅</span><strong>交換手帳</strong><p>{cloud.shareStatus === "loading" ? "正在確認旅行分享權限…" : "正在確認登入狀態…"}</p></div>;
+  }
+
+  if (cloud.configured && !cloud.permanentAccount && cloud.shareStatus === "active") {
+    return <GuestTravelShell state={state} setState={setState} cloud={cloud} />;
+  }
+
+  if (localOnboardingPreviewEnabled()) {
+    return <OnboardingWizard state={{ ...state, setupCompleted: false }} setState={setState} />;
+  }
+
+  if ((!cloud.configured && !localAppPreview) || (cloud.configured && (!cloud.permanentAccount || !cloud.accountDataReady))) {
+    return <AuthGate cloud={cloud} />;
+  }
+
+  if (!state.setupCompleted) {
+    return <OnboardingWizard state={state} setState={setState} />;
   }
 
   const currentNav = navItems.find((item) => item.id === section)!;
@@ -1319,13 +1409,14 @@ export default function ExchangeCompanion() {
   const now = new Date();
   const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const todayLabel = formatDate(todayIso);
+  const pendingProposalCount = state.aiInbox?.proposals.filter((proposal) => proposal.status === "pending").length ?? 0;
 
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">跳到主要內容</a>
       <aside className={`sidebar ${mobileMenu ? "mobile-open" : ""}`}>
         <button className="brand-mark" onClick={() => setSection("home")}>
-          <span className="brand-stamp">{exchangeProfile.hostCountryCode}</span>
+          <span className="brand-stamp">旅</span>
           <div><strong>交換手帳</strong><small>Exchange Companion</small></div>
         </button>
         <nav aria-label="主要導覽">
@@ -1344,9 +1435,9 @@ export default function ExchangeCompanion() {
       <div className="app-main">
         <header className="topbar">
           <button className="menu-button" onClick={() => setMobileMenu((value) => !value)} aria-label="開啟導覽"><Menu /></button>
-          <div className="mobile-brand"><span className="brand-stamp">{exchangeProfile.hostCountryCode}</span><strong>{exchangeProfile.appName}</strong></div>
+          <div className="mobile-brand"><span className="brand-stamp">旅</span><strong>{exchangeProfile.appName}</strong></div>
           <div className="topbar-trail"><span>MY EXCHANGE</span><ArrowRight size={14} /><strong>{currentNav.label}</strong></div>
-          <div className="topbar-right"><span className="today-label">{todayLabel}</span><button className="emergency-button" onClick={() => setSection("resources")}><HeartPulse size={17} />緊急資訊</button><button className="avatar avatar-button" onClick={() => setSection("settings")} aria-label="開啟帳戶與設定">{cloud.session?.user.email?.slice(0, 1).toUpperCase() || state.journey.ownerName.slice(0, 1).toUpperCase() || "A"}</button></div>
+          <div className="topbar-right"><span className="today-label">{todayLabel}</span><button className={`topbar-ai-button ${section === "ai" ? "active" : ""}`} onClick={() => { setSection("ai"); setAccountMenuOpen(false); }} aria-label={`AI 幫我整理${pendingProposalCount ? `，${pendingProposalCount} 個待確認提案` : ""}`}><Bot size={18} />{pendingProposalCount ? <span>{pendingProposalCount}</span> : null}</button><div className="account-menu-wrap"><button className="avatar avatar-button" onClick={() => setAccountMenuOpen((open) => !open)} aria-expanded={accountMenuOpen} aria-haspopup="menu" aria-label="開啟帳戶選單">{cloud.session?.user.email?.slice(0, 1).toUpperCase() || state.journey.ownerName.slice(0, 1).toUpperCase() || "A"}</button>{accountMenuOpen ? <div className="account-popover paper-card" role="menu"><button role="menuitem" onClick={() => { setSection("settings"); setAccountMenuOpen(false); }}><UserRound size={16}/>個人設定</button><button role="menuitem" onClick={() => { setSection("settings"); setAccountMenuOpen(false); window.setTimeout(() => document.getElementById("backup-settings")?.scrollIntoView({behavior:"smooth"}), 80); }}><Download size={16}/>備份與還原</button><button role="menuitem" onClick={() => { setSection("settings"); setAccountMenuOpen(false); window.setTimeout(() => document.getElementById("budget-settings")?.scrollIntoView({behavior:"smooth"}), 80); }}><WalletCards size={16}/>預算</button><button className="danger" role="menuitem" onClick={() => void cloud.signOut()}><LogOut size={16}/>登出</button></div> : null}</div></div>
         </header>
 
         <main id="main-content">
@@ -1357,7 +1448,7 @@ export default function ExchangeCompanion() {
               {section === "travel" ? <Suspense fallback={<SectionFallback />}><TravelPlanner state={state} setState={setState} cloud={cloud} /></Suspense> : null}
               {section === "packing" ? <PackingPage state={state} setState={setState} /> : null}
               {section === "resources" ? <ResourcesPage state={state} setState={setState} /> : null}
-              {section === "ai" ? <Suspense fallback={<SectionFallback />}><AiConcierge state={state} setState={setState} /></Suspense> : null}
+              {section === "ai" ? <Suspense fallback={<SectionFallback />}><AiConcierge state={state} setState={setState} cloud={cloud} /></Suspense> : null}
               {section === "settings" ? <SettingsPage state={state} setState={setState} cloud={cloud} /> : null}
             </motion.div>
           </AnimatePresence>
@@ -1365,7 +1456,7 @@ export default function ExchangeCompanion() {
       </div>
 
       <nav className="mobile-bottom-nav" aria-label="手機導覽">
-        {mobileNavItems.map((item) => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => setSection(item.id)}><Image className="nav-doodle-icon" src={item.doodleIcon} alt="" width={34} height={34} /><span>{item.shortLabel}</span></button>)}
+        {mobileNavItems.map((item) => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => { setSection(item.id); setAccountMenuOpen(false); }}><Image className="nav-doodle-icon" src={item.doodleIcon} alt="" width={34} height={34} /><span>{item.shortLabel}</span></button>)}
       </nav>
       {mobileMenu ? <button className="mobile-overlay" onClick={() => setMobileMenu(false)} aria-label="關閉導覽" /> : null}
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { createClient, type RealtimeChannel, type Session, type SupabaseClient } from "@supabase/supabase-js";
-import type { AppState, TravelPlan, TravelShareAccess, TravelShareLink } from "./types";
+import type { AiImportBundle, AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TravelPlan, TravelShareAccess, TravelShareLink } from "./types";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
@@ -44,24 +44,28 @@ function accountIdToEmail(accountId: string): string {
   return `${normalized}@users.exchange-companion.local`;
 }
 
-export async function createPasswordAccount(accountId: string, password: string): Promise<void> {
+export async function createPasswordAccount(accountId: string, email: string, password: string): Promise<"signed-in" | "confirmation-required"> {
   if (password.length < 8) throw new Error("weak_password");
   const client = getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
   const normalized = accountId.trim().toLowerCase();
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) throw new Error("invalid_email");
   const { data, error } = await client.auth.signUp({
-    email: accountIdToEmail(normalized),
+    email: normalizedEmail,
     password,
     options: { data: { display_name: normalized, account_id: normalized } },
   });
   if (error) throw error;
-  if (!data.session || data.user?.is_anonymous) throw new Error("account_not_created");
+  if (!data.user || data.user.is_anonymous) throw new Error("account_not_created");
+  return data.session ? "signed-in" : "confirmation-required";
 }
 
 export async function signInWithPasswordAccount(accountId: string, password: string): Promise<void> {
   const client = getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
-  const { error } = await client.auth.signInWithPassword({ email: accountIdToEmail(accountId), password });
+  const identifier = accountId.trim().toLowerCase();
+  const { error } = await client.auth.signInWithPassword({ email: identifier.includes("@") ? identifier : accountIdToEmail(identifier), password });
   if (error) throw error;
 }
 
@@ -83,29 +87,93 @@ export async function signOutCloud(): Promise<void> {
   await ensureCloudSession();
 }
 
-export async function readPrivateState(): Promise<AppState | null> {
+export interface VersionedPrivateState {
+  state: AppState;
+  revision: number;
+}
+
+export async function readPrivateState(): Promise<VersionedPrivateState | null> {
   const client = getCloudClient();
   const session = await ensureCloudSession();
   if (!client || !isPermanentSession(session)) return null;
   const { data, error } = await client
     .from("private_app_states")
-    .select("state")
+    .select("state,revision")
     .eq("user_id", session.user.id)
     .maybeSingle();
   if (error) throw error;
-  return (data?.state as AppState | undefined) ?? null;
+  return data?.state ? { state: data.state as AppState, revision: Number(data.revision) } : null;
 }
 
-export async function writePrivateState(state: AppState): Promise<void> {
+export async function writePrivateState(
+  state: AppState,
+  expectedRevision: number,
+  actor: "manual" | "proposal" | "system" = "manual",
+): Promise<number> {
   const client = getCloudClient();
   const session = await ensureCloudSession();
   if (!client || !isPermanentSession(session)) throw new Error("permanent_account_required");
-  const { error } = await client.from("private_app_states").upsert({
-    user_id: session.user.id,
-    state,
-    source_device: navigator.userAgent.slice(0, 180),
-  }, { onConflict: "user_id" });
+  const { data, error } = await client.rpc("save_private_app_state", {
+    next_state: state,
+    expected_revision: expectedRevision,
+    changed_paths: ["state"],
+    change_actor: actor,
+  });
   if (error) throw error;
+  const result = Array.isArray(data) ? data[0] : data;
+  const revision = Number(result?.revision);
+  if (!Number.isInteger(revision) || revision < 1) throw new Error("invalid_cloud_revision");
+  return revision;
+}
+
+interface ConciergeProposalRun {
+  id: string;
+  bundle: AiImportBundle;
+  base_revision: number;
+  created_at: string;
+}
+
+async function invokeConcierge<T>(body: Record<string, unknown>): Promise<T> {
+  const client = getCloudClient();
+  const session = await ensureCloudSession();
+  if (!client || !isPermanentSession(session)) throw new Error("permanent_account_required");
+  const { data, error } = await client.functions.invoke("exchange-concierge-sync", { body });
+  if (error) throw error;
+  if (data?.error) throw new Error(String(data.error));
+  return data as T;
+}
+
+export async function createConciergeConnection(label = "Codex Exchange Concierge"): Promise<ConciergeConnectionFile> {
+  const data = await invokeConcierge<{ connection: ConciergeConnectionFile }>({ action: "pair", label });
+  return data.connection;
+}
+
+export async function listConciergeConnections(): Promise<ConciergeConnectionInfo[]> {
+  const data = await invokeConcierge<{ connections: Array<Record<string, unknown>> }>({ action: "connections" });
+  return data.connections.map((item) => ({
+    id: String(item.id),
+    label: String(item.label),
+    journeyId: String(item.journey_id),
+    scopes: Array.isArray(item.scopes) ? item.scopes.map(String) : [],
+    createdAt: String(item.created_at),
+    lastUsedAt: item.last_used_at ? String(item.last_used_at) : undefined,
+    expiresAt: String(item.expires_at),
+    revokedAt: item.revoked_at ? String(item.revoked_at) : undefined,
+  }));
+}
+
+export async function revokeConciergeConnection(connectionId: string): Promise<void> {
+  await invokeConcierge({ action: "revoke", connectionId });
+}
+
+export async function pullConciergeProposalRuns(): Promise<ConciergeProposalRun[]> {
+  const data = await invokeConcierge<{ runs: ConciergeProposalRun[] }>({ action: "pull" });
+  return data.runs;
+}
+
+export async function acknowledgeConciergeProposalRuns(runIds: string[]): Promise<void> {
+  if (!runIds.length) return;
+  await invokeConcierge({ action: "ack", runIds });
 }
 
 function cloudPayload(plan: TravelPlan): TravelPlan {

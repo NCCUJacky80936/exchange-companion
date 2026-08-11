@@ -33,13 +33,16 @@ If a connector is not connected, ask the user to connect Gmail through the host 
 ## 3. Search incrementally
 
 - Search metadata first and newest first.
+- First inventory relevant existing private archives. A message may be old and already archived but still contain a missing fare, rent, deposit, allowance, or receipt fact. `0 new` is a synchronization result, not an evidence result.
+- Build separate query packs for housing, each airline, school fees, school calendar/courses, visa/residence, insurance/finance, arrival, and return. Use one provider or tightly related sender group per query.
 - Use a bounded Gmail query such as `from:(international@host.example.edu) after:2026/07/01 before:2026/09/01`.
+- Use broad grouped `OR` queries only for discovery. Do not report a category as searched until its exact provider/domain query ran separately.
 - Read at most the newest 20–50 matched messages per query unless the user authorizes a wider backfill.
 - Deduplicate using provider message IDs in the private working inventory.
 - Read full bodies only for messages that match the authorized query and appear relevant from metadata.
 - List attachment filenames only by default. Download or open an attachment only when explicitly authorized and necessary.
 
-Run each account separately and keep per-account counts. A search failure in one account must not be reported as coverage of that account.
+Run each account and each query pack separately. Keep matched, read, relevant, duplicate, new, and failed counts. A search failure in one account or query pack must not be reported as coverage of that account or category.
 
 ## 4. Separate private evidence from the website bundle
 
@@ -60,7 +63,7 @@ Represent a message as a concise evidence source label and extracted fact. Defau
 Report:
 
 - authorized accounts and queries searched;
-- matched, read, new, duplicate, and failed-message counts;
+- matched, read, relevant, new, duplicate, and failed-message counts per query pack;
 - attachment metadata inspected or downloaded;
 - private working files created or updated;
 - whether any material status changed;

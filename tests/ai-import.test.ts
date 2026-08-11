@@ -9,12 +9,15 @@ import {
   importAiBundle,
   journeyScopeForState,
   matchesAiJourneyScope,
+  pruneExpiredAiHistory,
   sensitiveBundleWarnings,
   undoAiProposal,
   validateAiImportBundle,
 } from "../app/lib/ai-import";
 import { defaultState } from "../app/lib/default-data";
 import { evaluateBaggageAllowances } from "../app/lib/baggage";
+import { createExchangeConciergeHandoff } from "../app/lib/concierge-handoff";
+import { normalizeImportedState, resourceSearchTags } from "../app/lib/storage";
 import type { AiImportBundle, AiProposal, AppState } from "../app/lib/types";
 
 function validResourceBundle(): AiImportBundle {
@@ -39,6 +42,7 @@ function validResourceBundle(): AiImportBundle {
         id: "resource-city-newcomer-guide",
         title: "City newcomer guide",
         description: "Official arrival information.",
+        details: "Applies to newly arrived exchange students. Check the required registration steps, documents, deadline, and office instructions on the current official page before visiting.",
         category: "arrival",
         type: "city",
         url: "https://example.org/newcomers",
@@ -64,6 +68,210 @@ test("accepts a complete, reviewable resource proposal", () => {
   const bundle = validResourceBundle();
   assert.equal(validateAiImportBundle(bundle), true);
   assert.deepEqual(canApplyAiProposal(cleanState(), bundle.proposals[0]), { valid: true });
+});
+
+test("exports a self-describing handoff with first-use setup locked for routine updates", () => {
+  const state = cleanState();
+  const handoff = createExchangeConciergeHandoff(state, "2027-01-15T12:00:00+08:00", 12);
+  assert.equal(handoff.kind, "exchange-companion-handoff");
+  assert.equal(handoff.journeyScope, journeyScopeForState(state));
+  assert.equal(handoff.agentContract.requiredSkill, "$exchange-concierge");
+  assert.equal(handoff.agentContract.emailSkill, "$exchange-email-intake");
+  assert.equal(handoff.agentContract.importContract.proposalStatus, "pending");
+  assert.equal(handoff.agentContract.initializer, ".agents/skills/exchange-concierge/scripts/initialize_import_bundle.py");
+  assert.equal(handoff.outputTemplate.journeyScope, journeyScopeForState(state));
+  assert.equal(handoff.baseRevision, 12);
+  assert.equal(handoff.outputTemplate.baseRevision, 12);
+  assert.deepEqual(handoff.outputTemplate.sources, []);
+  assert.deepEqual(handoff.outputTemplate.proposals, []);
+  assert.equal(handoff.setupSnapshot.lockedForRoutineReconciliation, true);
+  assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "base-budget")?.proposalEntity, "budget-item");
+  assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("days[].activities[].mapsUrl"), true);
+  assert.equal(handoff.state, state);
+});
+
+test("keeps journey identity stable while editable destination facts change", () => {
+  const state = cleanState();
+  const originalScope = journeyScopeForState(state);
+  state.journey = {
+    ...state.journey,
+    hostSchool: "Another University",
+    hostCity: "Tokyo",
+    destinations: ["Japan"],
+    startDate: "2028-04-01",
+    endDate: "2028-08-31",
+  };
+  assert.equal(journeyScopeForState(state), originalScope);
+  assert.equal(originalScope, `exchange:${state.journey.id}`);
+});
+
+test("rejects stale cloud proposals but accepts the matching revision", () => {
+  const state = cleanState();
+  const proposal: AiProposal = { ...validResourceBundle().proposals[0], baseRevision: 7 };
+  assert.equal(canApplyAiProposal(state, proposal, 7).valid, true);
+  assert.equal(canApplyAiProposal(state, proposal, 8).valid, false);
+  state.aiInbox = { sources: validResourceBundle().sources, proposals: [proposal] };
+  assert.equal(applyAiProposal(state, proposal.id, 8), state);
+  assert.notEqual(applyAiProposal(state, proposal.id, 7), state);
+});
+
+test("applies and safely undoes a private evidence-backed base-budget proposal", () => {
+  const state = cleanState();
+  const proposal: AiProposal = {
+    ...validResourceBundle().proposals[0],
+    id: "proposal-budget-rent-run-1",
+    entity: "budget-item",
+    action: "update",
+    targetId: "rent",
+    value: {
+      amount: 393,
+      currency: "EUR",
+      basis: "confirmed",
+      sourceLabel: "Authorized housing contract",
+      verifiedAt: "2027-01-15",
+      notes: "Monthly rent confirmed; private identifiers removed.",
+    },
+    privacy: "private",
+  };
+  const bundle = { ...validResourceBundle(), journeyScope: journeyScopeForState(state), proposals: [proposal] };
+  assert.equal(validateAiImportBundle(bundle), true);
+  const imported = importAiBundle(state, bundle);
+  const applied = applyAiProposal(imported, proposal.id);
+  assert.equal(applied.budget.find((item) => item.id === "rent")?.amount, 393);
+  assert.equal(applied.budget.find((item) => item.id === "rent")?.basis, "confirmed");
+  const undone = undoAiProposal(applied, proposal.id);
+  assert.equal(undone.budget.find((item) => item.id === "rent")?.amount, 0);
+
+  const publicBudget = { ...proposal, id: "proposal-budget-public-run-1", privacy: "shareable" as const };
+  assert.equal(validateAiImportBundle({ ...bundle, proposals: [publicBudget] }), false);
+  const unsupportedAmount = { ...proposal, id: "proposal-budget-unsupported-run-1", value: { amount: 500 } };
+  assert.equal(validateAiImportBundle({ ...bundle, proposals: [unsupportedAmount] }), false);
+});
+
+test("updates a signed-in user's journey through a private reversible proposal", () => {
+  const state = cleanState();
+  const bundle = validResourceBundle();
+  bundle.journeyScope = journeyScopeForState(state);
+  bundle.proposals = [{
+    ...bundle.proposals[0],
+    id: "proposal-journey-run-1",
+    entity: "journey",
+    action: "update",
+    targetId: state.journey.id,
+    value: { hostSchool: "Example University", hostCity: "Tokyo", destinations: ["Japan"], startDate: "2027-09-01", endDate: "2028-01-31" },
+    privacy: "private",
+  }];
+  assert.equal(validateAiImportBundle(bundle), true);
+  const imported = importAiBundle(state, bundle);
+  const applied = applyAiProposal(imported, "proposal-journey-run-1");
+  assert.equal(applied.journey.hostCity, "Tokyo");
+  assert.deepEqual(applied.journey.destinations, ["Japan"]);
+  assert.equal(undoAiProposal(applied, "proposal-journey-run-1").journey.hostCity, state.journey.hostCity);
+});
+
+test("repairs incomplete legacy tasks before the journey page renders", () => {
+  const state = cleanState();
+  state.tasks[0] = { ...state.tasks[0], status: "broken", predecessorIds: undefined, templateKind: "broken" } as unknown as typeof state.tasks[number];
+  const normalized = normalizeImportedState(state);
+  assert.equal(normalized.tasks[0].status, "not-started");
+  assert.deepEqual(normalized.tasks[0].predecessorIds, []);
+  assert.equal(normalized.tasks[0].templateKind, "general");
+});
+
+test("requires onboarding for untouched template journeys but preserves configured users", () => {
+  const blank = normalizeImportedState({ ...cleanState(), setupCompleted: undefined });
+  assert.equal(blank.setupCompleted, false);
+  const configured = normalizeImportedState({
+    ...cleanState(),
+    setupCompleted: undefined,
+    journey: { ...cleanState().journey, hostSchool: "Configured University", hostCity: "Configured City", destinations: ["Configured Country"] },
+  });
+  assert.equal(configured.setupCompleted, true);
+});
+
+test("removes stale proposal history and its unused evidence", () => {
+  const state = cleanState();
+  const now = Date.parse("2027-01-10T12:00:00Z");
+  state.aiInbox = {
+    sources: [
+      { id: "source-old", label: "Old", kind: "school", capturedAt: "2027-01-01" },
+      { id: "source-current", label: "Current", kind: "school", capturedAt: "2027-01-07" },
+    ],
+    proposals: [
+      { ...validResourceBundle().proposals[0], id: "proposal-pending-old", evidenceIds: ["source-old"], createdAt: "2027-01-04T11:59:59Z" },
+      { ...validResourceBundle().proposals[0], id: "proposal-pending-current", evidenceIds: ["source-current"], createdAt: "2027-01-07T12:00:00Z" },
+      { ...validResourceBundle().proposals[0], id: "proposal-applied-old", evidenceIds: ["source-old"], status: "applied", appliedAt: "2027-01-02T11:59:59Z" },
+      { ...validResourceBundle().proposals[0], id: "proposal-applied-current", evidenceIds: ["source-current"], status: "applied", appliedAt: "2027-01-04T12:00:00Z" },
+    ],
+  };
+  const pruned = pruneExpiredAiHistory(state, now);
+  assert.deepEqual(pruned.aiInbox?.proposals.map((proposal) => proposal.id), ["proposal-pending-current", "proposal-applied-current"]);
+  assert.deepEqual(pruned.aiInbox?.sources.map((source) => source.id), ["source-current"]);
+});
+
+test("recognizes an officially documented personal item without inventing a weight", () => {
+  const state = cleanState();
+  state.resources = [{
+    id: "resource-eva-cabin",
+    title: "EVA Air 手提行李與個人物品規定",
+    description: "經濟艙另可帶一件個人物品。",
+    details: "個人物品尺寸為 40 × 30 × 10 cm；官方未另列獨立重量。",
+    category: "交通",
+    type: "official",
+    url: "https://www.evaair.com/example",
+    verifiedAt: "2026-08-11",
+    region: "EVA Air",
+    origin: "ai-research",
+    privacy: "shareable",
+    sourceLabel: "EVA Air 官方網站",
+  }];
+  state.flightAllowances = [{
+    id: "allowance-eva",
+    label: "EVA Air outbound",
+    airline: "EVA Air",
+    segment: "TPE → BKK",
+    checkedMode: "piece",
+    checkedPieceCount: 2,
+    checkedPieceWeightKg: 23,
+    checkedTotalWeightKg: 0,
+    carryOnMode: "piece",
+    carryOnPieceCount: 1,
+    carryOnPieceWeightKg: 7,
+    personalItemMode: "unknown",
+    personalItemPieceCount: 0,
+    personalItemPieceWeightKg: 0,
+    provenance: "ticket",
+    confirmed: false,
+    sourceLabel: "Authorized ticket",
+    verifiedAt: "2026-08-11",
+    notes: "Ticket-confirmed checked and carry-on allowance.",
+  }];
+  const normalized = normalizeImportedState(state);
+  assert.equal(normalized.flightAllowances?.[0].personalItemMode, "piece");
+  assert.equal(normalized.flightAllowances?.[0].personalItemPieceCount, 1);
+  assert.equal(normalized.flightAllowances?.[0].personalItemPieceWeightKg, 0);
+  assert.equal(normalized.flightAllowances?.[0].confirmed, true);
+});
+
+test("derives hidden plain-text search synonyms for resource summaries", () => {
+  const tags = resourceSearchTags({
+    id: "resource-flight",
+    title: "航空公司登機規定",
+    description: "核對手提與托運行李。",
+    details: "出發前依本人機票確認航班、登機箱尺寸及液體限制。",
+    category: "交通",
+    type: "official",
+    url: "https://example.org/baggage",
+    verifiedAt: "2027-01-15",
+    region: "Example",
+    origin: "ai-research",
+    privacy: "shareable",
+    sourceLabel: "Official website",
+  });
+  assert.ok(tags.includes("飛機"));
+  assert.ok(tags.includes("航班"));
+  assert.ok(tags.includes("登機箱"));
+  assert.ok(tags.includes("托運"));
 });
 
 test("requires the import bundle to match the current exchange journey", () => {

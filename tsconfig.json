@@ -27,5 +27,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "db", "examples"]
+  "exclude": ["node_modules", "db", "examples", "supabase/functions"]
 }
