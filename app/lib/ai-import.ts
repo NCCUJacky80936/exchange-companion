@@ -4,7 +4,9 @@ import type {
   AiProposalEntity,
   AppState,
   Bag,
+  BudgetItem,
   FlightAllowance,
+  Journey,
   JourneyTask,
   PackingItem,
   ResourceItem,
@@ -14,7 +16,7 @@ import type {
 } from "./types";
 
 const SOURCE_KINDS = new Set(["official", "school", "city", "email", "file", "video", "research"]);
-const ENTITIES = new Set<AiProposalEntity>(["task", "resource", "resource-intake", "packing-item", "bag", "flight-allowance", "study-event", "travel-plan"]);
+const ENTITIES = new Set<AiProposalEntity>(["journey", "task", "resource", "resource-intake", "packing-item", "bag", "flight-allowance", "budget-item", "study-event", "travel-plan"]);
 const ACTIONS = new Set(["add", "update"]);
 const CONFIDENCE = new Set(["high", "medium", "low"]);
 const PRIVACY = new Set(["private", "shareable"]);
@@ -179,7 +181,25 @@ function validFlightAllowanceSemantics(value: Record<string, unknown>): boolean 
   return checkedValid && cabinValid && personalValid && completenessValid;
 }
 
+function validBudgetSemantics(value: Record<string, unknown>, partial = false): boolean {
+  const amountIsChanging = Object.prototype.hasOwnProperty.call(value, "amount");
+  const basis = value.basis;
+  if (partial && !amountIsChanging && basis === undefined) return true;
+  if (amountIsChanging && Number(value.amount) > 0) {
+    return (basis === "estimate" || basis === "confirmed") && isCurrency(value.currency) && isText(value.sourceLabel, 300) && isDate(value.verifiedAt);
+  }
+  if (basis === "estimate" || basis === "confirmed") return isText(value.sourceLabel, 300) && isDate(value.verifiedAt);
+  return basis === undefined || basis === "unset";
+}
+
 function validatesEntityField(entity: AiProposalEntity, key: string, value: unknown): boolean {
+  if (entity === "journey") {
+    if (["title", "ownerName", "homeCity", "hostCity", "hostSchool", "program"].includes(key)) return isText(value, 300);
+    if (key === "startDate" || key === "endDate") return isDate(value);
+    if (key === "orientationDate") return value === "" || isDate(value);
+    if (key === "destinations") return isStringArray(value) && value.length > 0 && value.every((item) => item.trim().length > 0);
+    return false;
+  }
   if (entity === "task") {
     const textFields = new Set(["title", "description", "phase", "status", "priority", "notes", "sourceLabel", "location", "contactName", "contactInfo", "referenceNumber", "result", "templateKind", "timeZone"]);
     if (key === "id") return isText(value, 160);
@@ -202,7 +222,7 @@ function validatesEntityField(entity: AiProposalEntity, key: string, value: unkn
   if (entity === "resource") {
     if (key === "id") return isText(value, 160);
     if (key === "title") return isText(value, 200);
-    if (["description", "category", "region"].includes(key)) return isText(value, key === "description" ? 4_000 : 200);
+    if (["description", "details", "category", "region"].includes(key)) return isText(value, key === "description" ? 4_000 : key === "details" ? 8_000 : 200);
     if (key === "type") return new Set(["official", "school", "city", "experience", "personal"]).has(String(value));
     if (key === "url") return value === "" || isHttpUrl(value);
     if (key === "verifiedAt") return isDate(value);
@@ -249,6 +269,20 @@ function validatesEntityField(entity: AiProposalEntity, key: string, value: unkn
     if (key === "notes") return typeof value === "string" && value.length <= 4_000;
     return false;
   }
+  if (entity === "budget-item") {
+    if (key === "id") return isText(value, 160);
+    if (key === "name") return isText(value, 200);
+    if (key === "category") return new Set(["housing", "food", "transport", "arrival", "other"]).has(String(value));
+    if (key === "amount") return isNumber(value);
+    if (key === "currency") return isCurrency(value);
+    if (key === "cadence") return new Set(["once", "monthly"]).has(String(value));
+    if (key === "basis") return new Set(["unset", "estimate", "confirmed"]).has(String(value));
+    if (key === "paid") return isBoolean(value);
+    if (key === "notes") return typeof value === "string" && value.length <= 4_000;
+    if (key === "sourceLabel") return typeof value === "string" && value.length <= 300;
+    if (key === "verifiedAt") return value === "" || isDate(value);
+    return false;
+  }
   if (entity === "study-event") {
     if (key === "id") return isText(value, 160);
     if (key === "title") return isText(value, 200);
@@ -277,23 +311,28 @@ function validatesEntityField(entity: AiProposalEntity, key: string, value: unkn
 
 function validatesEntityValue(entity: AiProposalEntity, action: "add" | "update", value: Record<string, unknown>): boolean {
   if (!Object.keys(value).length) return false;
+  if (entity === "journey" && action !== "update") return false;
   if (action === "update" && Object.prototype.hasOwnProperty.call(value, "id")) return false;
-  const required = entity === "task" ? ["id", "title", "description", "phase", "status", "priority", "predecessorIds", "notes"]
-    : entity === "resource" ? ["id", "title", "description", "category", "type", "url", "verifiedAt", "region", "origin", "privacy", "sourceLabel"]
+  const required = entity === "journey" ? []
+    : entity === "task" ? ["id", "title", "description", "phase", "status", "priority", "predecessorIds", "notes"]
+    : entity === "resource" ? ["id", "title", "description", "details", "category", "type", "url", "verifiedAt", "region", "origin", "privacy", "sourceLabel"]
       : entity === "resource-intake" ? ["id", "url", "note", "status", "createdAt"]
         : entity === "packing-item" ? ["id", "name", "category", "decision", "bagId", "quantity", "weightKg", "packed"]
           : entity === "bag" ? ["id", "name", "kind", "limitKg", "limitSource"]
             : entity === "flight-allowance" ? ["id", "label", "airline", "segment", "checkedMode", "checkedPieceCount", "checkedPieceWeightKg", "checkedTotalWeightKg", "carryOnMode", "carryOnPieceCount", "carryOnPieceWeightKg", "personalItemMode", "personalItemPieceCount", "personalItemPieceWeightKg", "provenance", "confirmed", "sourceLabel", "verifiedAt", "notes"]
-              : entity === "study-event" ? ["id", "title", "kind", "startDate", "mandatory", "notes"]
-                : ["id", "kind", "title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days", "travelNotes", "packingItems", "createdAt", "updatedAt"];
+              : entity === "budget-item" ? ["id", "name", "category", "amount", "currency", "cadence", "basis", "paid", "notes", "sourceLabel", "verifiedAt"]
+                : entity === "study-event" ? ["id", "title", "kind", "startDate", "mandatory", "notes"]
+                  : ["id", "kind", "title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days", "travelNotes", "packingItems", "createdAt", "updatedAt"];
   if (action === "add" && !hasKeys(value, required)) return false;
   if (!Object.entries(value).every(([key, field]) => validatesEntityField(entity, key, field))) return false;
+  if (entity === "journey" && typeof value.startDate === "string" && typeof value.endDate === "string" && value.endDate < value.startDate) return false;
   if (entity === "study-event" && typeof value.startDate === "string" && typeof value.endDate === "string" && value.endDate < value.startDate) return false;
   if (entity === "resource" && action === "add") {
     if (value.type !== "personal" && !isHttpUrl(value.url)) return false;
     if (value.type === "personal" && value.privacy !== "private") return false;
   }
   if (entity === "flight-allowance" && action === "add" && !validFlightAllowanceSemantics(value)) return false;
+  if (entity === "budget-item" && !validBudgetSemantics(value, action === "update")) return false;
   if (entity === "travel-plan" && typeof value.startDate === "string" && typeof value.endDate === "string") {
     if (value.endDate < value.startDate) return false;
     if (!validTravelDays(value.days, value.startDate, value.endDate)) return false;
@@ -326,7 +365,9 @@ export function validateAiImportBundle(value: unknown): value is AiImportBundle 
       || (proposal.action === "update" && !isText(proposal.targetId, 160))
       || (proposal.action === "add" && proposal.targetId !== undefined)
       || !validatesEntityValue(proposal.entity as AiProposalEntity, proposal.action as "add" | "update", proposal.value)
+      || (proposal.entity === "journey" && proposal.privacy !== "private")
       || (proposal.entity === "resource-intake" && proposal.privacy !== "private")
+      || (proposal.entity === "budget-item" && proposal.privacy !== "private")
       || (proposal.entity === "resource" && proposal.value.privacy !== undefined && proposal.privacy !== proposal.value.privacy)
       || (proposal.entity === "resource" && proposal.action === "add" && (proposal.value.origin === "manual"
         || (proposal.value.origin === "user-upload" && (proposal.value.privacy !== "private" || !proposal.evidenceIds.some((id) => ["file", "email"].includes(String(sourceMap.get(id)?.kind)))))
@@ -403,12 +444,14 @@ function addOrUpdate<T extends { id: string }>(items: T[], proposal: AiProposal)
 }
 
 function entityItems(state: AppState, entity: AiProposalEntity): Array<{ id: string }> {
+  if (entity === "journey") return [state.journey];
   if (entity === "task") return state.tasks;
   if (entity === "resource") return state.resources;
   if (entity === "resource-intake") return state.resourceIntake ?? [];
   if (entity === "packing-item") return state.packingItems;
   if (entity === "bag") return state.bags;
   if (entity === "flight-allowance") return state.flightAllowances ?? [];
+  if (entity === "budget-item") return state.budget;
   if (entity === "study-event") return state.studyEvents ?? [];
   return state.travelPlans ?? [];
 }
@@ -423,6 +466,7 @@ export function canApplyAiProposal(state: AppState, proposal: AiProposal): { val
   const current = proposal.action === "update" ? items.find((item) => item.id === proposal.targetId) : undefined;
   const prospective = current ? { ...current, ...proposal.value } : proposal.value;
   const evidence = proposal.evidenceIds.map((id) => state.aiInbox?.sources.find((source) => source.id === id)).filter(Boolean);
+  if (proposal.entity === "journey" && typeof prospective.startDate === "string" && typeof prospective.endDate === "string" && prospective.endDate < prospective.startDate) return { valid: false, reason: "交換結束日期早於開始日期。" };
   if (proposal.entity === "study-event" && typeof prospective.startDate === "string" && typeof prospective.endDate === "string" && prospective.endDate < prospective.startDate) return { valid: false, reason: "結束日期早於開始日期。" };
   if (proposal.entity === "travel-plan" && typeof prospective.startDate === "string" && typeof prospective.endDate === "string") {
     if (prospective.endDate < prospective.startDate) return { valid: false, reason: "旅行結束日期早於開始日期。" };
@@ -435,6 +479,8 @@ export function canApplyAiProposal(state: AppState, proposal: AiProposal): { val
   if (proposal.entity === "resource" && prospective.type !== "personal" && !isHttpUrl(prospective.url)) return { valid: false, reason: "公開／官方資源必須保留可開啟的 HTTP(S) 來源。" };
   if (proposal.entity === "resource" && prospective.type === "personal" && prospective.privacy !== "private") return { valid: false, reason: "使用者上傳資料提煉的資源必須保持私人。" };
   if (proposal.entity === "resource-intake" && proposal.privacy !== "private") return { valid: false, reason: "待辨識網址在處理前必須保持私人。" };
+  if (proposal.entity === "budget-item" && proposal.privacy !== "private") return { valid: false, reason: "個人預算提案必須保持私人。" };
+  if (proposal.entity === "budget-item" && !validBudgetSemantics(prospective)) return { valid: false, reason: "預算金額必須附上幣別、依據狀態、來源標籤與查核日期；沒有證據時請保留待設定。" };
   if (proposal.entity === "task" && Array.isArray(prospective.predecessorIds)) {
     const taskIds = new Set(state.tasks.map((task) => task.id));
     if (!prospective.predecessorIds.every((id) => typeof id === "string" && taskIds.has(id))) return { valid: false, reason: "提案包含不存在的前置任務。請先加入前置任務或重新產生提案。" };
@@ -450,12 +496,14 @@ export function applyAiProposal(state: AppState, proposalId: string): AppState {
   const currentEntity = proposal.action === "update" && proposal.targetId
     ? entityItems(state, proposal.entity).find((item) => item.id === proposal.targetId)
     : undefined;
+  if (proposal.entity === "journey") next = { ...next, journey: { ...next.journey, ...proposal.value, id: next.journey.id, kind: next.journey.kind } as Journey };
   if (proposal.entity === "task") next = { ...next, tasks: addOrUpdate<JourneyTask>(next.tasks, proposal) };
   if (proposal.entity === "resource") next = { ...next, resources: addOrUpdate<ResourceItem>(next.resources, proposal) };
   if (proposal.entity === "resource-intake") next = { ...next, resourceIntake: addOrUpdate<ResourceIntake>(next.resourceIntake ?? [], proposal) };
   if (proposal.entity === "packing-item") next = { ...next, packingItems: addOrUpdate<PackingItem>(next.packingItems, proposal) };
   if (proposal.entity === "bag") next = { ...next, bags: addOrUpdate<Bag>(next.bags, proposal) };
   if (proposal.entity === "flight-allowance") next = { ...next, flightAllowances: addOrUpdate<FlightAllowance>(next.flightAllowances ?? [], proposal) };
+  if (proposal.entity === "budget-item") next = { ...next, budget: addOrUpdate<BudgetItem>(next.budget, proposal) };
   if (proposal.entity === "study-event") next = { ...next, studyEvents: addOrUpdate<StudyEvent>(next.studyEvents ?? [], proposal) };
   if (proposal.entity === "travel-plan") next = { ...next, travelPlans: addOrUpdate<TravelPlan>(next.travelPlans ?? [], proposal) };
   return {
@@ -513,12 +561,14 @@ export function undoAiProposal(state: AppState, proposalId: string): AppState {
     ? removeById(items, entityId)
     : restorePatchedFields(items, proposal);
   let next = state;
+  if (proposal.entity === "journey") next = { ...next, journey: restorePatchedFields<Journey>([next.journey], proposal)[0] };
   if (proposal.entity === "task") next = { ...next, tasks: revert(next.tasks) };
   if (proposal.entity === "resource") next = { ...next, resources: revert(next.resources) };
   if (proposal.entity === "resource-intake") next = { ...next, resourceIntake: revert(next.resourceIntake ?? []) };
   if (proposal.entity === "packing-item") next = { ...next, packingItems: revert(next.packingItems) };
   if (proposal.entity === "bag") next = { ...next, bags: revert(next.bags) };
   if (proposal.entity === "flight-allowance") next = { ...next, flightAllowances: revert(next.flightAllowances ?? []) };
+  if (proposal.entity === "budget-item") next = { ...next, budget: revert(next.budget) };
   if (proposal.entity === "study-event") next = { ...next, studyEvents: revert(next.studyEvents ?? []) };
   if (proposal.entity === "travel-plan") next = { ...next, travelPlans: revert(next.travelPlans ?? []) };
   return {

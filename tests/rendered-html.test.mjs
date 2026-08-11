@@ -41,7 +41,7 @@ test("keeps private parent files outside the app bundle", async () => {
   assert.match(component, /localStorage|loadState/);
   assert.match(component, /downloadIcs/);
   assert.match(component, /交給 AI 辨識的網址/);
-  assert.match(component, /packingInspiration/);
+  assert.doesNotMatch(component, /packingInspiration|預載的行李品項靈感|inspiration-links/);
   assert.match(component, /TravelPlanner/);
   assert.match(travelPlanner, /Exchange-aware check/);
   assert.match(travelPlanner, /repeatWeekly/);

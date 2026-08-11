@@ -1,8 +1,15 @@
 import { defaultState } from "./default-data";
-import type { AppState, FlightAllowance } from "./types";
+import { exchangeProfile } from "./profile";
+import type { AppState, BudgetItem, FlightAllowance, JourneyPhase, JourneyTask, Priority, TaskStatus, TaskTemplateKind } from "./types";
 
 const LEGACY_STORAGE_KEY = "exchange-companion:v1";
-const CURRENT_DATA_REVISION = 4;
+const CURRENT_DATA_REVISION = 5;
+const TASK_PHASES = new Set<JourneyPhase>(["admission", "visa", "pre-departure", "arrival-72h", "arrival-2w", "semester", "return"]);
+const TASK_STATUSES = new Set<TaskStatus>(["not-started", "in-progress", "waiting", "done", "not-applicable"]);
+const TASK_PRIORITIES = new Set<Priority>(["high", "medium", "low"]);
+const TASK_TEMPLATES = new Set<TaskTemplateKind>(["general", "flight", "course", "visa", "housing", "payment", "school-admin"]);
+const BUDGET_CATEGORIES = new Set<BudgetItem["category"]>(["housing", "food", "transport", "arrival", "other"]);
+const BUDGET_BASES = new Set<BudgetItem["basis"]>(["unset", "estimate", "confirmed"]);
 
 function journeyStorageKey(): string {
   const journey = defaultState.journey;
@@ -24,6 +31,26 @@ function cloneDefault(): AppState {
   return JSON.parse(JSON.stringify(defaultState)) as AppState;
 }
 
+function normalizeTask(task: JourneyTask, index: number): JourneyTask {
+  const candidate = task as Partial<JourneyTask>;
+  const checklist = Array.isArray(candidate.checklist) ? candidate.checklist.filter((item) => item && typeof item.id === "string" && typeof item.label === "string").map((item) => ({ ...item, done: Boolean(item.done) })) : [];
+  const records = Array.isArray(candidate.records) ? candidate.records.filter((item) => item && typeof item.id === "string" && typeof item.date === "string" && typeof item.note === "string") : [];
+  return {
+    ...candidate,
+    id: typeof candidate.id === "string" && candidate.id ? candidate.id : `recovered-task-${index + 1}`,
+    title: typeof candidate.title === "string" && candidate.title ? candidate.title : "待確認任務",
+    description: typeof candidate.description === "string" ? candidate.description : "",
+    phase: TASK_PHASES.has(candidate.phase as JourneyPhase) ? candidate.phase as JourneyPhase : "pre-departure",
+    status: TASK_STATUSES.has(candidate.status as TaskStatus) ? candidate.status as TaskStatus : "not-started",
+    priority: TASK_PRIORITIES.has(candidate.priority as Priority) ? candidate.priority as Priority : "medium",
+    predecessorIds: Array.isArray(candidate.predecessorIds) ? candidate.predecessorIds.filter((id): id is string => typeof id === "string") : [],
+    notes: typeof candidate.notes === "string" ? candidate.notes : "",
+    templateKind: TASK_TEMPLATES.has(candidate.templateKind as TaskTemplateKind) ? candidate.templateKind : "general",
+    checklist,
+    records,
+  };
+}
+
 function normalizeBags(state: AppState): AppState["bags"] {
   const legacyDefaults = (state.dataRevision ?? 0) < 4
     && state.bags.length === 3
@@ -38,12 +65,24 @@ function normalizeBags(state: AppState): AppState["bags"] {
 }
 
 export function normalizeImportedState(state: AppState): AppState {
-  const normalizedBags = normalizeBags(state);
+  const fallback = cloneDefault();
+  const tasks = Array.isArray(state.tasks) ? state.tasks.map(normalizeTask) : fallback.tasks;
+  const bags = Array.isArray(state.bags) ? state.bags : fallback.bags;
+  const normalizedBags = normalizeBags({ ...state, bags });
+  const travelPlans = Array.isArray(state.travelPlans) ? state.travelPlans : [];
+  const resources = Array.isArray(state.resources) ? state.resources : [];
+  const budget = Array.isArray(state.budget) ? state.budget : fallback.budget;
   return {
     ...state,
     dataRevision: CURRENT_DATA_REVISION,
+    journey: {
+      ...fallback.journey,
+      ...(state.journey ?? {}),
+      destinations: Array.isArray(state.journey?.destinations) ? state.journey.destinations.filter((item): item is string => typeof item === "string") : fallback.journey.destinations,
+    },
+    tasks,
     bags: normalizedBags,
-    travelPlans: (state.travelPlans ?? []).map((plan) => ({
+    travelPlans: travelPlans.map((plan) => ({
       ...plan,
       travelNotes: plan.travelNotes ?? [],
       packingItems: plan.packingItems ?? [],
@@ -55,7 +94,7 @@ export function normalizeImportedState(state: AppState): AppState {
         })),
       })),
     })),
-    studyEvents: state.studyEvents ?? [],
+    studyEvents: Array.isArray(state.studyEvents) ? state.studyEvents : [],
     flightAllowances: (state.flightAllowances ?? []).map((allowance) => {
       const legacy = allowance as FlightAllowance & { carryOnKg?: number; personalItemKg?: number };
       return {
@@ -80,19 +119,38 @@ export function normalizeImportedState(state: AppState): AppState {
         notes: allowance.notes,
       };
     }),
-    resources: state.resources.map((resource) => ({
+    resources: resources.map((resource) => ({
       ...resource,
+      details: resource.details ?? "",
       origin: resource.origin ?? "manual",
       privacy: resource.privacy ?? "private",
       sourceLabel: resource.sourceLabel ?? "舊版手動資料",
     })),
-    resourceIntake: state.resourceIntake ?? [],
+    resourceIntake: Array.isArray(state.resourceIntake) ? state.resourceIntake : [],
+    budget: budget.map((item, index) => {
+      const legacy = item as Partial<BudgetItem>;
+      const fallbackItem = fallback.budget.find((candidate) => candidate.id === legacy.id) ?? fallback.budget[index];
+      const amount = typeof legacy.amount === "number" && Number.isFinite(legacy.amount) && legacy.amount >= 0 ? legacy.amount : 0;
+      return {
+        id: typeof legacy.id === "string" && legacy.id ? legacy.id : `budget-${index + 1}`,
+        name: typeof legacy.name === "string" && legacy.name ? legacy.name : fallbackItem?.name ?? "其他預算",
+        category: BUDGET_CATEGORIES.has(legacy.category as BudgetItem["category"]) ? legacy.category as BudgetItem["category"] : fallbackItem?.category ?? "other",
+        amount,
+        currency: typeof legacy.currency === "string" && /^[A-Z]{3}$/.test(legacy.currency) ? legacy.currency : exchangeProfile.primaryCurrency,
+        cadence: legacy.cadence === "once" || legacy.cadence === "monthly" ? legacy.cadence : fallbackItem?.cadence ?? "once",
+        basis: BUDGET_BASES.has(legacy.basis as BudgetItem["basis"]) ? legacy.basis as BudgetItem["basis"] : amount > 0 ? "estimate" : "unset",
+        paid: Boolean(legacy.paid),
+        notes: typeof legacy.notes === "string" ? legacy.notes : "",
+        sourceLabel: typeof legacy.sourceLabel === "string" ? legacy.sourceLabel : amount > 0 ? "舊版手動紀錄" : "",
+        verifiedAt: typeof legacy.verifiedAt === "string" ? legacy.verifiedAt : "",
+      };
+    }),
     aiInbox: state.aiInbox ?? { sources: [], proposals: [] },
   };
 }
 
-export function loadState(): AppState {
-  if (typeof window === "undefined") return cloneDefault();
+export function loadState(useLocalStorage = true): AppState {
+  if (typeof window === "undefined" || !useLocalStorage) return cloneDefault();
   try {
     const key = journeyStorageKey();
     let raw = window.localStorage.getItem(key);

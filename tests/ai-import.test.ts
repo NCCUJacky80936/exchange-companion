@@ -15,6 +15,8 @@ import {
 } from "../app/lib/ai-import";
 import { defaultState } from "../app/lib/default-data";
 import { evaluateBaggageAllowances } from "../app/lib/baggage";
+import { createExchangeConciergeHandoff } from "../app/lib/concierge-handoff";
+import { normalizeImportedState } from "../app/lib/storage";
 import type { AiImportBundle, AiProposal, AppState } from "../app/lib/types";
 
 function validResourceBundle(): AiImportBundle {
@@ -39,6 +41,7 @@ function validResourceBundle(): AiImportBundle {
         id: "resource-city-newcomer-guide",
         title: "City newcomer guide",
         description: "Official arrival information.",
+        details: "Applies to newly arrived exchange students. Check the required registration steps, documents, deadline, and office instructions on the current official page before visiting.",
         category: "arrival",
         type: "city",
         url: "https://example.org/newcomers",
@@ -64,6 +67,87 @@ test("accepts a complete, reviewable resource proposal", () => {
   const bundle = validResourceBundle();
   assert.equal(validateAiImportBundle(bundle), true);
   assert.deepEqual(canApplyAiProposal(cleanState(), bundle.proposals[0]), { valid: true });
+});
+
+test("exports a self-describing handoff with first-use setup locked for routine updates", () => {
+  const state = cleanState();
+  const handoff = createExchangeConciergeHandoff(state, "2027-01-15T12:00:00+08:00");
+  assert.equal(handoff.kind, "exchange-companion-handoff");
+  assert.equal(handoff.journeyScope, journeyScopeForState(state));
+  assert.equal(handoff.agentContract.requiredSkill, "$exchange-concierge");
+  assert.equal(handoff.agentContract.emailSkill, "$exchange-email-intake");
+  assert.equal(handoff.agentContract.importContract.proposalStatus, "pending");
+  assert.equal(handoff.agentContract.initializer, ".agents/skills/exchange-concierge/scripts/initialize_import_bundle.py");
+  assert.equal(handoff.outputTemplate.journeyScope, journeyScopeForState(state));
+  assert.deepEqual(handoff.outputTemplate.sources, []);
+  assert.deepEqual(handoff.outputTemplate.proposals, []);
+  assert.equal(handoff.setupSnapshot.lockedForRoutineReconciliation, true);
+  assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "base-budget")?.proposalEntity, "budget-item");
+  assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("days[].activities[].mapsUrl"), true);
+  assert.equal(handoff.state, state);
+});
+
+test("applies and safely undoes a private evidence-backed base-budget proposal", () => {
+  const state = cleanState();
+  const proposal: AiProposal = {
+    ...validResourceBundle().proposals[0],
+    id: "proposal-budget-rent-run-1",
+    entity: "budget-item",
+    action: "update",
+    targetId: "rent",
+    value: {
+      amount: 393,
+      currency: "EUR",
+      basis: "confirmed",
+      sourceLabel: "Authorized housing contract",
+      verifiedAt: "2027-01-15",
+      notes: "Monthly rent confirmed; private identifiers removed.",
+    },
+    privacy: "private",
+  };
+  const bundle = { ...validResourceBundle(), journeyScope: journeyScopeForState(state), proposals: [proposal] };
+  assert.equal(validateAiImportBundle(bundle), true);
+  const imported = importAiBundle(state, bundle);
+  const applied = applyAiProposal(imported, proposal.id);
+  assert.equal(applied.budget.find((item) => item.id === "rent")?.amount, 393);
+  assert.equal(applied.budget.find((item) => item.id === "rent")?.basis, "confirmed");
+  const undone = undoAiProposal(applied, proposal.id);
+  assert.equal(undone.budget.find((item) => item.id === "rent")?.amount, 0);
+
+  const publicBudget = { ...proposal, id: "proposal-budget-public-run-1", privacy: "shareable" as const };
+  assert.equal(validateAiImportBundle({ ...bundle, proposals: [publicBudget] }), false);
+  const unsupportedAmount = { ...proposal, id: "proposal-budget-unsupported-run-1", value: { amount: 500 } };
+  assert.equal(validateAiImportBundle({ ...bundle, proposals: [unsupportedAmount] }), false);
+});
+
+test("updates a signed-in user's journey through a private reversible proposal", () => {
+  const state = cleanState();
+  const bundle = validResourceBundle();
+  bundle.journeyScope = journeyScopeForState(state);
+  bundle.proposals = [{
+    ...bundle.proposals[0],
+    id: "proposal-journey-run-1",
+    entity: "journey",
+    action: "update",
+    targetId: state.journey.id,
+    value: { hostSchool: "Example University", hostCity: "Tokyo", destinations: ["Japan"], startDate: "2027-09-01", endDate: "2028-01-31" },
+    privacy: "private",
+  }];
+  assert.equal(validateAiImportBundle(bundle), true);
+  const imported = importAiBundle(state, bundle);
+  const applied = applyAiProposal(imported, "proposal-journey-run-1");
+  assert.equal(applied.journey.hostCity, "Tokyo");
+  assert.deepEqual(applied.journey.destinations, ["Japan"]);
+  assert.equal(undoAiProposal(applied, "proposal-journey-run-1").journey.hostCity, state.journey.hostCity);
+});
+
+test("repairs incomplete legacy tasks before the journey page renders", () => {
+  const state = cleanState();
+  state.tasks[0] = { ...state.tasks[0], status: "broken", predecessorIds: undefined, templateKind: "broken" } as unknown as typeof state.tasks[number];
+  const normalized = normalizeImportedState(state);
+  assert.equal(normalized.tasks[0].status, "not-started");
+  assert.deepEqual(normalized.tasks[0].predecessorIds, []);
+  assert.equal(normalized.tasks[0].templateKind, "general");
 });
 
 test("requires the import bundle to match the current exchange journey", () => {

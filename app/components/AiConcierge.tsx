@@ -4,15 +4,18 @@ import { Check, Copy, ExternalLink, FileCheck2, Inbox, LockKeyhole, RotateCcw, S
 import Image from "next/image";
 import { useMemo, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react";
 import { applyAiProposal, canApplyAiProposal, canUndoAiProposal, clearDismissedAiProposals, dismissAiProposal, findAiBundleCollisions, importAiBundle, journeyScopeForState, matchesAiJourneyScope, sensitiveBundleWarnings, undoAiProposal, validateAiImportBundle } from "../lib/ai-import";
+import { createExchangeConciergeHandoff } from "../lib/concierge-handoff";
 import type { AiProposal, AppState } from "../lib/types";
 
 const entityLabel = {
+  journey: "交換基本資料",
   task: "交換任務",
   resource: "資源",
   "resource-intake": "待辨識網址",
   "packing-item": "行李",
   bag: "行李額度",
   "flight-allowance": "本人機票行李規則",
+  "budget-item": "基礎預算",
   "study-event": "個人行程",
   "travel-plan": "旅行",
 };
@@ -20,14 +23,16 @@ const entityLabel = {
 const confidenceLabel = { high: "高可信", medium: "待確認", low: "線索" };
 
 function proposalTarget(state: AppState, proposal: AiProposal): Record<string, unknown> | undefined {
-  const items = proposal.entity === "task" ? state.tasks
+  const items = proposal.entity === "journey" ? [state.journey]
+    : proposal.entity === "task" ? state.tasks
     : proposal.entity === "resource" ? state.resources
       : proposal.entity === "resource-intake" ? state.resourceIntake ?? []
         : proposal.entity === "packing-item" ? state.packingItems
         : proposal.entity === "bag" ? state.bags
           : proposal.entity === "flight-allowance" ? state.flightAllowances ?? []
-            : proposal.entity === "study-event" ? state.studyEvents ?? []
-              : state.travelPlans ?? [];
+            : proposal.entity === "budget-item" ? state.budget
+              : proposal.entity === "study-event" ? state.studyEvents ?? []
+                : state.travelPlans ?? [];
   return items.find((item) => item.id === proposal.targetId) as unknown as Record<string, unknown> | undefined;
 }
 
@@ -47,14 +52,17 @@ export default function AiConcierge({ state, setState }: { state: AppState; setS
   const pending = inbox.proposals.filter((proposal) => proposal.status === "pending");
   const applied = inbox.proposals.filter((proposal) => proposal.status === "applied");
   const dismissedCount = inbox.proposals.filter((proposal) => proposal.status === "dismissed").length;
+  const pendingByEntity = useMemo(() => pending.reduce<Record<string, number>>((counts, proposal) => ({ ...counts, [proposal.entity]: (counts[proposal.entity] ?? 0) + 1 }), {}), [pending]);
 
   async function importBundle(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    let incomingScope = "";
     try {
       if (file.size > 2_000_000) throw new Error("too-large");
       const parsed = JSON.parse(await file.text()) as unknown;
       if (!validateAiImportBundle(parsed)) throw new Error("invalid");
+      incomingScope = parsed.journeyScope;
       if (!matchesAiJourneyScope(state, parsed)) throw new Error("scope-mismatch");
       const collisions = findAiBundleCollisions(state, parsed);
       if (collisions.length) throw new Error("collision");
@@ -69,17 +77,46 @@ export default function AiConcierge({ state, setState }: { state: AppState; setS
       setMessage(error instanceof Error && error.message === "collision"
         ? "這份檔案含有已存在的來源或提案 ID；為保留審核歷史，請重新產生 run-versioned IDs。"
         : error instanceof Error && error.message === "scope-mismatch"
-          ? `這份提案屬於另一趟交換，未匯入。目前旅程範圍是：${journeyScopeForState(state)}。`
+          ? `旅程識別不一致，未匯入。收到：${incomingScope}。目前：${journeyScopeForState(state)}。請讓 AI 從交接檔的 outputTemplate 重新產生，不能沿用範例或舊輸出。`
           : "無法讀取這份提案；請使用 Exchange Concierge 產生並驗證的 JSON。 ");
     } finally {
       event.target.value = "";
     }
   }
 
-  async function copyPrompt() {
-    await navigator.clipboard.writeText("請使用 exchange-concierge Skill，讀取我提供的最新 Exchange Companion JSON 備份，整理其中私人待辨識網址、我另行授權的交換資料與最新官方來源，產生可匯入的提案檔；先不要直接套用。");
+  async function prepareHandoff() {
+    const date = new Date().toISOString().slice(0, 10);
+    const filename = `exchange-concierge-input-${date}.json`;
+    const handoff = createExchangeConciergeHandoff(state);
+    const blob = new Blob([JSON.stringify(handoff, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    const prompt = `請使用 $exchange-concierge 處理我附上的 ${filename}，並依檔案內 agentContract 與 editableSurfaces 執行。這是網站最新、完整的私人手帳交接檔；目前狀態在 state。開始前必須從檔案內 outputTemplate 建立全新的輸出，或執行 agentContract.initializer；不得沿用 outputs/、tests/fixtures/、範例或舊任務的根欄位，且必須原封不動保留 outputTemplate.journeyScope。請只讀取我另外明確授權的信件、檔案、網址與行事曆；需要搜尋信件時先使用 $exchange-email-intake 確認目前使用者的精確授權範圍。完整檢查任務進度、基礎預算、重要資源、行李、本人機票額度、課程／考試與旅行衝突。處理所有 pending resourceIntake；每筆資源都要提供精簡摘要與包含適用對象、準備資料、操作步驟、期限及風險的詳細說明。行李經驗影片只作為找漏項的內部靈感，把結果融入 packing-item 提案，不要呈現影片、頻道或宣傳連結。setupSnapshot 是第一次建站的鎖定背景，不要在日常整理時重做國家、幣別、時區、固定文案或圖片。產生 outputs/exchange-companion-import.json 後，必須把同一份 ${filename} 當驗證器第二個參數；驗證通過才可交付。不要直接改網站或覆蓋手動紀錄。最後列出各頁有更新、無新證據與仍待確認的項目。`;
+    try { await navigator.clipboard.writeText(prompt); } catch { /* The downloaded handoff remains usable when clipboard permission is blocked. */ }
     setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+    setMessage(`已下載 ${filename}，也已準備給 Codex 的完整指令。把檔案附到同一個 Codex 任務即可開始。`);
+    window.setTimeout(() => setCopied(false), 2200);
+  }
+
+  function applyAllPending() {
+    if (!pending.some((proposal) => canApplyAiProposal(state, proposal).valid)) return;
+    if (!window.confirm(`要依前置關係一次套用目前可用的提案嗎？仍可在下方逐筆復原；格式或依據不足的項目會留在待確認區。`)) return;
+    const proposalIds = pending.map((proposal) => proposal.id);
+    setState((current) => {
+      let next = current;
+      for (let pass = 0; pass < proposalIds.length; pass += 1) {
+        const before = next.aiInbox?.proposals.filter((proposal) => proposal.status === "applied").length ?? 0;
+        proposalIds.forEach((id) => { next = applyAiProposal(next, id); });
+        const after = next.aiInbox?.proposals.filter((proposal) => proposal.status === "applied").length ?? 0;
+        if (after === before) break;
+      }
+      return next;
+    });
+    setMessage("已依前置關係套用所有可用提案；交換基本資料、任務、基礎預算、資源與行李會同步更新，未通過檢查的項目仍留在待確認區。");
   }
 
   return (
@@ -93,9 +130,9 @@ export default function AiConcierge({ state, setState }: { state: AppState; setS
         <article className="paper-card ai-start-card">
           <span className="tape" />
           <div className="ai-card-heading"><Sparkles size={25} /><div><p className="eyebrow">Free AI workflow</p><h2>從 Codex 開始整理</h2></div></div>
-          <p>公開網站不內建付費模型。請在這個專案執行 Exchange Concierge，Codex 會整理信件、檔案與官方來源，最後產生一份不含原始敏感文件的提案檔。</p>
-          <ol className="ai-steps"><li><strong>1</strong><span>指定可讀的資料與信箱範圍</span></li><li><strong>2</strong><span>AI 查核、比對並標示可信度</span></li><li><strong>3</strong><span>回到網站逐項套用或忽略</span></li></ol>
-          <button className="button primary" onClick={copyPrompt}><Copy size={17} />{copied ? "已複製啟動指令" : "複製給 Codex 的指令"}</button>
+          <p>公開網站不內建付費模型。這個按鈕會下載自我說明的私人交接檔，包含目前進度、基礎預算、旅行巢狀欄位與 Skill 入口；第一次建站的國家、幣別和視覺只作為鎖定背景，不會每次重做。</p>
+          <ol className="ai-steps"><li><strong>1</strong><span>下載最新手帳交接檔並附給 Codex</span></li><li><strong>2</strong><span>Exchange Concierge 查核授權資料與最新來源</span></li><li><strong>3</strong><span>把產生的提案 JSON 匯回網站審閱</span></li></ol>
+          <button className="button primary" onClick={() => void prepareHandoff()}><Copy size={17} />{copied ? "交接檔與指令已準備" : "準備給 Codex 的整理包"}</button>
         </article>
 
         <article className="paper-card ai-import-card">
@@ -110,7 +147,7 @@ export default function AiConcierge({ state, setState }: { state: AppState; setS
       </section>
 
       <section className="proposal-section">
-        <div className="section-heading"><div><p className="eyebrow">Suggested updates</p><h2>待確認提案</h2></div><div className="proposal-heading-actions">{dismissedCount ? <button className="button text-button" onClick={() => setState(clearDismissedAiProposals)}>清除 {dismissedCount} 個已忽略提案</button> : null}<span className="count-badge">{pending.length}</span></div></div>
+        <div className="section-heading"><div><p className="eyebrow">Suggested updates</p><h2>待確認提案</h2>{pending.length ? <div className="proposal-coverage">{Object.entries(pendingByEntity).map(([entity, count]) => <span key={entity}>{entityLabel[entity as keyof typeof entityLabel]} {count}</span>)}</div> : null}</div><div className="proposal-heading-actions">{dismissedCount ? <button className="button text-button" onClick={() => setState(clearDismissedAiProposals)}>清除 {dismissedCount} 個已忽略提案</button> : null}{pending.some((proposal) => canApplyAiProposal(state, proposal).valid) ? <button className="button primary batch-apply" onClick={applyAllPending}><Check size={16} />套用全部可用提案</button> : null}<span className="count-badge">{pending.length}</span></div></div>
         {pending.length ? <div className="proposal-list">{pending.map((proposal) => {
           const sources = proposal.evidenceIds.map((id) => sourceMap.get(id)).filter(Boolean);
           const current = proposalTarget(state, proposal);

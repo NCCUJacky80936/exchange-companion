@@ -112,6 +112,7 @@ export interface ResourceItem {
   id: string;
   title: string;
   description: string;
+  details: string;
   category: string;
   type: "official" | "school" | "city" | "experience" | "personal";
   url: string;
@@ -133,9 +134,15 @@ export interface ResourceIntake {
 export interface BudgetItem {
   id: string;
   name: string;
+  category: "housing" | "food" | "transport" | "arrival" | "other";
   amount: number;
+  currency: string;
   cadence: "once" | "monthly";
+  basis: "unset" | "estimate" | "confirmed";
   paid: boolean;
+  notes: string;
+  sourceLabel: string;
+  verifiedAt: string;
 }
 
 export type TravelActivityKind = "place" | "food" | "transport" | "stay" | "note";
@@ -217,7 +224,7 @@ export interface TravelShareLink {
 }
 
 export type EvidenceKind = "official" | "school" | "city" | "email" | "file" | "video" | "research";
-export type AiProposalEntity = "task" | "resource" | "resource-intake" | "packing-item" | "bag" | "flight-allowance" | "study-event" | "travel-plan";
+export type AiProposalEntity = "journey" | "task" | "resource" | "resource-intake" | "packing-item" | "bag" | "flight-allowance" | "budget-item" | "study-event" | "travel-plan";
 export type AiProposalStatus = "pending" | "applied" | "dismissed";
 
 export interface EvidenceSource {

@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 
 SOURCE_KINDS = {"official", "school", "city", "email", "file", "video", "research"}
-ENTITIES = {"task", "resource", "resource-intake", "packing-item", "bag", "flight-allowance", "study-event", "travel-plan"}
+ENTITIES = {"journey", "task", "resource", "resource-intake", "packing-item", "bag", "flight-allowance", "budget-item", "study-event", "travel-plan"}
 CONFIDENCE = {"high", "medium", "low"}
 PRIVACY = {"private", "shareable"}
 ROOT_FIELDS = {"schemaVersion", "generatedAt", "journeyScope", "sources", "proposals"}
@@ -25,32 +25,38 @@ TRAVEL_DAY_FIELDS = {"id", "date", "title", "activities"}
 TRAVEL_NOTE_FIELDS = {"id", "title", "details", "category", "important"}
 TRAVEL_PACKING_FIELDS = {"id", "name", "category", "quantity", "packed", "notes"}
 ENTITY_ARRAYS = {
+    "journey": "journey",
     "task": "tasks",
     "resource": "resources",
     "resource-intake": "resourceIntake",
     "packing-item": "packingItems",
     "bag": "bags",
     "flight-allowance": "flightAllowances",
+    "budget-item": "budget",
     "study-event": "studyEvents",
     "travel-plan": "travelPlans",
 }
 REQUIRED_ADD_FIELDS = {
+    "journey": set(),
     "task": {"id", "title", "description", "phase", "status", "priority", "predecessorIds", "notes"},
-    "resource": {"id", "title", "description", "category", "type", "url", "verifiedAt", "region", "origin", "privacy", "sourceLabel"},
+    "resource": {"id", "title", "description", "details", "category", "type", "url", "verifiedAt", "region", "origin", "privacy", "sourceLabel"},
     "resource-intake": {"id", "url", "note", "status", "createdAt"},
     "packing-item": {"id", "name", "category", "decision", "bagId", "quantity", "weightKg", "packed"},
     "bag": {"id", "name", "kind", "limitKg", "limitSource"},
     "flight-allowance": {"id", "label", "airline", "segment", "checkedMode", "checkedPieceCount", "checkedPieceWeightKg", "checkedTotalWeightKg", "carryOnMode", "carryOnPieceCount", "carryOnPieceWeightKg", "personalItemMode", "personalItemPieceCount", "personalItemPieceWeightKg", "provenance", "confirmed", "sourceLabel", "verifiedAt", "notes"},
+    "budget-item": {"id", "name", "category", "amount", "currency", "cadence", "basis", "paid", "notes", "sourceLabel", "verifiedAt"},
     "study-event": {"id", "title", "kind", "startDate", "mandatory", "notes"},
     "travel-plan": {"id", "kind", "title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days", "travelNotes", "packingItems", "createdAt", "updatedAt"},
 }
 ALLOWED_FIELDS = {
+    "journey": {"title", "ownerName", "homeCity", "hostCity", "hostSchool", "program", "startDate", "endDate", "orientationDate", "destinations"},
     "task": {"id", "title", "description", "phase", "status", "priority", "dueDate", "predecessorIds", "notes", "sourceLabel", "sourceUrl", "verifiedAt", "templateKind", "scheduledAt", "timeZone", "location", "contactName", "contactInfo", "referenceNumber", "cost", "currency", "checklist", "records", "result"},
-    "resource": {"id", "title", "description", "category", "type", "url", "verifiedAt", "region", "origin", "privacy", "sourceLabel"},
+    "resource": {"id", "title", "description", "details", "category", "type", "url", "verifiedAt", "region", "origin", "privacy", "sourceLabel"},
     "resource-intake": {"id", "url", "note", "status", "createdAt"},
     "packing-item": {"id", "name", "category", "decision", "bagId", "quantity", "weightKg", "packed", "warning"},
     "bag": {"id", "name", "kind", "limitKg", "limitSource"},
     "flight-allowance": {"id", "label", "airline", "segment", "checkedMode", "checkedPieceCount", "checkedPieceWeightKg", "checkedTotalWeightKg", "carryOnMode", "carryOnPieceCount", "carryOnPieceWeightKg", "personalItemMode", "personalItemPieceCount", "personalItemPieceWeightKg", "provenance", "confirmed", "sourceLabel", "verifiedAt", "notes"},
+    "budget-item": {"id", "name", "category", "amount", "currency", "cadence", "basis", "paid", "notes", "sourceLabel", "verifiedAt"},
     "study-event": {"id", "title", "kind", "startDate", "endDate", "startTime", "repeatWeekly", "mandatory", "notes"},
     "travel-plan": {"id", "kind", "title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days", "travelNotes", "packingItems", "createdAt", "updatedAt"},
 }
@@ -216,8 +222,30 @@ def valid_flight_allowance_semantics(value: dict[str, object]) -> bool:
     return checked_valid and cabin_valid and personal_valid and complete_if_confirmed
 
 
+def valid_budget_semantics(value: dict[str, object], partial: bool = False) -> bool:
+    amount_is_changing = "amount" in value
+    basis = value.get("basis")
+    if partial and not amount_is_changing and basis is None:
+        return True
+    if amount_is_changing and nonnegative_number(value.get("amount")) and value["amount"] > 0:
+        return basis in {"estimate", "confirmed"} and isinstance(value.get("currency"), str) and bool(re.fullmatch(r"[A-Z]{3}", value["currency"])) and nonempty_text(value.get("sourceLabel"), 300) and valid_date(value.get("verifiedAt"))
+    if basis in {"estimate", "confirmed"}:
+        return nonempty_text(value.get("sourceLabel"), 300) and valid_date(value.get("verifiedAt"))
+    return basis in {None, "unset"}
+
+
 def validate_field(entity: str, key: str, value: object) -> bool:
     if key not in ALLOWED_FIELDS[entity]:
+        return False
+    if entity == "journey":
+        if key in {"title", "ownerName", "homeCity", "hostCity", "hostSchool", "program"}:
+            return nonempty_text(value, 300)
+        if key in {"startDate", "endDate"}:
+            return valid_date(value)
+        if key == "orientationDate":
+            return value == "" or valid_date(value)
+        if key == "destinations":
+            return isinstance(value, list) and bool(value) and all(nonempty_text(item, 200) for item in value)
         return False
     if key == "id":
         return nonempty_text(value, 160)
@@ -253,8 +281,8 @@ def validate_field(entity: str, key: str, value: object) -> bool:
     if entity == "resource":
         if key == "title":
             return nonempty_text(value, 200)
-        if key in {"description", "category", "region"}:
-            return nonempty_text(value, 4000 if key == "description" else 200)
+        if key in {"description", "details", "category", "region"}:
+            return nonempty_text(value, 4000 if key == "description" else 8000 if key == "details" else 200)
         if key == "type":
             return value in {"official", "school", "city", "experience", "personal"}
         if key == "url":
@@ -315,6 +343,27 @@ def validate_field(entity: str, key: str, value: object) -> bool:
             return valid_date(value)
         if key == "notes":
             return isinstance(value, str) and len(value) <= 4000
+    if entity == "budget-item":
+        if key == "name":
+            return nonempty_text(value, 200)
+        if key == "category":
+            return value in {"housing", "food", "transport", "arrival", "other"}
+        if key == "amount":
+            return nonnegative_number(value)
+        if key == "currency":
+            return isinstance(value, str) and bool(re.fullmatch(r"[A-Z]{3}", value))
+        if key == "cadence":
+            return value in {"once", "monthly"}
+        if key == "basis":
+            return value in {"unset", "estimate", "confirmed"}
+        if key == "paid":
+            return isinstance(value, bool)
+        if key == "notes":
+            return isinstance(value, str) and len(value) <= 4000
+        if key == "sourceLabel":
+            return isinstance(value, str) and len(value) <= 300
+        if key == "verifiedAt":
+            return value == "" or valid_date(value)
     if entity == "study-event":
         if key == "title":
             return nonempty_text(value, 200)
@@ -357,6 +406,8 @@ def validate_field(entity: str, key: str, value: object) -> bool:
 def validate_entity_value(entity: str, action: str, value: dict[str, object], index: int) -> None:
     if not value:
         fail(f"proposals[{index}].value must not be empty")
+    if entity == "journey" and action != "update":
+        fail(f"proposals[{index}] journey only supports update")
     if action == "update":
         if "id" in value:
             fail(f"proposals[{index}] update value must not replace id")
@@ -366,6 +417,8 @@ def validate_entity_value(entity: str, action: str, value: dict[str, object], in
     invalid = [key for key, field in value.items() if not validate_field(entity, key, field)]
     if invalid:
         fail(f"proposals[{index}] has invalid or unsupported value fields: {invalid}")
+    if entity == "budget-item" and not valid_budget_semantics(value, action == "update"):
+        fail(f"proposals[{index}] budget amount needs currency, basis, sourceLabel, and verifiedAt")
     if action == "update":
         if entity == "study-event" and isinstance(value.get("startDate"), str) and isinstance(value.get("endDate"), str) and value["endDate"] < value["startDate"]:
             fail(f"proposals[{index}] study-event endDate precedes startDate")
@@ -399,6 +452,20 @@ def journey_scope_for_state(state: dict[str, object]) -> str:
     if not all(isinstance(item, str) for item in fields):
         fail("state.journey is missing fields required for journeyScope")
     return ":".join(["exchange", *fields])
+
+
+def unwrap_state_document(document: object) -> dict[str, object]:
+    if not isinstance(document, dict):
+        fail("current state must be a JSON object")
+    if document.get("kind") != "exchange-companion-handoff":
+        return document
+    if document.get("schemaVersion") != 1 or not isinstance(document.get("state"), dict):
+        fail("handoff schemaVersion/state is invalid")
+    state = document["state"]
+    expected_scope = journey_scope_for_state(state)
+    if document.get("journeyScope") != expected_scope:
+        fail("handoff journeyScope does not match handoff.state")
+    return state
 
 
 def validate(path: Path, state_path: Path | None = None) -> dict[str, int]:
@@ -440,14 +507,14 @@ def validate(path: Path, state_path: Path | None = None) -> dict[str, int]:
         source_ids.add(source["id"])
     source_by_id = {source["id"]: source for source in sources}
 
-    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path else None
+    state = unwrap_state_document(json.loads(state_path.read_text(encoding="utf-8"))) if state_path else None
     state_ids: dict[str, set[str]] = {}
     state_items: dict[str, dict[str, dict[str, object]]] = {}
     existing_source_ids: set[str] = set()
     existing_proposal_ids: set[str] = set()
     if state is not None:
         for entity, key in ENTITY_ARRAYS.items():
-            items = state.get(key, []) or []
+            items = [state.get(key)] if entity == "journey" else (state.get(key, []) or [])
             if not isinstance(items, list):
                 fail(f"state.{key} must be an array")
             state_ids[entity] = {item["id"] for item in items if isinstance(item, dict) and isinstance(item.get("id"), str)}
@@ -496,6 +563,8 @@ def validate(path: Path, state_path: Path | None = None) -> dict[str, int]:
         if not isinstance(value, dict):
             fail(f"proposals[{index}].value must be an object")
         validate_entity_value(proposal["entity"], proposal["action"], value, index)
+        if proposal["entity"] == "journey" and proposal["privacy"] != "private":
+            fail(f"proposals[{index}] journey updates must stay private")
         evidence_ids = proposal.get("evidenceIds")
         if not isinstance(evidence_ids, list) or not evidence_ids or not all(isinstance(item, str) for item in evidence_ids):
             fail(f"proposals[{index}] needs string evidenceIds")
@@ -505,6 +574,8 @@ def validate(path: Path, state_path: Path | None = None) -> dict[str, int]:
         evidence_sources = [source_by_id[item] for item in evidence_ids]
         if proposal["entity"] == "resource-intake" and proposal["privacy"] != "private":
             fail(f"proposals[{index}] resource-intake must stay private")
+        if proposal["entity"] == "budget-item" and proposal["privacy"] != "private":
+            fail(f"proposals[{index}] budget-item must stay private")
         if proposal["entity"] == "resource":
             if value.get("privacy") != proposal["privacy"]:
                 fail(f"proposals[{index}] resource privacy must match proposal privacy")
@@ -538,6 +609,10 @@ def validate(path: Path, state_path: Path | None = None) -> dict[str, int]:
             prospective = {**state_items[proposal["entity"]][proposal["targetId"]], **value}
         if proposal["entity"] == "study-event" and isinstance(prospective.get("startDate"), str) and isinstance(prospective.get("endDate"), str) and prospective["endDate"] < prospective["startDate"]:
             fail(f"proposals[{index}] study-event endDate precedes startDate")
+        if proposal["entity"] == "journey" and isinstance(prospective.get("startDate"), str) and isinstance(prospective.get("endDate"), str) and prospective["endDate"] < prospective["startDate"]:
+            fail(f"proposals[{index}] journey endDate precedes startDate")
+        if proposal["entity"] == "budget-item" and not valid_budget_semantics(prospective):
+            fail(f"proposals[{index}] budget amount lacks a confirmed or estimated basis")
         if proposal["entity"] == "travel-plan" and isinstance(prospective.get("startDate"), str) and isinstance(prospective.get("endDate"), str):
             if prospective["endDate"] < prospective["startDate"]:
                 fail(f"proposals[{index}] travel-plan endDate precedes startDate")

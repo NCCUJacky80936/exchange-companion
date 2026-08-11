@@ -1,4 +1,4 @@
 interface:
   display_name: "Exchange Concierge"
   short_description: "整理授權資料與官方證據，產生可審核的交換手帳更新提案"
-  default_prompt: "Use $exchange-concierge to reconcile my authorized exchange evidence and create a reviewable import bundle."
+  default_prompt: "Use $exchange-concierge with my latest self-describing website handoff JSON as the current progress source of truth. Use $exchange-email-intake only within my explicit mailbox scope, then reconcile journey, tasks, base budget, resources, packing and ticket allowances, study events, travel conflicts, and pending URLs into a private reviewable import bundle without changing first-use visuals or overwriting manual edits."

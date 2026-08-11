@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
+import Link from "next/link";
 import {
   type ChangeEvent,
   type FormEvent,
@@ -44,14 +45,16 @@ import {
 } from "react";
 import { downloadIcs, googleCalendarUrl } from "../lib/calendar";
 import { bagWeightMap, evaluateBaggageAllowances } from "../lib/baggage";
+import { cloudIsConfigured } from "../lib/cloud";
 import { phaseMeta } from "../lib/default-data";
-import { packingInspiration } from "../lib/packing-inspiration";
 import { exchangeCurrencies, exchangeProfile, exchangeTimeZones } from "../lib/profile";
 import { loadState, normalizeImportedState, resetState, saveState, validateImport } from "../lib/storage";
 import { useExchangeCloud, type ExchangeCloudController } from "../lib/useExchangeCloud";
+import AuthGate from "./AuthGate";
 import type {
   AppState,
   Bag,
+  BudgetItem,
   FlightAllowance,
   JourneyPhase,
   JourneyTask,
@@ -72,6 +75,24 @@ function SectionFallback() {
   return <div className="section-fallback" role="status"><span className="brand-stamp">{exchangeProfile.hostCountryCode}</span><strong>正在打開手帳頁面…</strong></div>;
 }
 
+function GuestTravelShell({ state, setState, cloud }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; cloud: ExchangeCloudController }) {
+  const guestState = useMemo<AppState>(() => ({
+    ...state,
+    tasks: [],
+    resources: [],
+    resourceIntake: [],
+    packingItems: [],
+    flightAllowances: [],
+    budget: [],
+    emergencyContact: "",
+    studyEvents: [],
+    aiInbox: { sources: [], proposals: [] },
+    travelPlans: (state.travelPlans ?? []).filter((plan) => plan.id === cloud.sharedPlanId),
+  }), [cloud.sharedPlanId, state]);
+
+  return <div className="guest-travel-shell"><header className="guest-travel-topbar"><div className="auth-brand"><span className="brand-stamp">TRIP</span><div><strong>共同旅行手冊</strong><small>只顯示這趟被分享的行程</small></div></div><Link className="button secondary" href="/">登入我的手帳</Link></header><main><Suspense fallback={<SectionFallback />}><TravelPlanner state={guestState} setState={setState} cloud={cloud} /></Suspense></main></div>;
+}
+
 const statusMeta: Record<TaskStatus, { label: string; className: string }> = {
   "not-started": { label: "未開始", className: "status-neutral" },
   "in-progress": { label: "進行中", className: "status-blue" },
@@ -85,6 +106,12 @@ const decisionMeta: Record<PackingDecision, { label: string; className: string }
   recommend: { label: "建議帶", className: "tag-blue" },
   "buy-there": { label: "當地買", className: "tag-sage" },
   skip: { label: "不建議帶", className: "tag-gray" },
+};
+
+const budgetBasisLabel: Record<BudgetItem["basis"], string> = {
+  unset: "待設定",
+  estimate: "個人估算",
+  confirmed: "已有依據",
 };
 
 const navItems: Array<{ id: NavSection; label: string; shortLabel: string; doodleIcon: string }> = [
@@ -305,7 +332,7 @@ function TaskModal({
           </label>
           <label className="field field-full">
             <span>前置任務</span>
-            <select name="predecessor" defaultValue={task.predecessorIds[0] ?? ""}>
+            <select name="predecessor" defaultValue={task.predecessorIds?.[0] ?? ""}>
               <option value="">無</option>
               {tasks.filter((item) => item.id !== task.id).map((item) => (
                 <option value={item.id} key={item.id}>{item.title}</option>
@@ -423,7 +450,7 @@ function TaskCard({
   onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const blockedBy = task.predecessorIds
+  const blockedBy = (task.predecessorIds ?? [])
     .map((id) => allTasks.find((item) => item.id === id))
     .filter((item): item is JourneyTask => Boolean(item && item.status !== "done" && item.status !== "not-applicable"));
   const overdue = Boolean(task.dueDate && dayDifference(task.dueDate) < 0 && task.status !== "done");
@@ -451,7 +478,7 @@ function TaskCard({
       </button>
       <div className="task-body">
         <div className="task-title-row">
-          <Image className="task-doodle-icon" src={templateMeta[task.templateKind ?? "general"].icon} alt="" width={39} height={39} />
+          <Image className="task-doodle-icon" src={(templateMeta[task.templateKind ?? "general"] ?? templateMeta.general).icon} alt="" width={39} height={39} />
           <h3>{task.title}</h3>
           {task.priority === "high" ? <span className="priority-dot" title="高優先度" /> : null}
         </div>
@@ -461,7 +488,7 @@ function TaskCard({
         ) : null}
         {task.notes ? <div className="hand-note">↳ {task.notes}</div> : null}
         <div className="task-meta">
-          <label className={`status-select ${statusMeta[task.status].className}`}>
+          <label className={`status-select ${(statusMeta[task.status] ?? statusMeta["not-started"]).className}`}>
             <span className="sr-only">更新狀態</span>
             <select value={task.status} onChange={(event) => onStatus(event.target.value as TaskStatus)}>
               {Object.entries(statusMeta).map(([id, meta]) => <option value={id} key={id}>{meta.label}</option>)}
@@ -545,7 +572,11 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
     .slice(0, 3);
   const overdue = todayIso ? applicable.filter((task) => task.dueDate && dayDifference(task.dueDate, todayIso) < 0 && task.status !== "done").length : 0;
   const waiting = applicable.filter((task) => task.status === "waiting").length;
-  const monthly = state.budget.filter((item) => item.cadence === "monthly").reduce((sum, item) => sum + item.amount, 0);
+  const monthlyByCurrency = state.budget.filter((item) => item.cadence === "monthly").reduce<Record<string, number>>((totals, item) => ({
+    ...totals,
+    [item.currency]: (totals[item.currency] ?? 0) + item.amount,
+  }), {});
+  const monthlySummary = Object.entries(monthlyByCurrency).map(([currency, amount]) => `${currency} ${amount.toLocaleString()}`).join(" + ") || `${exchangeProfile.primaryCurrency} 0`;
 
   return (
     <div className="page-stack">
@@ -636,7 +667,7 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
           </div>
           <div className="budget-peek paper-card">
             <PiggyBank size={25} />
-            <div><span>每月基礎預算</span><strong>約 {exchangeProfile.primaryCurrency} {monthly.toLocaleString()}</strong></div>
+            <div><span>每月基礎預算</span><strong>約 {monthlySummary}</strong></div>
             <button className="icon-button" onClick={() => setSection("settings")} aria-label="查看預算"><ArrowRight size={17} /></button>
           </div>
         </div>
@@ -704,7 +735,7 @@ function JourneyPage({ state, setState }: { state: AppState; setState: React.Dis
       ...current,
       tasks: current.tasks
         .filter((task) => task.id !== id)
-        .map((task) => ({ ...task, predecessorIds: task.predecessorIds.filter((predecessor) => predecessor !== id) })),
+        .map((task) => ({ ...task, predecessorIds: (task.predecessorIds ?? []).filter((predecessor) => predecessor !== id) })),
     }));
   }
 
@@ -1045,11 +1076,6 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
         ))}
       </section>
 
-      <aside className="packing-inspiration paper-card">
-        <div><p className="eyebrow">Experience inspiration</p><h2>預載的行李品項靈感</h2><p>這兩支影片可協助 AI 發現容易漏帶的東西；實際建議仍要依目的國、季節、住宿與本人需求調整。影片不能用來判定公斤數、海關或航空規定。</p></div>
-        <div className="inspiration-links">{packingInspiration.sources.map((source) => <a href={source.url} target="_blank" rel="noreferrer" key={source.id}>{source.label}<ExternalLink size={14} /></a>)}</div>
-      </aside>
-
       <aside className="customs-note">
         <ShieldAlert size={28} />
         <div><p className="eyebrow">Before you zip it up</p><h2>海關與航空限制要最後再確認一次</h2><p>藥品、食品、液體、鋰電池與現金的限制會因目的地、物品和航班而不同。本站提供提醒，但請以目的國海關和實際承運航空公司的最新規則為準。</p></div>
@@ -1068,6 +1094,7 @@ function ResourceModal({ resource, onClose, onSave }: { resource: ResourceItem |
       id: resource?.id ?? `resource-${Date.now()}`,
       title: form.get("title")?.toString().trim() ?? "",
       description: form.get("description")?.toString().trim() ?? "",
+      details: form.get("details")?.toString().trim() ?? "",
       category: form.get("category")?.toString().trim() ?? "一般",
       type: resourceType,
       url: form.get("url")?.toString().trim() ?? "",
@@ -1084,7 +1111,8 @@ function ResourceModal({ resource, onClose, onSave }: { resource: ResourceItem |
       <div className="modal-heading"><div><p className="eyebrow">Verified bookmark</p><h2 id="resource-modal-title">{resource ? "編輯資源" : "新增資源"}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="關閉"><X size={20} /></button></div>
       <form className="form-grid" onSubmit={submit}>
         <label className="field field-full"><span>名稱</span><input name="title" defaultValue={resource?.title} required /></label>
-        <label className="field field-full"><span>說明</span><textarea name="description" rows={3} defaultValue={resource?.description} required /></label>
+        <label className="field field-full"><span>摘要／最重要的重點</span><textarea name="description" rows={3} defaultValue={resource?.description} placeholder="用幾句話說明這份資料能解決什麼問題" required /></label>
+        <label className="field field-full"><span>詳細說明（選填）</span><textarea name="details" rows={5} defaultValue={resource?.details} placeholder="適用對象、準備資料、操作步驟、期限與需要重新確認的地方" /></label>
         <label className="field"><span>分類</span><input name="category" defaultValue={resource?.category} placeholder="簽證、住宿、學業…" required /></label>
         <label className="field"><span>來源類型</span><select name="type" value={resourceType} onChange={(event) => setResourceType(event.target.value as ResourceItem["type"])}><option value="official">官方</option><option value="school">學校</option><option value="city">城市</option><option value="experience">經驗分享</option><option value="personal">個人上傳資料</option></select></label>
         <label className="field field-full"><span>網址{resourceType === "personal" ? "（可留空，不放私人檔案路徑）" : ""}</span><input name="url" type="url" defaultValue={resource?.url} placeholder="https://…" required={resourceType !== "personal"} /></label>
@@ -1105,7 +1133,7 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
   const [intakeMessage, setIntakeMessage] = useState("");
   const deferredQuery = useDeferredValue(query.toLowerCase());
   const categories = ["全部", ...new Set(state.resources.map((resource) => resource.category))];
-  const filtered = state.resources.filter((resource) => (category === "全部" || resource.category === category) && (!deferredQuery || `${resource.title} ${resource.description} ${resource.region}`.toLowerCase().includes(deferredQuery)));
+  const filtered = state.resources.filter((resource) => (category === "全部" || resource.category === category) && (!deferredQuery || `${resource.title} ${resource.description} ${resource.details ?? ""} ${resource.region}`.toLowerCase().includes(deferredQuery)));
   const typeLabel = { official: "官方", school: "學校", city: "城市", experience: "經驗分享", personal: "個人資料" };
 
   function addResourceUrl(event: FormEvent<HTMLFormElement>) {
@@ -1154,7 +1182,7 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
 
   return (
     <div className="page-stack">
-      <header className="page-header resources-header"><div><p className="eyebrow">Verified bookmarks</p><h1>重要資源庫</h1><p>只保留這位使用者授權上傳或依他的國家、城市與學校查到的資料；每個會變動的資訊都留下來源與查核日期。</p><div className="page-header-actions"><button className="button primary" onClick={() => setEditingResource(null)}><Plus size={17} />手動新增資源</button></div></div><div className="resource-stamp"><span>RESEARCH SINCE</span><strong>{exchangeProfile.research.minimumVerifiedDate.slice(0, 7).replace("-", ".")}</strong></div></header>
+      <header className="page-header resources-header"><div className="resources-header-copy"><p className="eyebrow">Verified bookmarks</p><h1>重要資源庫</h1><p>每份資料先整理成可快速判斷的摘要，再保留適用對象、準備事項與步驟；會變動的資訊仍附上來源與查核日期。</p></div><div className="resources-header-tools"><button className="button primary" onClick={() => setEditingResource(null)}><Plus size={17} />手動新增資源</button><div className="resource-stamp"><span>RESEARCH SINCE</span><strong>{exchangeProfile.research.minimumVerifiedDate.slice(0, 7).replace("-", ".")}</strong></div></div></header>
       <section className="paper-card resource-intake-card">
         <div><p className="eyebrow">Send a link to AI</p><h2>交給 AI 辨識的網址</h2><p>網址會先私人保存在這台裝置，不會立刻公開或加入資源庫。Exchange Concierge 讀取最新備份後，會附來源提出可審核的資源。</p></div>
         <form onSubmit={addResourceUrl}><label className="field"><span>網址</span><input name="url" type="url" required placeholder="https://…" /></label><label className="field"><span>希望 AI 注意什麼（選填）</span><input name="note" maxLength={1000} placeholder="例如：確認交換生申請期限" /></label><button className="button secondary" type="submit"><Plus size={16} />加入待辨識</button></form>
@@ -1172,13 +1200,14 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
             <div className="resource-card-top"><div className="resource-badges"><span className={`source-badge ${resource.type}`}>{typeLabel[resource.type]}</span><span className={`source-badge ${resource.privacy}`}>{resource.privacy === "private" ? "私人" : "可分享"}</span></div><div className="resource-card-actions"><button className="icon-button" onClick={() => setEditingResource(resource)} aria-label={`編輯 ${resource.title}`}><Pencil size={16} /></button><button className="icon-button danger" onClick={() => deleteResource(resource)} aria-label={`刪除 ${resource.title}`}><Trash2 size={16} /></button></div></div>
             <span className="resource-category">{resource.category}</span>
             <h2>{resource.title}</h2>
-            <p>{resource.description}</p>
+            <div className="resource-summary"><span>{resource.origin === "ai-research" ? "AI 摘要" : "重點摘要"}</span><p>{resource.description}</p></div>
+            {resource.details ? <details className="resource-details"><summary>查看詳細說明</summary><p>{resource.details}</p></details> : null}
             <div className="resource-footer"><span><MapIcon size={14} />{resource.region}</span><span><Check size={14} />查核 {resource.verifiedAt.replaceAll("-", ".")}</span><span>{resource.sourceLabel}</span></div>
             {resource.url ? <a className="resource-open-link" href={resource.url} target="_blank" rel="noreferrer">開啟來源 <ExternalLink size={14} /></a> : null}
           </motion.article>
         ))}
       </section>
-      <aside className="experience-rule paper-card"><Info size={24} /><div><h2>規定和經驗，不混在一起</h2><p>官方、學校與城市來源用來確認程序；YouTube 等經驗分享只協助理解生活情境。價格、期限和法律要求一律回到原始官方頁面重新確認。</p></div></aside>
+      <aside className="experience-rule paper-card"><Info size={24} /><div><h2>規定和經驗，不混在一起</h2><p>官方、學校與城市來源用來確認程序；個人經驗只協助補充生活情境與容易遺漏的準備。價格、期限和法律要求一律回到原始官方頁面重新確認。</p></div></aside>
       <AnimatePresence>{editingResource !== undefined ? <ResourceModal resource={editingResource} onClose={() => setEditingResource(undefined)} onSave={saveResource} /> : null}</AnimatePresence>
     </div>
   );
@@ -1189,6 +1218,13 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
   const [message, setMessage] = useState("");
   const [accountId, setAccountId] = useState("");
   const [accountPassword, setAccountPassword] = useState("");
+
+  function updateBudgetItem(id: string, patch: Partial<BudgetItem>) {
+    setState((current) => ({
+      ...current,
+      budget: current.budget.map((item) => item.id === id ? { ...item, ...patch } : item),
+    }));
+  }
 
   async function importBackup(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -1264,10 +1300,21 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
         <div className="budget-table">
           {state.budget.map((item) => (
             <div className="budget-row" key={item.id}>
-              <button className={`drawn-check ${item.paid ? "checked" : ""}`} onClick={() => setState((current) => ({ ...current, budget: current.budget.map((budget) => budget.id === item.id ? { ...budget, paid: !budget.paid } : budget) }))} aria-label={`${item.paid ? "取消" : "標記"}支付 ${item.name}`}>{item.paid ? <Check size={16} /> : null}</button>
-              <strong>{item.name}</strong>
-              <span>{item.cadence === "monthly" ? "每月" : "一次性"}</span>
-              <label>{exchangeProfile.primaryCurrency} <input type="number" min="0" step="0.5" value={item.amount} onChange={(event) => setState((current) => ({ ...current, budget: current.budget.map((budget) => budget.id === item.id ? { ...budget, amount: Number(event.target.value) } : budget) }))} aria-label={`${item.name} 金額`} /></label>
+              <div className="budget-row-main">
+                <button className={`drawn-check ${item.paid ? "checked" : ""}`} onClick={() => updateBudgetItem(item.id, { paid: !item.paid })} aria-label={`${item.paid ? "取消" : "標記"}支付 ${item.name}`}>{item.paid ? <Check size={16} /> : null}</button>
+                <div className="budget-name"><strong>{item.name}</strong><small className={`budget-basis ${item.basis}`}>{budgetBasisLabel[item.basis]}{item.verifiedAt ? ` · ${item.verifiedAt}` : ""}</small></div>
+                <span>{item.cadence === "monthly" ? "每月" : "一次性"}</span>
+                <label className="budget-amount"><select value={item.currency} onChange={(event) => updateBudgetItem(item.id, { currency: event.target.value })} aria-label={`${item.name} 幣別`}>{Array.from(new Set([...exchangeCurrencies, item.currency])).map((currency) => <option key={currency} value={currency}>{currency}</option>)}</select><input type="number" min="0" step="0.5" value={item.amount} onChange={(event) => updateBudgetItem(item.id, { amount: Number(event.target.value), basis: item.basis === "unset" ? "estimate" : item.basis, sourceLabel: item.sourceLabel || "網站手動輸入", verifiedAt: item.verifiedAt || new Date().toISOString().slice(0, 10) })} aria-label={`${item.name} 金額`} /></label>
+              </div>
+              <details className="budget-details">
+                <summary>依據與備註</summary>
+                <div className="budget-detail-grid">
+                  <label className="field"><span>金額狀態</span><select value={item.basis} onChange={(event) => updateBudgetItem(item.id, { basis: event.target.value as BudgetItem["basis"] })}><option value="unset">待設定</option><option value="estimate">個人估算</option><option value="confirmed">已有依據</option></select></label>
+                  <label className="field"><span>來源標籤</span><input value={item.sourceLabel} onChange={(event) => updateBudgetItem(item.id, { sourceLabel: event.target.value })} placeholder="例如：住宿合約／個人預算" /></label>
+                  <label className="field"><span>查核日期</span><input type="date" value={item.verifiedAt} onChange={(event) => updateBudgetItem(item.id, { verifiedAt: event.target.value })} /></label>
+                  <label className="field field-full"><span>備註</span><textarea rows={2} value={item.notes} onChange={(event) => updateBudgetItem(item.id, { notes: event.target.value })} placeholder="記錄估算方式、是否含押金，或需要重新確認的地方。" /></label>
+                </div>
+              </details>
             </div>
           ))}
         </div>
@@ -1287,14 +1334,14 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
 
 export default function ExchangeCompanion() {
   const isHydrated = useSyncExternalStore(subscribeHydration, () => true, () => false);
-  const [state, setState] = useState<AppState>(() => loadState());
+  const [state, setState] = useState<AppState>(() => loadState(!cloudIsConfigured()));
   const [section, setSection] = useState<NavSection>(initialSection);
   const [mobileMenu, setMobileMenu] = useState(false);
   const cloud = useExchangeCloud(state, setState);
 
   useEffect(() => {
-    if (isHydrated) saveState(state);
-  }, [state, isHydrated]);
+    if (isHydrated && (!cloud.configured || (cloud.permanentAccount && cloud.accountDataReady))) saveState(state);
+  }, [cloud.accountDataReady, cloud.configured, cloud.permanentAccount, state, isHydrated]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -1312,6 +1359,18 @@ export default function ExchangeCompanion() {
         <p>正在打開「我的交換」…</p>
       </div>
     );
+  }
+
+  if (cloud.configured && (!cloud.authReady || cloud.shareStatus === "loading")) {
+    return <div className="boot-shell" role="status"><span className="brand-stamp">{exchangeProfile.hostCountryCode}</span><strong>交換手帳</strong><p>{cloud.shareStatus === "loading" ? "正在確認旅行分享權限…" : "正在確認登入狀態…"}</p></div>;
+  }
+
+  if (cloud.configured && !cloud.permanentAccount && cloud.shareStatus === "active") {
+    return <GuestTravelShell state={state} setState={setState} cloud={cloud} />;
+  }
+
+  if (cloud.configured && (!cloud.permanentAccount || !cloud.accountDataReady)) {
+    return <AuthGate cloud={cloud} />;
   }
 
   const currentNav = navItems.find((item) => item.id === section)!;

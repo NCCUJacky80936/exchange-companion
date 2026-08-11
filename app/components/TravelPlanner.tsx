@@ -391,7 +391,7 @@ export default function TravelPlanner({ state, setState, cloud }: { state: AppSt
     <div className="page-stack travel-page">
       <header className="page-header travel-header">
         <div><p className="eyebrow">Trips around the exchange year</p><h1>旅行規劃</h1><p>先把想去的地方全部丟進來，再慢慢排成每天的路線；系統會先替你守住上課、考試與交換期限。</p></div>
-        <button className="button primary" onClick={() => setEditingPlan("new")}><Plus size={18} />新增旅行</button>
+        <button className="button primary travel-add-button" onClick={() => setEditingPlan("new")} aria-label="新增旅行"><Plus size={18} /><span>新增旅行</span></button>
       </header>
 
       {plans.length === 0 ? (

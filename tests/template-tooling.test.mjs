@@ -138,6 +138,67 @@ test("validates a reviewable concierge import bundle", async () => {
   assert.match(result, /VALID high=3/);
 });
 
+test("validates a budget proposal against the self-describing website handoff", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "exchange-companion-budget-import-"));
+  const bundlePath = join(directory, "bundle.json");
+  const handoffPath = join(directory, "handoff.json");
+  const scope = "exchange:journey-example:Example University:Example City:Example Country:2027-03-01:2027-07-31";
+  const state = {
+    journey: { id: "journey-example", hostSchool: "Example University", hostCity: "Example City", destinations: ["Example Country"], startDate: "2027-03-01", endDate: "2027-07-31" },
+    tasks: [], resources: [], resourceIntake: [], packingItems: [], bags: [], flightAllowances: [], studyEvents: [], travelPlans: [],
+    budget: [{ id: "rent", name: "Monthly housing", category: "housing", amount: 0, currency: "EUR", cadence: "monthly", basis: "unset", paid: false, notes: "", sourceLabel: "", verifiedAt: "" }],
+    aiInbox: { sources: [], proposals: [] },
+  };
+  await writeFile(handoffPath, JSON.stringify({ schemaVersion: 1, kind: "exchange-companion-handoff", generatedAt: "2027-01-15T12:00:00+08:00", journeyScope: scope, state }), "utf8");
+  await writeFile(bundlePath, JSON.stringify({
+    schemaVersion: 1,
+    generatedAt: "2027-01-15T12:00:00+08:00",
+    journeyScope: scope,
+    sources: [{ id: "source-housing-run-1", label: "Authorized housing contract", kind: "file", capturedAt: "2027-01-15" }],
+    proposals: [{
+      id: "proposal-budget-rent-run-1",
+      title: "Update confirmed monthly housing cost",
+      summary: "The authorized housing record confirms the monthly amount.",
+      entity: "budget-item",
+      action: "update",
+      targetId: "rent",
+      value: { amount: 393, currency: "EUR", basis: "confirmed", sourceLabel: "Authorized housing contract", verifiedAt: "2027-01-15", notes: "Private identifiers removed." },
+      confidence: "high",
+      privacy: "private",
+      evidenceIds: ["source-housing-run-1"],
+      status: "pending",
+    }],
+  }), "utf8");
+
+  const result = run("python3", [".agents/skills/exchange-concierge/scripts/validate_import_bundle.py", bundlePath, handoffPath]);
+  assert.match(result, /VALID high=1/);
+});
+
+test("initializes a fresh import shell from the exact handoff instead of stale output metadata", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "exchange-companion-bound-import-"));
+  const handoffPath = join(directory, "handoff.json");
+  const outputPath = join(directory, "bundle.json");
+  const scope = "exchange:journey-hdm:Hochschule der Medien Stuttgart (HdM):Stuttgart:Germany:2026-10-01:2027-08-31";
+  const state = {
+    journey: { id: "journey-hdm", hostSchool: "Hochschule der Medien Stuttgart (HdM)", hostCity: "Stuttgart", destinations: ["Germany"], startDate: "2026-10-01", endDate: "2027-08-31" },
+  };
+  await writeFile(handoffPath, JSON.stringify({
+    schemaVersion: 1,
+    kind: "exchange-companion-handoff",
+    journeyScope: scope,
+    state,
+    outputTemplate: { schemaVersion: 1, generatedAt: "2026-08-11T12:00:00+08:00", journeyScope: scope, sources: [], proposals: [] },
+  }), "utf8");
+  await writeFile(outputPath, JSON.stringify({ schemaVersion: 1, generatedAt: "2027-01-01T00:00:00+08:00", journeyScope: "exchange:wrong:Example:City:Country:2027-01-01:2027-12-31", sources: [{ id: "stale" }], proposals: [{ id: "stale" }] }), "utf8");
+
+  const result = run("python3", [".agents/skills/exchange-concierge/scripts/initialize_import_bundle.py", handoffPath, outputPath]);
+  assert.match(result, /INITIALIZED/);
+  const initialized = JSON.parse(await readFile(outputPath, "utf8"));
+  assert.equal(initialized.journeyScope, scope);
+  assert.deepEqual(initialized.sources, []);
+  assert.deepEqual(initialized.proposals, []);
+});
+
 test("rejects unsafe concierge updates, naive timestamps, and inbox collisions", async () => {
   const directory = await mkdtemp(join(tmpdir(), "exchange-companion-invalid-import-"));
   const validator = ".agents/skills/exchange-concierge/scripts/validate_import_bundle.py";
