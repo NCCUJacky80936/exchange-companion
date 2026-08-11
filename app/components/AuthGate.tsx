@@ -3,7 +3,6 @@
 import { ArrowRight, LockKeyhole, RefreshCw, Sparkles, UserRound } from "lucide-react";
 import Image from "next/image";
 import { useState, type FormEvent } from "react";
-import { exchangeProfile } from "../lib/profile";
 import type { ExchangeCloudController } from "../lib/useExchangeCloud";
 
 export default function AuthGate({ cloud }: { cloud: ExchangeCloudController }) {
@@ -34,7 +33,7 @@ export default function AuthGate({ cloud }: { cloud: ExchangeCloudController }) 
     <main className="auth-shell">
       <section className="auth-card paper-card" aria-labelledby="auth-title">
         <span className="tape" />
-        <div className="auth-brand"><span className="brand-stamp">{exchangeProfile.hostCountryCode}</span><div><strong>交換手帳</strong><small>Exchange Companion</small></div></div>
+        <div className="auth-brand"><span className="brand-stamp">旅</span><div><strong>交換手帳</strong><small>Exchange Companion</small></div></div>
         <div className="auth-grid">
           <div className="auth-copy">
             <p className="eyebrow">Your exchange, kept private</p>

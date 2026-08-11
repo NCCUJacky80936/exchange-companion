@@ -300,6 +300,7 @@ export interface Journey {
 export interface AppState {
   version: 1;
   dataRevision?: number;
+  setupCompleted?: boolean;
   journey: Journey;
   tasks: JourneyTask[];
   bags: Bag[];

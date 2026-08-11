@@ -75,6 +75,9 @@ export function normalizeImportedState(state: AppState): AppState {
   return {
     ...state,
     dataRevision: CURRENT_DATA_REVISION,
+    setupCompleted: typeof state.setupCompleted === "boolean"
+      ? state.setupCompleted
+      : !["Your host university", "交換學校"].includes(state.journey?.hostSchool ?? ""),
     journey: {
       ...fallback.journey,
       ...(state.journey ?? {}),

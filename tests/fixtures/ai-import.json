@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "generatedAt": "2026-08-10T00:30:00+08:00",
-  "journeyScope": "exchange:my-exchange-journey:Your host university:Stuttgart:Germany:2027-03-01:2028-02-28",
+  "journeyScope": "exchange:my-exchange-journey:Example University:Example City:Example Country:2027-01-01:2027-12-31",
   "sources": [
     {
       "id": "source-qa-official",

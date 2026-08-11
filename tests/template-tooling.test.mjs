@@ -29,6 +29,7 @@ test("ships only experience-level packing inspiration URLs", async () => {
 test("initializes a clone from a complete profile without prompts", async () => {
   const directory = await mkdtemp(join(tmpdir(), "exchange-companion-profile-"));
   const source = JSON.parse(await readFile(new URL("../config/exchange-profile.json", import.meta.url), "utf8"));
+  source.homeCity = "Taipei";
   source.hostCountry = "Japan";
   source.hostCountryCode = "JP";
   source.hostCity = "Tokyo";

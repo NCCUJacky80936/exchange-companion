@@ -150,6 +150,17 @@ test("repairs incomplete legacy tasks before the journey page renders", () => {
   assert.equal(normalized.tasks[0].templateKind, "general");
 });
 
+test("requires onboarding for untouched template journeys but preserves configured users", () => {
+  const blank = normalizeImportedState({ ...cleanState(), setupCompleted: undefined });
+  assert.equal(blank.setupCompleted, false);
+  const configured = normalizeImportedState({
+    ...cleanState(),
+    setupCompleted: undefined,
+    journey: { ...cleanState().journey, hostSchool: "Configured University", hostCity: "Configured City", destinations: ["Configured Country"] },
+  });
+  assert.equal(configured.setupCompleted, true);
+});
+
 test("requires the import bundle to match the current exchange journey", () => {
   const state = cleanState();
   const bundle = validResourceBundle();

@@ -38,9 +38,9 @@ export interface ExchangeProfile {
 export const exchangeProfile = profileData as ExchangeProfile;
 
 export const exchangeCurrencies = Array.from(
-  new Set([exchangeProfile.primaryCurrency, exchangeProfile.secondaryCurrency]),
+  new Set([exchangeProfile.primaryCurrency, exchangeProfile.secondaryCurrency, "GBP", "JPY", "KRW", "TWD", "CAD", "AUD", "CHF"]),
 );
 
 export const exchangeTimeZones = Array.from(
-  new Set([exchangeProfile.hostTimeZone, exchangeProfile.homeTimeZone]),
+  new Set([exchangeProfile.hostTimeZone, exchangeProfile.homeTimeZone, "Asia/Taipei", "Asia/Tokyo", "Asia/Seoul", "Europe/London", "Europe/Paris", "America/New_York", "America/Los_Angeles"]),
 );

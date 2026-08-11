@@ -51,6 +51,7 @@ import { exchangeCurrencies, exchangeProfile, exchangeTimeZones } from "../lib/p
 import { loadState, normalizeImportedState, resetState, saveState, validateImport } from "../lib/storage";
 import { useExchangeCloud, type ExchangeCloudController } from "../lib/useExchangeCloud";
 import AuthGate from "./AuthGate";
+import OnboardingWizard from "./OnboardingWizard";
 import type {
   AppState,
   Bag,
@@ -72,7 +73,7 @@ const AiConcierge = lazy(() => import("./AiConcierge"));
 const TravelPlanner = lazy(() => import("./TravelPlanner"));
 
 function SectionFallback() {
-  return <div className="section-fallback" role="status"><span className="brand-stamp">{exchangeProfile.hostCountryCode}</span><strong>正在打開手帳頁面…</strong></div>;
+  return <div className="section-fallback" role="status"><span className="brand-stamp">旅</span><strong>正在打開手帳頁面…</strong></div>;
 }
 
 function GuestTravelShell({ state, setState, cloud }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; cloud: ExchangeCloudController }) {
@@ -1354,7 +1355,7 @@ export default function ExchangeCompanion() {
   if (!isHydrated) {
     return (
       <div className="boot-shell" role="status">
-        <span className="brand-stamp">{exchangeProfile.hostCountryCode}</span>
+        <span className="brand-stamp">旅</span>
         <strong>交換手帳</strong>
         <p>正在打開「我的交換」…</p>
       </div>
@@ -1362,7 +1363,7 @@ export default function ExchangeCompanion() {
   }
 
   if (cloud.configured && (!cloud.authReady || cloud.shareStatus === "loading")) {
-    return <div className="boot-shell" role="status"><span className="brand-stamp">{exchangeProfile.hostCountryCode}</span><strong>交換手帳</strong><p>{cloud.shareStatus === "loading" ? "正在確認旅行分享權限…" : "正在確認登入狀態…"}</p></div>;
+    return <div className="boot-shell" role="status"><span className="brand-stamp">旅</span><strong>交換手帳</strong><p>{cloud.shareStatus === "loading" ? "正在確認旅行分享權限…" : "正在確認登入狀態…"}</p></div>;
   }
 
   if (cloud.configured && !cloud.permanentAccount && cloud.shareStatus === "active") {
@@ -1371,6 +1372,10 @@ export default function ExchangeCompanion() {
 
   if (cloud.configured && (!cloud.permanentAccount || !cloud.accountDataReady)) {
     return <AuthGate cloud={cloud} />;
+  }
+
+  if (!state.setupCompleted) {
+    return <OnboardingWizard state={state} setState={setState} />;
   }
 
   const currentNav = navItems.find((item) => item.id === section)!;
@@ -1384,7 +1389,7 @@ export default function ExchangeCompanion() {
       <a className="skip-link" href="#main-content">跳到主要內容</a>
       <aside className={`sidebar ${mobileMenu ? "mobile-open" : ""}`}>
         <button className="brand-mark" onClick={() => setSection("home")}>
-          <span className="brand-stamp">{exchangeProfile.hostCountryCode}</span>
+          <span className="brand-stamp">旅</span>
           <div><strong>交換手帳</strong><small>Exchange Companion</small></div>
         </button>
         <nav aria-label="主要導覽">
@@ -1403,7 +1408,7 @@ export default function ExchangeCompanion() {
       <div className="app-main">
         <header className="topbar">
           <button className="menu-button" onClick={() => setMobileMenu((value) => !value)} aria-label="開啟導覽"><Menu /></button>
-          <div className="mobile-brand"><span className="brand-stamp">{exchangeProfile.hostCountryCode}</span><strong>{exchangeProfile.appName}</strong></div>
+          <div className="mobile-brand"><span className="brand-stamp">旅</span><strong>{exchangeProfile.appName}</strong></div>
           <div className="topbar-trail"><span>MY EXCHANGE</span><ArrowRight size={14} /><strong>{currentNav.label}</strong></div>
           <div className="topbar-right"><span className="today-label">{todayLabel}</span><button className="emergency-button" onClick={() => setSection("resources")}><HeartPulse size={17} />緊急資訊</button><button className="avatar avatar-button" onClick={() => setSection("settings")} aria-label="開啟帳戶與設定">{cloud.session?.user.email?.slice(0, 1).toUpperCase() || state.journey.ownerName.slice(0, 1).toUpperCase() || "A"}</button></div>
         </header>

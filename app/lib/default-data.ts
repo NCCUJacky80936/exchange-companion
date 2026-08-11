@@ -20,6 +20,7 @@ export const phaseMeta: Record<JourneyPhase, { label: string; number: string; co
 export const defaultState: AppState = {
   version: 1,
   dataRevision: 4,
+  setupCompleted: false,
   journey: {
     id: "my-exchange-journey",
     kind: "exchange",
@@ -89,7 +90,7 @@ export const defaultState: AppState = {
     {
       id: "financial-proof",
       title: "準備簽證財力證明",
-      description: "依目的國最新規定確認限制帳戶、獎學金或其他可接受的財力證明。",
+      description: "依目的國最新規定確認存款、獎學金、擔保或其他可接受的財力證明。",
       phase: "visa",
       status: "not-started",
       priority: "high",
