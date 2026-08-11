@@ -14,6 +14,8 @@ npm run check
 
 `NEXT_PUBLIC_SUPABASE_URL` 與 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` 雖由 Sites 保存，但也必須在 production build 當下提供給前端打包。更新既有站點時，先讀取該站目前的環境設定，再只在建置程序中傳入；不要寫入 `.env`、Git 或公開模板。完成部署後必須用全新瀏覽器狀態確認第一個畫面是登入／建立帳號，而不是本機主畫面。
 
+若正式站顯示「免費雲端尚未建立」或登入按鈕停用，應視為建置失敗並停止發布；不要把這種降級畫面當成可接受的正式版本。
+
 ## Cloudflare Workers
 
 正式站若啟用 Agent 雲端連結，先把 `supabase/migrations/` 套用到自己的 Supabase 專案，再部署 `exchange-concierge-sync` Edge Function。這個 Function 使用 Supabase 自動提供的 server-side secret，不能把 secret 寫入前端環境或 Git：
