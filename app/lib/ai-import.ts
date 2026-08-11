@@ -21,7 +21,7 @@ const ACTIONS = new Set(["add", "update"]);
 const CONFIDENCE = new Set(["high", "medium", "low"]);
 const PRIVACY = new Set(["private", "shareable"]);
 const STATUSES = new Set(["pending"]);
-const ROOT_FIELDS = new Set(["schemaVersion", "generatedAt", "journeyScope", "sources", "proposals"]);
+const ROOT_FIELDS = new Set(["schemaVersion", "generatedAt", "journeyScope", "baseRevision", "sources", "proposals"]);
 const SOURCE_FIELDS = new Set(["id", "label", "kind", "evidenceType", "url", "capturedAt", "note"]);
 const PROPOSAL_FIELDS = new Set(["id", "title", "summary", "entity", "action", "targetId", "value", "confidence", "privacy", "evidenceIds", "status"]);
 const CHECKLIST_FIELDS = new Set(["id", "label", "done"]);
@@ -341,7 +341,8 @@ function validatesEntityValue(entity: AiProposalEntity, action: "add" | "update"
 }
 
 export function validateAiImportBundle(value: unknown): value is AiImportBundle {
-  if (!isRecord(value) || !hasOnlyKeys(value, ROOT_FIELDS) || value.schemaVersion !== 1 || !isTimestamp(value.generatedAt) || !isText(value.journeyScope, 300)) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ROOT_FIELDS) || value.schemaVersion !== 1 || !isTimestamp(value.generatedAt) || !isText(value.journeyScope, 300)
+    || (value.baseRevision !== undefined && (!Number.isInteger(value.baseRevision) || Number(value.baseRevision) < 1))) return false;
   if (!Array.isArray(value.sources) || !Array.isArray(value.proposals)) return false;
   const serialized = JSON.stringify(value);
   if (serialized.length > 2_000_000 || SECRET_PATTERNS.some((pattern) => pattern.test(serialized))) return false;
@@ -385,13 +386,13 @@ export function validateAiImportBundle(value: unknown): value is AiImportBundle 
   });
 }
 
-export function importAiBundle(state: AppState, bundle: AiImportBundle): AppState {
+export function importAiBundle(state: AppState, bundle: AiImportBundle, cloudRunId?: string): AppState {
   const existingSources = new Map((state.aiInbox?.sources ?? []).map((source) => [source.id, source]));
   bundle.sources.forEach((source) => { if (!existingSources.has(source.id)) existingSources.set(source.id, source); });
   const existingProposals = new Map((state.aiInbox?.proposals ?? []).map((proposal) => [proposal.id, proposal]));
   bundle.proposals.forEach((proposal) => {
     if (existingProposals.has(proposal.id)) return;
-    existingProposals.set(proposal.id, { ...proposal, status: "pending" });
+    existingProposals.set(proposal.id, { ...proposal, status: "pending", baseRevision: bundle.baseRevision, cloudRunId });
   });
   return {
     ...state,
@@ -405,8 +406,7 @@ export function importAiBundle(state: AppState, bundle: AiImportBundle): AppStat
 }
 
 export function journeyScopeForState(state: AppState): string {
-  const journey = state.journey;
-  return ["exchange", journey.id, journey.hostSchool, journey.hostCity, journey.destinations.join(","), journey.startDate, journey.endDate].join(":");
+  return `exchange:${state.journey.id}`;
 }
 
 export function matchesAiJourneyScope(state: AppState, bundle: AiImportBundle): boolean {
@@ -456,7 +456,10 @@ function entityItems(state: AppState, entity: AiProposalEntity): Array<{ id: str
   return state.travelPlans ?? [];
 }
 
-export function canApplyAiProposal(state: AppState, proposal: AiProposal): { valid: boolean; reason?: string } {
+export function canApplyAiProposal(state: AppState, proposal: AiProposal, currentRevision?: number): { valid: boolean; reason?: string } {
+  if (proposal.baseRevision !== undefined && currentRevision !== undefined && proposal.baseRevision !== currentRevision) {
+    return { valid: false, reason: `這筆提案依據雲端版本 ${proposal.baseRevision}，但手帳目前是版本 ${currentRevision}。請讓 Agent 重新讀取最新狀態，避免覆蓋手動修改。` };
+  }
   if (!validatesEntityValue(proposal.entity, proposal.action, proposal.value)) return { valid: false, reason: "提案欄位格式或值不符合目前網站資料結構。" };
   const items = entityItems(state, proposal.entity);
   if (proposal.action === "update" && (!proposal.targetId || !items.some((item) => item.id === proposal.targetId))) return { valid: false, reason: "找不到要更新的原始項目，請重新整理提案。" };
@@ -488,10 +491,10 @@ export function canApplyAiProposal(state: AppState, proposal: AiProposal): { val
   return { valid: true };
 }
 
-export function applyAiProposal(state: AppState, proposalId: string): AppState {
+export function applyAiProposal(state: AppState, proposalId: string, currentRevision?: number): AppState {
   const proposal = state.aiInbox?.proposals.find((item) => item.id === proposalId);
   if (!proposal || proposal.status !== "pending") return state;
-  if (!canApplyAiProposal(state, proposal).valid) return state;
+  if (!canApplyAiProposal(state, proposal, currentRevision).valid) return state;
   let next = state;
   const currentEntity = proposal.action === "update" && proposal.targetId
     ? entityItems(state, proposal.entity).find((item) => item.id === proposal.targetId)

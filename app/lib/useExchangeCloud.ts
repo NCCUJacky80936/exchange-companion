@@ -4,15 +4,20 @@ import type { Session } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   cloudIsConfigured,
+  acknowledgeConciergeProposalRuns,
+  createConciergeConnection,
   createPasswordAccount,
   createTravelShareLink,
   ensureCloudSession,
   getCloudClient,
   isPermanentSession,
+  listConciergeConnections,
   publishTravelPlan,
+  pullConciergeProposalRuns,
   readPrivateState,
   redeemTravelShare,
   removeTravelSubscription,
+  revokeConciergeConnection,
   sendMagicLink,
   signInWithPasswordAccount,
   signOutCloud,
@@ -20,8 +25,9 @@ import {
   updatePublishedTravelPlan,
   writePrivateState,
 } from "./cloud";
+import { findAiBundleCollisions, importAiBundle, matchesAiJourneyScope, validateAiImportBundle } from "./ai-import";
 import { normalizeImportedState, resetState } from "./storage";
-import type { AppState, TravelPlan, TravelShareAccess, TravelShareLink } from "./types";
+import type { AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TravelPlan, TravelShareAccess, TravelShareLink } from "./types";
 
 const PRIVATE_SYNC_KEY = "exchange-companion:private-cloud-sync";
 export type ShareRedemptionStatus = "none" | "loading" | "active" | "login-required" | "invalid";
@@ -35,6 +41,9 @@ export interface ExchangeCloudController {
   shareStatus: ShareRedemptionStatus;
   sharedPlanId: string;
   privateSyncEnabled: boolean;
+  privateRevision: number;
+  syncConflict: boolean;
+  conciergeConnections: ConciergeConnectionInfo[];
   busy: boolean;
   notice: string;
   setNotice: (notice: string) => void;
@@ -45,6 +54,11 @@ export interface ExchangeCloudController {
   reloadPrivateState: () => Promise<void>;
   enablePrivateSync: (mode: "upload-local" | "use-cloud") => Promise<void>;
   disablePrivateSync: () => void;
+  markNextSaveActor: (actor: "manual" | "proposal") => void;
+  createConciergeConnection: () => Promise<ConciergeConnectionFile>;
+  refreshConciergeConnections: () => Promise<void>;
+  revokeConciergeConnection: (connectionId: string) => Promise<void>;
+  refreshConciergeInbox: () => Promise<number>;
   publishPlan: (plan: TravelPlan) => Promise<TravelPlan>;
   createShare: (options: {
     plan: TravelPlan;
@@ -63,11 +77,19 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   const [shareStatus, setShareStatus] = useState<ShareRedemptionStatus>(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("share") ? "loading" : "none");
   const [sharedPlanId, setSharedPlanId] = useState("");
   const [privateSyncEnabled, setPrivateSyncEnabled] = useState(() => typeof window !== "undefined" && window.localStorage.getItem(PRIVATE_SYNC_KEY) === "on");
+  const [privateRevision, setPrivateRevision] = useState(0);
+  const [syncConflict, setSyncConflict] = useState(false);
+  const [conciergeConnections, setConciergeConnections] = useState<ConciergeConnectionInfo[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(configured ? "正在準備免費雲端…" : "尚未連接免費雲端；本機功能仍可完整使用。 ");
   const redeemedToken = useRef("");
   const loadedAccount = useRef("");
   const latestState = useRef<AppState | null>(null);
+  const lastSavedState = useRef<AppState | null>(null);
+  const revisionRef = useRef(0);
+  const nextSaveActor = useRef<"manual" | "proposal" | "system">("manual");
+  const skipNextPrivateSave = useRef(false);
+  const saveInFlight = useRef(false);
   const sharedPlanIds = useMemo(() => (state.travelPlans ?? []).filter((plan) => plan.cloud?.published).map((plan) => plan.id), [state.travelPlans]);
 
   useEffect(() => {
@@ -96,20 +118,32 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     try {
       const remote = await readPrivateState();
       if (remote) {
-        setState(normalizeImportedState(remote));
+        const normalized = normalizeImportedState(remote.state);
+        revisionRef.current = remote.revision;
+        setPrivateRevision(remote.revision);
+        skipNextPrivateSave.current = true;
+        lastSavedState.current = normalized;
+        setState(normalized);
         setNotice("已載入你的私人交換手帳。 ");
       } else {
         const fresh = resetState();
+        skipNextPrivateSave.current = true;
         setState(fresh);
-        await writePrivateState(fresh);
-        setNotice("已建立一份只屬於這個帳號的新手帳。先到「AI 幫我整理」匯出交接檔即可開始。 ");
+        const revision = await writePrivateState(fresh, 0, "system");
+        lastSavedState.current = fresh;
+        revisionRef.current = revision;
+        setPrivateRevision(revision);
+        setNotice("已建立一份只屬於這個帳號的新手帳。可到「AI 幫我整理」首次連結 Codex。 ");
       }
+      setSyncConflict(false);
       window.localStorage.setItem(PRIVATE_SYNC_KEY, "on");
       setPrivateSyncEnabled(true);
       setAccountDataReady(true);
     } catch {
       loadedAccount.current = "";
       setPrivateSyncEnabled(false);
+      revisionRef.current = 0;
+      setPrivateRevision(0);
       setNotice("目前無法載入私人手帳；尚未進入主畫面，也沒有覆蓋本機資料。 ");
     }
   }, [setState]);
@@ -174,16 +208,83 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
 
   useEffect(() => {
     if (!configured || !isPermanentSession(session) || !privateSyncEnabled || !accountDataReady) return;
+    if (skipNextPrivateSave.current) {
+      skipNextPrivateSave.current = false;
+      return;
+    }
+    if (state === lastSavedState.current) return;
+    if (syncConflict || saveInFlight.current || revisionRef.current < 1) return;
     const timer = window.setTimeout(() => {
-      void writePrivateState(state).then(() => setNotice("私人手帳已同步。 ")).catch(() => setNotice("私人同步暫停；本機資料仍安全保留。 "));
+      saveInFlight.current = true;
+      const actor = nextSaveActor.current;
+      nextSaveActor.current = "manual";
+      const expectedRevision = revisionRef.current;
+      const stateToSave = actor === "proposal" && state.aiInbox ? {
+        ...state,
+        aiInbox: {
+          ...state.aiInbox,
+          proposals: state.aiInbox.proposals.map((proposal) => proposal.status === "pending" && proposal.baseRevision === expectedRevision
+            ? { ...proposal, baseRevision: expectedRevision + 1 }
+            : proposal),
+        },
+      } : state;
+      if (stateToSave !== state) {
+        skipNextPrivateSave.current = true;
+        setState(stateToSave);
+      }
+      void writePrivateState(stateToSave, expectedRevision, actor).then((revision) => {
+        lastSavedState.current = stateToSave;
+        revisionRef.current = revision;
+        setPrivateRevision(revision);
+        setNotice("私人手帳已同步。 ");
+        const terminalRunIds = [...new Set((stateToSave.aiInbox?.proposals ?? [])
+          .filter((proposal) => proposal.cloudRunId)
+          .map((proposal) => proposal.cloudRunId!))]
+          .filter((runId) => !(stateToSave.aiInbox?.proposals ?? []).some((proposal) => proposal.cloudRunId === runId && proposal.status === "pending"));
+        if (terminalRunIds.length) void acknowledgeConciergeProposalRuns(terminalRunIds);
+      }).catch((error: { message?: string; code?: string }) => {
+        if (error.code === "40001" || error.message?.includes("revision_conflict")) {
+          setSyncConflict(true);
+          setNotice("網站與雲端都有新修改，已停止自動覆蓋。請重新載入雲端版本後再整理。 ");
+        } else {
+          setNotice("私人同步暫停；本機資料仍安全保留。 ");
+        }
+      }).finally(() => { saveInFlight.current = false; });
     }, 1400);
     return () => window.clearTimeout(timer);
-  }, [accountDataReady, configured, privateSyncEnabled, session, state]);
+  }, [accountDataReady, configured, privateRevision, privateSyncEnabled, session, setState, state, syncConflict]);
 
   const runBusy = useCallback(async <T,>(action: () => Promise<T>): Promise<T> => {
     setBusy(true);
     try { return await action(); } finally { setBusy(false); }
   }, []);
+
+  const refreshConnections = useCallback(async () => {
+    if (!isPermanentSession(session)) return;
+    const connections = await listConciergeConnections();
+    setConciergeConnections(connections);
+  }, [session]);
+
+  const refreshInbox = useCallback(async (): Promise<number> => {
+    if (!isPermanentSession(session) || !latestState.current) return 0;
+    const runs = await pullConciergeProposalRuns();
+    let next = latestState.current;
+    let importedCount = 0;
+    for (const run of runs) {
+      const bundle = run.bundle;
+      if (!validateAiImportBundle(bundle) || !matchesAiJourneyScope(next, bundle)) continue;
+      if (bundle.baseRevision !== revisionRef.current || Number(run.base_revision) !== revisionRef.current) continue;
+      const collisions = findAiBundleCollisions(next, bundle);
+      if (collisions.length) continue;
+      next = importAiBundle(next, bundle, run.id);
+      importedCount += bundle.proposals.length;
+    }
+    if (importedCount) {
+      skipNextPrivateSave.current = true;
+      setState(next);
+    }
+    return importedCount;
+  }, [session, setState]);
 
   return useMemo(() => ({
     configured,
@@ -194,6 +295,9 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     shareStatus,
     sharedPlanId,
     privateSyncEnabled,
+    privateRevision,
+    syncConflict,
+    conciergeConnections,
     busy,
     notice,
     setNotice,
@@ -223,6 +327,10 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       setPrivateSyncEnabled(false);
       setAccountDataReady(false);
       loadedAccount.current = "";
+      revisionRef.current = 0;
+      setPrivateRevision(0);
+      setSyncConflict(false);
+      setConciergeConnections([]);
       await signOutCloud();
       setNotice("已登出，請重新登入後再開啟私人手帳。 ");
     }),
@@ -232,11 +340,21 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       if (mode === "use-cloud") {
         const remote = await readPrivateState();
         if (!remote) throw new Error("cloud_state_missing");
-        setState(normalizeImportedState(remote));
+        revisionRef.current = remote.revision;
+        setPrivateRevision(remote.revision);
+        skipNextPrivateSave.current = true;
+        const normalized = normalizeImportedState(remote.state);
+        lastSavedState.current = normalized;
+        setState(normalized);
       } else {
         if (!latestState.current) throw new Error("local_state_missing");
-        await writePrivateState(latestState.current);
+        const expectedRevision = revisionRef.current;
+        const revision = await writePrivateState(latestState.current, expectedRevision, "system");
+        lastSavedState.current = latestState.current;
+        revisionRef.current = revision;
+        setPrivateRevision(revision);
       }
+      setSyncConflict(false);
       window.localStorage.setItem(PRIVATE_SYNC_KEY, "on");
       setPrivateSyncEnabled(true);
       setNotice(mode === "use-cloud" ? "已載入這個帳戶的私人手帳。" : "本機手帳已建立私人雲端副本。 ");
@@ -246,7 +364,19 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       setPrivateSyncEnabled(false);
       setNotice("已停止私人雲端同步；雲端副本未刪除。 ");
     },
+    markNextSaveActor: (actor: "manual" | "proposal") => { nextSaveActor.current = actor; },
+    createConciergeConnection: () => runBusy(async () => {
+      const connection = await createConciergeConnection();
+      await refreshConnections();
+      return connection;
+    }),
+    refreshConciergeConnections: () => runBusy(refreshConnections),
+    revokeConciergeConnection: (connectionId: string) => runBusy(async () => {
+      await revokeConciergeConnection(connectionId);
+      await refreshConnections();
+    }),
+    refreshConciergeInbox: () => runBusy(refreshInbox),
     publishPlan: (plan: TravelPlan) => runBusy(() => publishTravelPlan(plan)),
     createShare: (options) => runBusy(() => createTravelShareLink(options)),
-  }), [accountDataReady, authReady, busy, configured, loadPermanentAccountState, notice, privateSyncEnabled, runBusy, session, setState, shareStatus, sharedPlanId]);
+  }), [accountDataReady, authReady, busy, conciergeConnections, configured, loadPermanentAccountState, notice, privateRevision, privateSyncEnabled, refreshConnections, refreshInbox, runBusy, session, setState, shareStatus, sharedPlanId, syncConflict]);
 }

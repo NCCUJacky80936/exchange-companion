@@ -3,7 +3,7 @@ import { exchangeProfile } from "./profile";
 import type { AppState, BudgetItem, FlightAllowance, JourneyPhase, JourneyTask, Priority, TaskStatus, TaskTemplateKind } from "./types";
 
 const LEGACY_STORAGE_KEY = "exchange-companion:v1";
-const CURRENT_DATA_REVISION = 5;
+const CURRENT_DATA_REVISION = 6;
 const TASK_PHASES = new Set<JourneyPhase>(["admission", "visa", "pre-departure", "arrival-72h", "arrival-2w", "semester", "return"]);
 const TASK_STATUSES = new Set<TaskStatus>(["not-started", "in-progress", "waiting", "done", "not-applicable"]);
 const TASK_PRIORITIES = new Set<Priority>(["high", "medium", "low"]);
@@ -148,7 +148,12 @@ export function normalizeImportedState(state: AppState): AppState {
         verifiedAt: typeof legacy.verifiedAt === "string" ? legacy.verifiedAt : "",
       };
     }),
-    aiInbox: state.aiInbox ?? { sources: [], proposals: [] },
+    aiInbox: state.aiInbox ? {
+      ...state.aiInbox,
+      journeyScope: state.aiInbox.journeyScope?.startsWith(`exchange:${state.journey.id}:`)
+        ? `exchange:${state.journey.id}`
+        : state.aiInbox.journeyScope,
+    } : { sources: [], proposals: [] },
   };
 }
 

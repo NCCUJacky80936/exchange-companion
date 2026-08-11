@@ -17,20 +17,10 @@ def journey_scope(state: object) -> str:
     if not isinstance(state, dict) or not isinstance(state.get("journey"), dict):
         fail("handoff.state.journey is required")
     journey = state["journey"]
-    destinations = journey.get("destinations")
-    if not isinstance(destinations, list) or not all(isinstance(item, str) for item in destinations):
-        fail("handoff.state.journey.destinations must be strings")
-    fields = [
-        journey.get("id"),
-        journey.get("hostSchool"),
-        journey.get("hostCity"),
-        ",".join(destinations),
-        journey.get("startDate"),
-        journey.get("endDate"),
-    ]
-    if not all(isinstance(item, str) and item for item in fields):
-        fail("handoff.state.journey is missing scope fields")
-    return ":".join(["exchange", *fields])
+    journey_id = journey.get("id")
+    if not isinstance(journey_id, str) or not journey_id:
+        fail("handoff.state.journey.id is required")
+    return f"exchange:{journey_id}"
 
 
 def main() -> None:
@@ -51,6 +41,7 @@ def main() -> None:
         "schemaVersion": 1,
         "generatedAt": datetime.now().astimezone().isoformat(timespec="seconds"),
         "journeyScope": expected_scope,
+        **({"baseRevision": handoff["baseRevision"]} if isinstance(handoff.get("baseRevision"), int) and handoff["baseRevision"] > 0 else {}),
         "sources": [],
         "proposals": [],
     }

@@ -24,17 +24,19 @@ const editableSurfaces: HandoffSurface[] = [
   { id: "travel-plans", statePath: "state.travelPlans[]", proposalEntity: "travel-plan", privacy: "mixed", fields: ["title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days[].activities[].time", "days[].activities[].location", "days[].activities[].mapsUrl", "days[].activities[].durationMinutes", "days[].activities[].cost", "days[].activities[].booked", "travelNotes[]", "packingItems[]"], notes: "支援空白開始與未來多國旅行；分享前仍需由使用者選定單一旅程與權限。" },
 ];
 
-export function createExchangeConciergeHandoff(state: AppState, generatedAt = new Date().toISOString()) {
+export function createExchangeConciergeHandoff(state: AppState, generatedAt = new Date().toISOString(), baseRevision?: number) {
   const journeyScope = journeyScopeForState(state);
   return {
     schemaVersion: 1,
     kind: "exchange-companion-handoff" as const,
     generatedAt,
     journeyScope,
+    ...(baseRevision && baseRevision > 0 ? { baseRevision } : {}),
     outputTemplate: {
       schemaVersion: 1 as const,
       generatedAt,
       journeyScope,
+      ...(baseRevision && baseRevision > 0 ? { baseRevision } : {}),
       sources: [],
       proposals: [],
     },
@@ -53,7 +55,7 @@ export function createExchangeConciergeHandoff(state: AppState, generatedAt = ne
         schemaVersion: 1,
         schemaReference: ".agents/skills/exchange-concierge/references/import-bundle-schema.md",
         validator: ".agents/skills/exchange-concierge/scripts/validate_import_bundle.py",
-        rootFields: ["schemaVersion", "generatedAt", "journeyScope", "sources", "proposals"],
+        rootFields: ["schemaVersion", "generatedAt", "journeyScope", "baseRevision", "sources", "proposals"],
         sourceFields: ["id", "label", "kind", "evidenceType", "url", "capturedAt", "note"],
         proposalFields: ["id", "title", "summary", "entity", "action", "targetId", "value", "confidence", "privacy", "evidenceIds", "status"],
         proposalStatus: "pending" as const,

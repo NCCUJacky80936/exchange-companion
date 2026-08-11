@@ -1,10 +1,11 @@
 "use client";
 
-import { Check, Copy, ExternalLink, FileCheck2, Inbox, LockKeyhole, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
+import { Check, CloudDownload, ExternalLink, FileCheck2, Inbox, Link2, LockKeyhole, RefreshCw, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
 import Image from "next/image";
-import { useMemo, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react";
 import { applyAiProposal, canApplyAiProposal, canUndoAiProposal, clearDismissedAiProposals, dismissAiProposal, findAiBundleCollisions, importAiBundle, journeyScopeForState, matchesAiJourneyScope, sensitiveBundleWarnings, undoAiProposal, validateAiImportBundle } from "../lib/ai-import";
 import { createExchangeConciergeHandoff } from "../lib/concierge-handoff";
+import type { ExchangeCloudController } from "../lib/useExchangeCloud";
 import type { AiProposal, AppState } from "../lib/types";
 
 const entityLabel = {
@@ -43,8 +44,9 @@ function displayValue(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-export default function AiConcierge({ state, setState }: { state: AppState; setState: Dispatch<SetStateAction<AppState>> }) {
+export default function AiConcierge({ state, setState, cloud }: { state: AppState; setState: Dispatch<SetStateAction<AppState>>; cloud: ExchangeCloudController }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const refreshedAccount = useRef("");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const inbox = state.aiInbox ?? { sources: [], proposals: [] };
@@ -53,6 +55,17 @@ export default function AiConcierge({ state, setState }: { state: AppState; setS
   const applied = inbox.proposals.filter((proposal) => proposal.status === "applied");
   const dismissedCount = inbox.proposals.filter((proposal) => proposal.status === "dismissed").length;
   const pendingByEntity = useMemo(() => pending.reduce<Record<string, number>>((counts, proposal) => ({ ...counts, [proposal.entity]: (counts[proposal.entity] ?? 0) + 1 }), {}), [pending]);
+
+  useEffect(() => {
+    if (!cloud.permanentAccount || !cloud.accountDataReady) return;
+    const accountId = cloud.session?.user.id ?? "";
+    if (!accountId || refreshedAccount.current === accountId) return;
+    refreshedAccount.current = accountId;
+    void cloud.refreshConciergeConnections();
+    void cloud.refreshConciergeInbox().then((count) => {
+      if (count) setMessage(`已從雲端收件匣帶回 ${count} 個待確認提案；尚未自動套用。`);
+    });
+  }, [cloud]);
 
   async function importBundle(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -64,6 +77,7 @@ export default function AiConcierge({ state, setState }: { state: AppState; setS
       if (!validateAiImportBundle(parsed)) throw new Error("invalid");
       incomingScope = parsed.journeyScope;
       if (!matchesAiJourneyScope(state, parsed)) throw new Error("scope-mismatch");
+      if (parsed.baseRevision && cloud.privateRevision && parsed.baseRevision !== cloud.privateRevision) throw new Error("revision-mismatch");
       const collisions = findAiBundleCollisions(state, parsed);
       if (collisions.length) throw new Error("collision");
       const warnings = sensitiveBundleWarnings(parsed);
@@ -71,6 +85,7 @@ export default function AiConcierge({ state, setState }: { state: AppState; setS
         setMessage("已取消匯入；本機手帳沒有變更。 ");
         return;
       }
+      cloud.markNextSaveActor("proposal");
       setState((current) => importAiBundle(current, parsed));
       setMessage(`已匯入 ${parsed.proposals.length} 個 AI 提案，旅程範圍：${parsed.journeyScope}。尚未自動套用。`);
     } catch (error) {
@@ -78,6 +93,8 @@ export default function AiConcierge({ state, setState }: { state: AppState; setS
         ? "這份檔案含有已存在的來源或提案 ID；為保留審核歷史，請重新產生 run-versioned IDs。"
         : error instanceof Error && error.message === "scope-mismatch"
           ? `旅程識別不一致，未匯入。收到：${incomingScope}。目前：${journeyScopeForState(state)}。請讓 AI 從交接檔的 outputTemplate 重新產生，不能沿用範例或舊輸出。`
+          : error instanceof Error && error.message === "revision-mismatch"
+            ? "這份提案是依較舊的手帳產生；為保留你後來的手動修改，請讓 Agent 重新讀取最新雲端狀態。"
           : "無法讀取這份提案；請使用 Exchange Concierge 產生並驗證的 JSON。 ");
     } finally {
       event.target.value = "";
@@ -87,7 +104,7 @@ export default function AiConcierge({ state, setState }: { state: AppState; setS
   async function prepareHandoff() {
     const date = new Date().toISOString().slice(0, 10);
     const filename = `exchange-concierge-input-${date}.json`;
-    const handoff = createExchangeConciergeHandoff(state);
+    const handoff = createExchangeConciergeHandoff(state, new Date().toISOString(), cloud.privateRevision || undefined);
     const blob = new Blob([JSON.stringify(handoff, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -102,15 +119,41 @@ export default function AiConcierge({ state, setState }: { state: AppState; setS
     window.setTimeout(() => setCopied(false), 2200);
   }
 
+  async function pairConcierge() {
+    try {
+      const connection = await cloud.createConciergeConnection();
+      const blob = new Blob([JSON.stringify(connection, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "exchange-concierge-connection.json";
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setMessage("連結檔已下載。只要交給使用這個專案的 Codex 一次，之後 Agent 可讀最新雲端手帳並把提案送回這裡。連結檔是私人憑證，請勿上傳 GitHub 或分享。 ");
+    } catch {
+      setMessage("目前無法建立 Agent 連結。請確認已登入且私人手帳已完成同步。 ");
+    }
+  }
+
+  async function refreshCloudInbox() {
+    try {
+      const count = await cloud.refreshConciergeInbox();
+      setMessage(count ? `已帶回 ${count} 個待確認提案；尚未自動套用。` : "雲端目前沒有新的提案。 ");
+    } catch {
+      setMessage("目前無法更新提案收件匣；本機紀錄沒有變更。 ");
+    }
+  }
+
   function applyAllPending() {
-    if (!pending.some((proposal) => canApplyAiProposal(state, proposal).valid)) return;
+    if (!pending.some((proposal) => canApplyAiProposal(state, proposal, cloud.privateRevision || undefined).valid)) return;
     if (!window.confirm(`要依前置關係一次套用目前可用的提案嗎？仍可在下方逐筆復原；格式或依據不足的項目會留在待確認區。`)) return;
     const proposalIds = pending.map((proposal) => proposal.id);
+    cloud.markNextSaveActor("proposal");
     setState((current) => {
       let next = current;
       for (let pass = 0; pass < proposalIds.length; pass += 1) {
         const before = next.aiInbox?.proposals.filter((proposal) => proposal.status === "applied").length ?? 0;
-        proposalIds.forEach((id) => { next = applyAiProposal(next, id); });
+        proposalIds.forEach((id) => { next = applyAiProposal(next, id, cloud.privateRevision || undefined); });
         const after = next.aiInbox?.proposals.filter((proposal) => proposal.status === "applied").length ?? 0;
         if (after === before) break;
       }
@@ -130,14 +173,16 @@ export default function AiConcierge({ state, setState }: { state: AppState; setS
         <article className="paper-card ai-start-card">
           <span className="tape" />
           <div className="ai-card-heading"><Sparkles size={25} /><div><p className="eyebrow">Free AI workflow</p><h2>從 Codex 開始整理</h2></div></div>
-          <p>公開網站不內建付費模型。這個按鈕會下載自我說明的私人交接檔，包含目前進度、基礎預算、旅行巢狀欄位與 Skill 入口；第一次建站的國家、幣別和視覺只作為鎖定背景，不會每次重做。</p>
-          <ol className="ai-steps"><li><strong>1</strong><span>下載最新手帳交接檔並附給 Codex</span></li><li><strong>2</strong><span>Exchange Concierge 查核授權資料與最新來源</span></li><li><strong>3</strong><span>把產生的提案 JSON 匯回網站審閱</span></li></ol>
-          <button className="button primary" onClick={() => void prepareHandoff()}><Copy size={17} />{copied ? "交接檔與指令已準備" : "準備給 Codex 的整理包"}</button>
+          <p>第一次只需下載一次私人連結檔交給 Codex。之後 Exchange Concierge 會先讀取雲端最新版本，再把待審提案送回網站；不需要每次來回下載 JSON，也不會直接套用。</p>
+          <ol className="ai-steps"><li><strong>1</strong><span>首次連結 Codex（一次即可，隨時可撤銷）</span></li><li><strong>2</strong><span>Agent 依你授權的信件、檔案或網址整理</span></li><li><strong>3</strong><span>回到網站更新收件匣並逐項確認</span></li></ol>
+          <div className="ai-primary-actions"><button className="button primary" disabled={!cloud.permanentAccount || cloud.privateRevision < 1 || cloud.busy} onClick={() => void pairConcierge()}><Link2 size={17} />首次連結 Codex</button><button className="button secondary" disabled={!cloud.permanentAccount || cloud.busy} onClick={() => void refreshCloudInbox()}><RefreshCw size={17} />更新提案收件匣</button></div>
+          <details className="ai-offline-fallback"><summary>離線備援：下載／匯入 JSON</summary><p>只有無法連線雲端或需要攜帶完整資料到另一個環境時才使用。</p><button className="button text-button" onClick={() => void prepareHandoff()}><CloudDownload size={17} />{copied ? "交接檔與指令已準備" : "下載最新交接 JSON"}</button></details>
+          {cloud.conciergeConnections.filter((item) => !item.revokedAt).length ? <div className="ai-connections"><strong>已連結的 Agent</strong>{cloud.conciergeConnections.filter((item) => !item.revokedAt).map((item) => <span key={item.id}>{item.label}<small>{item.lastUsedAt ? `最近使用 ${new Date(item.lastUsedAt).toLocaleDateString("zh-TW")}` : "尚未使用"}</small><button className="button text-button" onClick={() => void cloud.revokeConciergeConnection(item.id)}>撤銷</button></span>)}</div> : null}
         </article>
 
         <article className="paper-card ai-import-card">
-          <div className="ai-card-heading"><Inbox size={25} /><div><p className="eyebrow">Review inbox</p><h2>匯入 AI 提案</h2></div></div>
-          <p>匯入不等於套用。你會先看到來源、日期、可信度與分享範圍，再決定要不要更新手帳。</p>
+          <div className="ai-card-heading"><Inbox size={25} /><div><p className="eyebrow">Review inbox</p><h2>AI 提案收件匣</h2></div></div>
+          <p>雲端提案只會進入待確認區。你會先看到來源、日期、可信度與實際欄位差異，再決定要不要更新手帳。</p>
           <p className="ai-scope"><strong>目前旅程範圍</strong><span>{journeyScopeForState(state)}</span>{inbox.journeyScope ? <small>最近匯入：{inbox.journeyScope}</small> : null}</p>
           <button className="button secondary" onClick={() => inputRef.current?.click()}><Upload size={17} />選擇提案 JSON</button>
           <input ref={inputRef} className="sr-only" type="file" accept="application/json" onChange={importBundle} />
@@ -147,11 +192,11 @@ export default function AiConcierge({ state, setState }: { state: AppState; setS
       </section>
 
       <section className="proposal-section">
-        <div className="section-heading"><div><p className="eyebrow">Suggested updates</p><h2>待確認提案</h2>{pending.length ? <div className="proposal-coverage">{Object.entries(pendingByEntity).map(([entity, count]) => <span key={entity}>{entityLabel[entity as keyof typeof entityLabel]} {count}</span>)}</div> : null}</div><div className="proposal-heading-actions">{dismissedCount ? <button className="button text-button" onClick={() => setState(clearDismissedAiProposals)}>清除 {dismissedCount} 個已忽略提案</button> : null}{pending.some((proposal) => canApplyAiProposal(state, proposal).valid) ? <button className="button primary batch-apply" onClick={applyAllPending}><Check size={16} />套用全部可用提案</button> : null}<span className="count-badge">{pending.length}</span></div></div>
+        <div className="section-heading"><div><p className="eyebrow">Suggested updates</p><h2>待確認提案</h2>{pending.length ? <div className="proposal-coverage">{Object.entries(pendingByEntity).map(([entity, count]) => <span key={entity}>{entityLabel[entity as keyof typeof entityLabel]} {count}</span>)}</div> : null}</div><div className="proposal-heading-actions">{dismissedCount ? <button className="button text-button" onClick={() => { cloud.markNextSaveActor("proposal"); setState(clearDismissedAiProposals); }}>清除 {dismissedCount} 個已忽略提案</button> : null}{pending.some((proposal) => canApplyAiProposal(state, proposal, cloud.privateRevision || undefined).valid) ? <button className="button primary batch-apply" onClick={applyAllPending}><Check size={16} />套用全部可用提案</button> : null}<span className="count-badge">{pending.length}</span></div></div>
         {pending.length ? <div className="proposal-list">{pending.map((proposal) => {
           const sources = proposal.evidenceIds.map((id) => sourceMap.get(id)).filter(Boolean);
           const current = proposalTarget(state, proposal);
-          const applicability = canApplyAiProposal(state, proposal);
+          const applicability = canApplyAiProposal(state, proposal, cloud.privateRevision || undefined);
           return (
             <article className="paper-card proposal-card" key={proposal.id}>
               <div className="proposal-top"><div className="proposal-labels"><span className={`confidence ${proposal.confidence}`}>{confidenceLabel[proposal.confidence]}</span><span>{entityLabel[proposal.entity]}</span><span className={proposal.privacy === "private" ? "private" : "shareable"}>{proposal.privacy === "private" ? "私人" : "可分享"}</span></div><span className="proposal-action">{proposal.action === "add" ? "新增" : "更新"}</span></div>
@@ -159,14 +204,14 @@ export default function AiConcierge({ state, setState }: { state: AppState; setS
               <div className="proposal-sources">{sources.map((source) => source ? <span key={source.id}><FileCheck2 size={14} />{source.url ? <a href={source.url} target="_blank" rel="noreferrer">{source.label}<ExternalLink size={11} /></a> : source.label}<small>{source.capturedAt}</small></span> : null)}</div>
               <details className="proposal-diff"><summary>查看實際欄位變更</summary><div className="proposal-diff-grid">{Object.entries(proposal.value).map(([key, next]) => <div className="proposal-diff-row" key={key}><strong>{key}</strong><div><small>目前</small><pre>{proposal.action === "add" ? "（新增項目）" : displayValue(current?.[key])}</pre></div><div><small>套用後</small><pre>{displayValue(next)}</pre></div></div>)}</div><p><LockKeyhole size={14} />整份匯入檔都應視為私人工作資料；「可分享」只代表套用後的通用內容有資格被另外選入分享。</p></details>
               {!applicability.valid ? <p className="proposal-invalid"><LockKeyhole size={15} />{applicability.reason}</p> : null}
-              <div className="proposal-actions"><button className="button secondary" onClick={() => setState((current) => dismissAiProposal(current, proposal.id))}><X size={16} />忽略</button><button className="button primary" disabled={!applicability.valid} onClick={() => setState((current) => applyAiProposal(current, proposal.id))}><Check size={16} />套用到手帳</button></div>
+              <div className="proposal-actions"><button className="button secondary" onClick={() => { cloud.markNextSaveActor("proposal"); setState((current) => dismissAiProposal(current, proposal.id)); }}><X size={16} />忽略</button><button className="button primary" disabled={!applicability.valid} onClick={() => { cloud.markNextSaveActor("proposal"); setState((current) => applyAiProposal(current, proposal.id, cloud.privateRevision || undefined)); }}><Check size={16} />套用到手帳</button></div>
             </article>
           );
         })}</div> : <div className="paper-card proposal-empty"><RotateCcw size={27} /><h3>目前沒有等待確認的更新</h3><p>手動修改可以照常使用。下次讓 Codex 整理時，它會以你現在的紀錄為準。</p></div>}
       </section>
       {applied.length ? <section className="applied-proposals paper-card"><div><p className="eyebrow">Applied history</p><h2>已套用，可以復原</h2></div><div>{applied.map((proposal) => {
         const undo = canUndoAiProposal(state, proposal);
-        return <div className="applied-proposal-row" key={proposal.id}><span><Check size={15} /></span><div><strong>{proposal.title}</strong><small>{undo.valid ? (proposal.appliedAt ? new Date(proposal.appliedAt).toLocaleString("zh-TW") : "已套用") : undo.reason}</small></div><button className="button text-button" disabled={!undo.valid} title={undo.reason} onClick={() => setState((current) => undoAiProposal(current, proposal.id))}><Undo2 size={15} />復原</button></div>;
+        return <div className="applied-proposal-row" key={proposal.id}><span><Check size={15} /></span><div><strong>{proposal.title}</strong><small>{undo.valid ? (proposal.appliedAt ? new Date(proposal.appliedAt).toLocaleString("zh-TW") : "已套用") : undo.reason}</small></div><button className="button text-button" disabled={!undo.valid} title={undo.reason} onClick={() => { cloud.markNextSaveActor("proposal"); setState((current) => undoAiProposal(current, proposal.id)); }}><Undo2 size={15} />復原</button></div>;
       })}</div></section> : null}
     </div>
   );

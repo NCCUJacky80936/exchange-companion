@@ -71,7 +71,7 @@ test("accepts a complete, reviewable resource proposal", () => {
 
 test("exports a self-describing handoff with first-use setup locked for routine updates", () => {
   const state = cleanState();
-  const handoff = createExchangeConciergeHandoff(state, "2027-01-15T12:00:00+08:00");
+  const handoff = createExchangeConciergeHandoff(state, "2027-01-15T12:00:00+08:00", 12);
   assert.equal(handoff.kind, "exchange-companion-handoff");
   assert.equal(handoff.journeyScope, journeyScopeForState(state));
   assert.equal(handoff.agentContract.requiredSkill, "$exchange-concierge");
@@ -79,12 +79,39 @@ test("exports a self-describing handoff with first-use setup locked for routine 
   assert.equal(handoff.agentContract.importContract.proposalStatus, "pending");
   assert.equal(handoff.agentContract.initializer, ".agents/skills/exchange-concierge/scripts/initialize_import_bundle.py");
   assert.equal(handoff.outputTemplate.journeyScope, journeyScopeForState(state));
+  assert.equal(handoff.baseRevision, 12);
+  assert.equal(handoff.outputTemplate.baseRevision, 12);
   assert.deepEqual(handoff.outputTemplate.sources, []);
   assert.deepEqual(handoff.outputTemplate.proposals, []);
   assert.equal(handoff.setupSnapshot.lockedForRoutineReconciliation, true);
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "base-budget")?.proposalEntity, "budget-item");
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("days[].activities[].mapsUrl"), true);
   assert.equal(handoff.state, state);
+});
+
+test("keeps journey identity stable while editable destination facts change", () => {
+  const state = cleanState();
+  const originalScope = journeyScopeForState(state);
+  state.journey = {
+    ...state.journey,
+    hostSchool: "Another University",
+    hostCity: "Tokyo",
+    destinations: ["Japan"],
+    startDate: "2028-04-01",
+    endDate: "2028-08-31",
+  };
+  assert.equal(journeyScopeForState(state), originalScope);
+  assert.equal(originalScope, `exchange:${state.journey.id}`);
+});
+
+test("rejects stale cloud proposals but accepts the matching revision", () => {
+  const state = cleanState();
+  const proposal: AiProposal = { ...validResourceBundle().proposals[0], baseRevision: 7 };
+  assert.equal(canApplyAiProposal(state, proposal, 7).valid, true);
+  assert.equal(canApplyAiProposal(state, proposal, 8).valid, false);
+  state.aiInbox = { sources: validResourceBundle().sources, proposals: [proposal] };
+  assert.equal(applyAiProposal(state, proposal.id, 8), state);
+  assert.notEqual(applyAiProposal(state, proposal.id, 7), state);
 });
 
 test("applies and safely undoes a private evidence-backed base-budget proposal", () => {

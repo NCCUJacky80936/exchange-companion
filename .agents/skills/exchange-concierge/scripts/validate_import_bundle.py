@@ -15,7 +15,7 @@ SOURCE_KINDS = {"official", "school", "city", "email", "file", "video", "researc
 ENTITIES = {"journey", "task", "resource", "resource-intake", "packing-item", "bag", "flight-allowance", "budget-item", "study-event", "travel-plan"}
 CONFIDENCE = {"high", "medium", "low"}
 PRIVACY = {"private", "shareable"}
-ROOT_FIELDS = {"schemaVersion", "generatedAt", "journeyScope", "sources", "proposals"}
+ROOT_FIELDS = {"schemaVersion", "generatedAt", "journeyScope", "baseRevision", "sources", "proposals"}
 SOURCE_FIELDS = {"id", "label", "kind", "evidenceType", "url", "capturedAt", "note"}
 PROPOSAL_FIELDS = {"id", "title", "summary", "entity", "action", "targetId", "value", "confidence", "privacy", "evidenceIds", "status"}
 CHECKLIST_FIELDS = {"id", "label", "done"}
@@ -445,13 +445,10 @@ def journey_scope_for_state(state: dict[str, object]) -> str:
     journey = state.get("journey")
     if not isinstance(journey, dict):
         fail("state.journey is required for journeyScope validation")
-    destinations = journey.get("destinations")
-    if not isinstance(destinations, list) or not all(isinstance(item, str) for item in destinations):
-        fail("state.journey.destinations must be an array of strings")
-    fields = [journey.get("id"), journey.get("hostSchool"), journey.get("hostCity"), ",".join(destinations), journey.get("startDate"), journey.get("endDate")]
-    if not all(isinstance(item, str) for item in fields):
-        fail("state.journey is missing fields required for journeyScope")
-    return ":".join(["exchange", *fields])
+    journey_id = journey.get("id")
+    if not isinstance(journey_id, str) or not journey_id:
+        fail("state.journey.id is required for journeyScope")
+    return f"exchange:{journey_id}"
 
 
 def unwrap_state_document(document: object) -> dict[str, object]:
@@ -481,6 +478,8 @@ def validate(path: Path, state_path: Path | None = None) -> dict[str, int]:
         fail("schemaVersion must be 1")
     if not valid_timestamp(data.get("generatedAt")) or not nonempty_text(data.get("journeyScope"), 300):
         fail("generatedAt must be ISO 8601 and journeyScope is required")
+    if "baseRevision" in data and (not isinstance(data["baseRevision"], int) or isinstance(data["baseRevision"], bool) or data["baseRevision"] < 1):
+        fail("baseRevision must be a positive integer")
     sources = data.get("sources")
     proposals = data.get("proposals")
     if not isinstance(sources, list) or not isinstance(proposals, list):
@@ -522,6 +521,11 @@ def validate(path: Path, state_path: Path | None = None) -> dict[str, int]:
         expected_scope = journey_scope_for_state(state)
         if data["journeyScope"] != expected_scope:
             fail(f"journeyScope mismatch: expected {expected_scope}")
+        if isinstance(json.loads(state_path.read_text(encoding="utf-8")), dict):
+            state_document = json.loads(state_path.read_text(encoding="utf-8"))
+            expected_revision = state_document.get("baseRevision") if state_document.get("kind") == "exchange-companion-handoff" else None
+            if expected_revision is not None and data.get("baseRevision") != expected_revision:
+                fail(f"baseRevision mismatch: expected {expected_revision}")
         inbox = state.get("aiInbox") or {}
         existing_source_ids = {item["id"] for item in inbox.get("sources", []) if isinstance(item, dict) and isinstance(item.get("id"), str)}
         existing_proposal_ids = {item["id"] for item in inbox.get("proposals", []) if isinstance(item, dict) and isinstance(item.get("id"), str)}

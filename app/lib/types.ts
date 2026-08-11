@@ -249,6 +249,9 @@ export interface AiProposal {
   privacy: "private" | "shareable";
   evidenceIds: string[];
   status: AiProposalStatus;
+  /** Website-only optimistic concurrency metadata; Agents do not author this field. */
+  baseRevision?: number;
+  cloudRunId?: string;
   previousValue?: Record<string, unknown>;
   appliedAt?: string;
 }
@@ -257,8 +260,34 @@ export interface AiImportBundle {
   schemaVersion: 1;
   generatedAt: string;
   journeyScope: string;
+  baseRevision?: number;
   sources: EvidenceSource[];
   proposals: AiProposal[];
+}
+
+export interface ConciergeConnectionInfo {
+  id: string;
+  label: string;
+  journeyId: string;
+  scopes: string[];
+  createdAt: string;
+  lastUsedAt?: string;
+  expiresAt: string;
+  revokedAt?: string;
+}
+
+export interface ConciergeConnectionFile {
+  schemaVersion: 1;
+  kind: "exchange-concierge-connection";
+  endpoint: string;
+  token: string;
+  journeyId: string;
+  journeyScope: string;
+  createdAt: string;
+  expiresAt: string;
+  permissions: string[];
+  requiredSkill: "$exchange-concierge";
+  warning: string;
 }
 
 export interface AiInbox {

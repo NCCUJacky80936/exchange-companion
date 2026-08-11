@@ -68,7 +68,7 @@ test("validates a reviewable concierge import bundle", async () => {
   await writeFile(bundlePath, JSON.stringify({
     schemaVersion: 1,
     generatedAt: "2027-01-15T12:00:00+08:00",
-    journeyScope: "exchange:journey-example:Example University:Example City:Example Country:2027-03-01:2027-07-31",
+    journeyScope: "exchange:journey-example",
     sources: [
       { id: "source-school-2027-01-15", label: "School exchange office", kind: "school", capturedAt: "2027-01-15" },
       { id: "source-ticket-2027-01-15", label: "User-authorized e-ticket", kind: "file", evidenceType: "ticket", capturedAt: "2027-01-15" }
@@ -143,7 +143,7 @@ test("validates a budget proposal against the self-describing website handoff", 
   const directory = await mkdtemp(join(tmpdir(), "exchange-companion-budget-import-"));
   const bundlePath = join(directory, "bundle.json");
   const handoffPath = join(directory, "handoff.json");
-  const scope = "exchange:journey-example:Example University:Example City:Example Country:2027-03-01:2027-07-31";
+  const scope = "exchange:journey-example";
   const state = {
     journey: { id: "journey-example", hostSchool: "Example University", hostCity: "Example City", destinations: ["Example Country"], startDate: "2027-03-01", endDate: "2027-07-31" },
     tasks: [], resources: [], resourceIntake: [], packingItems: [], bags: [], flightAllowances: [], studyEvents: [], travelPlans: [],
@@ -179,7 +179,7 @@ test("initializes a fresh import shell from the exact handoff instead of stale o
   const directory = await mkdtemp(join(tmpdir(), "exchange-companion-bound-import-"));
   const handoffPath = join(directory, "handoff.json");
   const outputPath = join(directory, "bundle.json");
-  const scope = "exchange:journey-hdm:Hochschule der Medien Stuttgart (HdM):Stuttgart:Germany:2026-10-01:2027-08-31";
+  const scope = "exchange:journey-hdm";
   const state = {
     journey: { id: "journey-hdm", hostSchool: "Hochschule der Medien Stuttgart (HdM)", hostCity: "Stuttgart", destinations: ["Germany"], startDate: "2026-10-01", endDate: "2027-08-31" },
   };
@@ -206,7 +206,7 @@ test("rejects unsafe concierge updates, naive timestamps, and inbox collisions",
   const base = {
     schemaVersion: 1,
     generatedAt: "2027-01-15T12:00:00+08:00",
-    journeyScope: "exchange:journey-example:Example University:Example City:Example Country:2027-03-01:2027-07-31",
+    journeyScope: "exchange:journey-example",
     sources: [{ id: "source-school-run-1", label: "School exchange office", kind: "school", capturedAt: "2027-01-15" }],
     proposals: [{
       id: "proposal-task-run-1",

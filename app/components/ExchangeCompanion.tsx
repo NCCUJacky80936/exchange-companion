@@ -1192,7 +1192,14 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
       </section>
       <div className="toolbar paper-card resource-toolbar">
         <label className="search-field"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜尋簽證、住宿、醫療或交通" /></label>
-        <div className="filter-pills scroll-pills">{categories.map((item) => <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
+        <label className="compact-select resource-category-select">
+          <span className="sr-only">資源分類</span>
+          <select value={category} onChange={(event) => setCategory(event.target.value)}>
+            {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+          <ChevronDown size={16} />
+        </label>
+        <div className="filter-pills scroll-pills" aria-label="資源分類">{categories.map((item) => <button type="button" key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
       </div>
       <section className="resource-grid">
         {!filtered.length ? <div className="paper-card empty-state"><Sparkles size={24} /><div><h2>等待加入你的目的地資源</h2><p>請使用專案內的 AI 整理流程，依交換國家、城市與學校查核官方資料；你也可以先手動新增來源。</p></div></div> : null}
@@ -1421,7 +1428,7 @@ export default function ExchangeCompanion() {
               {section === "travel" ? <Suspense fallback={<SectionFallback />}><TravelPlanner state={state} setState={setState} cloud={cloud} /></Suspense> : null}
               {section === "packing" ? <PackingPage state={state} setState={setState} /> : null}
               {section === "resources" ? <ResourcesPage state={state} setState={setState} /> : null}
-              {section === "ai" ? <Suspense fallback={<SectionFallback />}><AiConcierge state={state} setState={setState} /></Suspense> : null}
+              {section === "ai" ? <Suspense fallback={<SectionFallback />}><AiConcierge state={state} setState={setState} cloud={cloud} /></Suspense> : null}
               {section === "settings" ? <SettingsPage state={state} setState={setState} cloud={cloud} /> : null}
             </motion.div>
           </AnimatePresence>

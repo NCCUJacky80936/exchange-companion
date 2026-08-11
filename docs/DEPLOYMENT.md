@@ -16,6 +16,15 @@ npm run check
 
 ## Cloudflare Workers
 
+正式站若啟用 Agent 雲端連結，先把 `supabase/migrations/` 套用到自己的 Supabase 專案，再部署 `exchange-concierge-sync` Edge Function。這個 Function 使用 Supabase 自動提供的 server-side secret，不能把 secret 寫入前端環境或 Git：
+
+```bash
+npx supabase db push
+npx supabase functions deploy exchange-concierge-sync --no-verify-jwt
+```
+
+Edge Function 會自行驗證登入者或可撤銷的 Agent token；Agent token 只能讀取一趟旅程的最新版本並提交 pending proposals。
+
 第一次使用 Wrangler 時，先登入自己的 Cloudflare 帳號：
 
 ```bash

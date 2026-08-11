@@ -17,7 +17,7 @@ Collect only the current user's authorized exchange email evidence and return a 
    - whether a private local archive is requested.
 3. Show the resolved boundary before the first mailbox read. Authorization for one account, message, folder, or attachment never covers another.
 4. Use access methods in this order: current-user mail connector; explicitly authorized `.mbox`; explicitly authorized `.eml` folder; user-pasted messages. Never request passwords, app passwords, OAuth clients, refresh tokens, or access tokens.
-5. Search metadata first, newest first, and incrementally. Read at most 20–50 matches per query unless the user authorizes a wider backfill. Deduplicate provider IDs only in the private working inventory.
+5. Inventory relevant existing authorized archives before searching for new mail. Search metadata first, newest first, and incrementally. Use separate bounded query packs for housing, each airline, school fees, courses/calendar, visa/residence, insurance/finance, arrival, and return; broad grouped `OR` queries are discovery only. Read at most 20–50 matches per query unless the user authorizes a wider backfill. Deduplicate provider IDs only in the private working inventory.
 6. Extract concise facts, dates, deadlines, amounts, currencies, status, blockers, itinerary facts, and source labels. Distinguish submitted, received, paid, approved, booked, and completed; do not promote one status into another.
 7. Keep raw bodies, headers, account addresses, provider IDs, attachments, booking references, payment references, and exact addresses outside the website bundle. Default every email-derived proposal to `private`.
 8. Return the evidence inventory to `$exchange-concierge`; do not directly edit browser state. If a current handoff is available, the final import must be validated against that exact handoff.
@@ -29,7 +29,7 @@ Read [the detailed intake and counting rules](../exchange-concierge/references/e
 Report each authorized account or exact-message scope separately:
 
 - query or exact-message boundary;
-- matched, read, duplicate, new, and failed counts;
+- matched, read, relevant, duplicate, new, and failed counts for each query pack;
 - attachment filenames or contents inspected;
 - private working files created or updated;
 - material facts passed to Exchange Concierge;

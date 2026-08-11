@@ -6,25 +6,26 @@ The root object must contain:
 {
   "schemaVersion": 1,
   "generatedAt": "2027-01-15T12:00:00+08:00",
-  "journeyScope": "exchange:my-exchange-journey:Example University:Tokyo:Japan:2027-03-01:2027-07-31",
+  "journeyScope": "exchange:my-exchange-journey",
+  "baseRevision": 12,
   "sources": [],
   "proposals": []
 }
 ```
 
-`journeyScope` must exactly match the current backup using this order:
+`journeyScope` is a stable identity and must exactly match the current handoff:
 
 ```text
-exchange:<journey.id>:<hostSchool>:<hostCity>:<comma-joined destinations>:<startDate>:<endDate>
+exchange:<journey.id>
 ```
 
-The website rejects a structurally valid bundle for a different journey. When a current backup exists, the Python validator verifies this scope automatically.
+The website rejects a structurally valid bundle for a different journey. School, city, dates, and destinations are editable facts and therefore are deliberately not part of the identity. When a current handoff contains `baseRevision`, copy it exactly. Cloud submission and website apply reject stale revisions so later manual edits cannot be overwritten.
 
 For a website handoff, do not type or infer this string. First initialize the output from the handoff's `outputTemplate` with `scripts/initialize_import_bundle.py`, then preserve its `journeyScope` exactly. Never reuse root fields from `outputs/`, `tests/fixtures/`, documentation examples, or an earlier session. Validate with that same handoff as the required second argument before delivery.
 
 Each source requires `id`, `label`, `kind`, and `capturedAt`. Allowed `kind` values are `official`, `school`, `city`, `email`, `file`, `video`, and `research`. `evidenceType` is optional and is normally `general`; use `ticket` only for an exact e-ticket file or email attachment that the current user authorized. `url` and `note` are optional. Never use a private local path as a public URL.
 
-Use `source-...` IDs. Government and national agencies are `official`, universities are `school`, municipalities are `city`, and commercial providers are `research` with a clear provider label. `capturedAt` is the day the page or record was actually checked; an evergreen official page may be current even when it has no published or updated date.
+Use `source-...` IDs with the current run suffix, for example `source-airline-ticket-run-20260811-143000-r1`. Government and national agencies are `official`, universities are `school`, municipalities are `city`, and commercial providers are `research` with a clear provider label. `capturedAt` is the day the page or record was actually checked; an evergreen official page may be current even when it has no published or updated date.
 
 Each proposal requires:
 
@@ -42,7 +43,7 @@ Use `YYYY-MM-DD` for dates and ISO 8601 with an offset for timestamps. Website e
 
 Do not add undocumented root, source, proposal, or nested entity fields. Unknown fields are rejected because they could hide private message or account data outside the visible review diff. Date ranges must be chronological, nested IDs must be unique, travel days must stay within the trip, and task predecessor IDs must resolve to current or proposed tasks.
 
-Use unique run-versioned proposal IDs beginning with `proposal-`. An `add` must contain a complete entity and no `targetId`; an `update` must contain an existing `targetId`, only changed fields, and no replacement `id`. New entity IDs should be namespaced by entity, for example `resource-jp-immigration-2027` or `packing-winter-base-layer`.
+Use unique run-versioned proposal IDs beginning with `proposal-`. All source and proposal IDs in one bundle must end in the same `run-YYYYMMDD-HHMMSS[-revision]` suffix; entity IDs remain stable across runs. An `add` must contain a complete entity and no `targetId`; an `update` must contain an existing `targetId`, only changed fields, and no replacement `id`. New entity IDs should be namespaced by entity, for example `resource-jp-immigration-2027` or `packing-winter-base-layer`.
 
 `journey` only supports `update`, always stays `private`, and targets the current `journey.id`. It may change `title`, `ownerName`, `homeCity`, `hostCity`, `hostSchool`, `program`, `startDate`, `endDate`, `orientationDate`, or `destinations`. Use it when the website handoff still contains placeholders or newly authorized evidence corrects the personal route. It changes the signed-in website state, not repository artwork or `config/exchange-profile.json`.
 
