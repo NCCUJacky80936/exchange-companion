@@ -14,6 +14,8 @@ npm run check
 
 `NEXT_PUBLIC_SUPABASE_URL` 與 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` 雖由 Sites 保存，但也必須在 production build 當下提供給前端打包。更新既有站點時，先讀取該站目前的環境設定，再只在建置程序中傳入；不要寫入 `.env`、Git 或公開模板。完成部署後必須用全新瀏覽器狀態確認第一個畫面是登入／建立帳號，而不是本機主畫面。
 
+正式發布包一律使用 `npm run build:production`；它會在缺少公開 Supabase 設定，或設定沒有真正進入前端檔案時中止，避免發布出看得到登入頁、卻無法送出登入的版本。
+
 若正式站顯示「免費雲端尚未建立」或登入按鈕停用，應視為建置失敗並停止發布；不要把這種降級畫面當成可接受的正式版本。
 
 ## Cloudflare Workers
