@@ -176,7 +176,11 @@ function validFlightAllowanceSemantics(value: Record<string, unknown>): boolean 
       : (mode === "none" || mode === "unknown") && count === 0 && weight === 0;
   };
   const cabinValid = itemRuleValid(value.carryOnMode, value.carryOnPieceCount, value.carryOnPieceWeightKg);
-  const personalValid = itemRuleValid(value.personalItemMode, value.personalItemPieceCount, value.personalItemPieceWeightKg);
+  const personalCount = Number(value.personalItemPieceCount);
+  const personalWeight = Number(value.personalItemPieceWeightKg);
+  const personalValid = value.personalItemMode === "piece"
+    ? Number.isInteger(personalCount) && personalCount > 0 && personalWeight >= 0
+    : itemRuleValid(value.personalItemMode, value.personalItemPieceCount, value.personalItemPieceWeightKg);
   const completenessValid = value.confirmed === false || (value.checkedMode !== "unknown" && value.carryOnMode !== "unknown" && value.personalItemMode !== "unknown");
   return checkedValid && cabinValid && personalValid && completenessValid;
 }
@@ -229,6 +233,7 @@ function validatesEntityField(entity: AiProposalEntity, key: string, value: unkn
     if (key === "origin") return new Set(["user-upload", "ai-research", "manual"]).has(String(value));
     if (key === "privacy") return new Set(["private", "shareable"]).has(String(value));
     if (key === "sourceLabel") return isText(value, 300);
+    if (key === "searchTags") return isStringArray(value) && value.length <= 20 && value.every((item) => item.trim().length > 0 && item.length <= 80);
     return false;
   }
   if (entity === "resource-intake") {
@@ -392,7 +397,7 @@ export function importAiBundle(state: AppState, bundle: AiImportBundle, cloudRun
   const existingProposals = new Map((state.aiInbox?.proposals ?? []).map((proposal) => [proposal.id, proposal]));
   bundle.proposals.forEach((proposal) => {
     if (existingProposals.has(proposal.id)) return;
-    existingProposals.set(proposal.id, { ...proposal, status: "pending", baseRevision: bundle.baseRevision, cloudRunId });
+    existingProposals.set(proposal.id, { ...proposal, status: "pending", baseRevision: bundle.baseRevision, cloudRunId, createdAt: bundle.generatedAt });
   });
   return {
     ...state,
@@ -611,4 +616,23 @@ export function clearDismissedAiProposals(state: AppState): AppState {
       sources: state.aiInbox.sources.filter((source) => usedSources.has(source.id)),
     },
   };
+}
+
+export function pruneExpiredAiHistory(state: AppState, now = Date.now()): AppState {
+  if (!state.aiInbox) return state;
+  const fallback = state.aiInbox.lastImportedAt ? Date.parse(state.aiInbox.lastImportedAt) : now;
+  const proposals = state.aiInbox.proposals.filter((proposal) => {
+    if (proposal.status === "pending" || proposal.status === "dismissed") {
+      const created = proposal.createdAt ? Date.parse(proposal.createdAt) : fallback;
+      return !Number.isFinite(created) || now - created <= 5 * 86_400_000;
+    }
+    if (proposal.status === "applied") {
+      const applied = proposal.appliedAt ? Date.parse(proposal.appliedAt) : now;
+      return !Number.isFinite(applied) || now - applied <= 7 * 86_400_000;
+    }
+    return false;
+  });
+  if (proposals.length === state.aiInbox.proposals.length) return state;
+  const usedSources = new Set(proposals.flatMap((proposal) => proposal.evidenceIds));
+  return { ...state, aiInbox: { ...state.aiInbox, proposals, sources: state.aiInbox.sources.filter((source) => usedSources.has(source.id)) } };
 }

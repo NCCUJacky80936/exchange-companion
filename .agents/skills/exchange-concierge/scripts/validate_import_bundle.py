@@ -39,7 +39,7 @@ ENTITY_ARRAYS = {
 REQUIRED_ADD_FIELDS = {
     "journey": set(),
     "task": {"id", "title", "description", "phase", "status", "priority", "predecessorIds", "notes"},
-    "resource": {"id", "title", "description", "details", "category", "type", "url", "verifiedAt", "region", "origin", "privacy", "sourceLabel"},
+    "resource": {"id", "title", "description", "details", "category", "type", "url", "verifiedAt", "region", "origin", "privacy", "sourceLabel", "searchTags"},
     "resource-intake": {"id", "url", "note", "status", "createdAt"},
     "packing-item": {"id", "name", "category", "decision", "bagId", "quantity", "weightKg", "packed"},
     "bag": {"id", "name", "kind", "limitKg", "limitSource"},
@@ -217,7 +217,12 @@ def valid_flight_allowance_semantics(value: dict[str, object]) -> bool:
         return mode in {"none", "unknown"} and item_count == 0 and item_weight == 0
 
     cabin_valid = item_rule(value.get("carryOnMode"), value.get("carryOnPieceCount"), value.get("carryOnPieceWeightKg"))
-    personal_valid = item_rule(value.get("personalItemMode"), value.get("personalItemPieceCount"), value.get("personalItemPieceWeightKg"))
+    personal_count = value.get("personalItemPieceCount")
+    personal_weight = value.get("personalItemPieceWeightKg")
+    personal_valid = (
+        isinstance(personal_count, int) and not isinstance(personal_count, bool) and personal_count > 0
+        and nonnegative_number(personal_weight)
+    ) if value.get("personalItemMode") == "piece" else item_rule(value.get("personalItemMode"), personal_count, personal_weight)
     complete_if_confirmed = value.get("confirmed") is False or all(value.get(key) != "unknown" for key in ("checkedMode", "carryOnMode", "personalItemMode"))
     return checked_valid and cabin_valid and personal_valid and complete_if_confirmed
 
@@ -295,6 +300,8 @@ def validate_field(entity: str, key: str, value: object) -> bool:
             return value in PRIVACY
         if key == "sourceLabel":
             return nonempty_text(value, 300)
+        if key == "searchTags":
+            return isinstance(value, list) and len(value) <= 20 and all(nonempty_text(item, 80) for item in value)
     if entity == "resource-intake":
         if key == "url":
             return valid_safe_intake_url(value)

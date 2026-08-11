@@ -141,6 +141,10 @@ Deno.serve(async (req: Request) => {
     const payload = await req.json();
     if (!isRecord(payload) || typeof payload.action !== "string") return json({ error: "invalid_request" }, 400);
     const token = bearer(req);
+    const pendingCutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    const deliveredCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    await admin.from("concierge_proposal_runs").delete().eq("status", "pending").lt("created_at", pendingCutoff);
+    await admin.from("concierge_proposal_runs").delete().neq("status", "pending").lt("delivered_at", deliveredCutoff);
 
     const authenticateUser = async () => {
       if (!token || token.startsWith("xc_")) return null;

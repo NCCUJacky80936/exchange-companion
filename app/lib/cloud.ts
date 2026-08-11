@@ -44,24 +44,28 @@ function accountIdToEmail(accountId: string): string {
   return `${normalized}@users.exchange-companion.local`;
 }
 
-export async function createPasswordAccount(accountId: string, password: string): Promise<void> {
+export async function createPasswordAccount(accountId: string, email: string, password: string): Promise<"signed-in" | "confirmation-required"> {
   if (password.length < 8) throw new Error("weak_password");
   const client = getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
   const normalized = accountId.trim().toLowerCase();
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) throw new Error("invalid_email");
   const { data, error } = await client.auth.signUp({
-    email: accountIdToEmail(normalized),
+    email: normalizedEmail,
     password,
     options: { data: { display_name: normalized, account_id: normalized } },
   });
   if (error) throw error;
-  if (!data.session || data.user?.is_anonymous) throw new Error("account_not_created");
+  if (!data.user || data.user.is_anonymous) throw new Error("account_not_created");
+  return data.session ? "signed-in" : "confirmation-required";
 }
 
 export async function signInWithPasswordAccount(accountId: string, password: string): Promise<void> {
   const client = getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
-  const { error } = await client.auth.signInWithPassword({ email: accountIdToEmail(accountId), password });
+  const identifier = accountId.trim().toLowerCase();
+  const { error } = await client.auth.signInWithPassword({ email: identifier.includes("@") ? identifier : accountIdToEmail(identifier), password });
   if (error) throw error;
 }
 

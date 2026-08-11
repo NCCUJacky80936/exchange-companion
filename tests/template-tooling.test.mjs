@@ -26,6 +26,12 @@ test("ships only experience-level packing inspiration URLs", async () => {
   ]);
 });
 
+test("expires pending and delivered concierge runs from the correct timestamps", async () => {
+  const source = await readFile(new URL("../supabase/functions/exchange-concierge-sync/index.ts", import.meta.url), "utf8");
+  assert.match(source, /eq\("status", "pending"\)\.lt\("created_at", pendingCutoff\)/);
+  assert.match(source, /neq\("status", "pending"\)\.lt\("delivered_at", deliveredCutoff\)/);
+});
+
 test("initializes a clone from a complete profile without prompts", async () => {
   const directory = await mkdtemp(join(tmpdir(), "exchange-companion-profile-"));
   const source = JSON.parse(await readFile(new URL("../config/exchange-profile.json", import.meta.url), "utf8"));

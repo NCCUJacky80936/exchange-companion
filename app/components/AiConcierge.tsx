@@ -49,11 +49,13 @@ export default function AiConcierge({ state, setState, cloud }: { state: AppStat
   const refreshedAccount = useRef("");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
   const inbox = state.aiInbox ?? { sources: [], proposals: [] };
   const sourceMap = useMemo(() => new Map(inbox.sources.map((source) => [source.id, source])), [inbox.sources]);
   const pending = inbox.proposals.filter((proposal) => proposal.status === "pending");
   const applied = inbox.proposals.filter((proposal) => proposal.status === "applied");
   const dismissedCount = inbox.proposals.filter((proposal) => proposal.status === "dismissed").length;
+  const activeConnections = cloud.conciergeConnections.filter((item) => !item.revokedAt);
   const pendingByEntity = useMemo(() => pending.reduce<Record<string, number>>((counts, proposal) => ({ ...counts, [proposal.entity]: (counts[proposal.entity] ?? 0) + 1 }), {}), [pending]);
 
   useEffect(() => {
@@ -112,7 +114,7 @@ export default function AiConcierge({ state, setState, cloud }: { state: AppStat
     anchor.download = filename;
     anchor.click();
     URL.revokeObjectURL(url);
-    const prompt = `請使用 $exchange-concierge 處理我附上的 ${filename}，並依檔案內 agentContract 與 editableSurfaces 執行。這是網站最新、完整的私人手帳交接檔；目前狀態在 state。開始前必須從檔案內 outputTemplate 建立全新的輸出，或執行 agentContract.initializer；不得沿用 outputs/、tests/fixtures/、範例或舊任務的根欄位，且必須原封不動保留 outputTemplate.journeyScope。請只讀取我另外明確授權的信件、檔案、網址與行事曆；需要搜尋信件時先使用 $exchange-email-intake 確認目前使用者的精確授權範圍。完整檢查任務進度、基礎預算、重要資源、行李、本人機票額度、課程／考試與旅行衝突。處理所有 pending resourceIntake；每筆資源都要提供精簡摘要與包含適用對象、準備資料、操作步驟、期限及風險的詳細說明。行李經驗影片只作為找漏項的內部靈感，把結果融入 packing-item 提案，不要呈現影片、頻道或宣傳連結。setupSnapshot 是第一次建站的鎖定背景，不要在日常整理時重做國家、幣別、時區、固定文案或圖片。產生 outputs/exchange-companion-import.json 後，必須把同一份 ${filename} 當驗證器第二個參數；驗證通過才可交付。不要直接改網站或覆蓋手動紀錄。最後列出各頁有更新、無新證據與仍待確認的項目。`;
+    const prompt = `請使用 $exchange-concierge 處理我附上的 ${filename}，並依檔案內 agentContract 與 editableSurfaces 執行。這是網站最新、完整的私人手帳交接檔；目前狀態在 state。開始前必須從檔案內 outputTemplate 建立全新的輸出，或執行 agentContract.initializer；不得沿用 outputs/、tests/fixtures/、範例或舊任務的根欄位，且必須原封不動保留 outputTemplate.journeyScope。請只讀取我另外明確授權的信件、檔案、網址與行事曆；需要搜尋信件時先使用 $exchange-email-intake 確認目前使用者的精確授權範圍。完整檢查任務進度、基礎預算、重要資源、行李、本人機票額度、課程／考試與旅行衝突。處理所有 pending resourceIntake；網址不是只做成資源卡，必須逐一比對任務、預算、行李品項、實體行李、本人航班額度、課程行事曆與旅行計畫，有可執行的新資訊就提出對應欄位更新；若既有資料已涵蓋，也要在 coverage 寫出具體比對，不得只新增資源後直接標記處理完成。每筆資源都要提供可獨立理解的摘要、包含適用對象／準備資料／操作步驟／期限／風險的詳細說明，以及 4–12 個去識別、可供純文字搜尋但不顯示在卡片上的 searchTags。行李經驗影片只作為找漏項的內部靈感，把結果融入 packing-item 提案，不要呈現影片、頻道或宣傳連結。setupSnapshot 是第一次建站的鎖定背景，不要在日常整理時重做國家、幣別、時區、固定文案或圖片。產生 outputs/exchange-companion-import.json 後，必須把同一份 ${filename} 當驗證器第二個參數；驗證通過才可交付。不要直接改網站或覆蓋手動紀錄。最後列出各頁有更新、無新證據與仍待確認的項目。`;
     try { await navigator.clipboard.writeText(prompt); } catch { /* The downloaded handoff remains usable when clipboard permission is blocked. */ }
     setCopied(true);
     setMessage(`已下載 ${filename}，也已準備給 Codex 的完整指令。把檔案附到同一個 Codex 任務即可開始。`);
@@ -169,16 +171,19 @@ export default function AiConcierge({ state, setState, cloud }: { state: AppStat
         <Image src="/images/doodle-icons/documents-safe.png" alt="手繪文件與行政資料圖示" width={112} height={112} />
       </header>
 
-      <section className="ai-workflow-grid">
-        <article className="paper-card ai-start-card">
+      <section className={`ai-workflow-grid ${activeConnections.length ? "has-connection" : ""}`}>
+        {activeConnections.length ? <article className="paper-card ai-connected-card">
+          <div className="ai-card-heading"><Link2 size={22}/><div><p className="eyebrow">Connected agent</p><h2>已連結 Exchange Concierge</h2></div></div>
+          <p>{activeConnections[0].lastUsedAt ? `最近使用：${new Date(activeConnections[0].lastUsedAt).toLocaleString("zh-TW")}` : "連結已建立，尚未第一次使用。"}</p>
+          <div className="ai-connected-actions"><button className="button secondary" disabled={cloud.busy} onClick={() => void refreshCloudInbox()}><RefreshCw size={16}/>更新收件匣</button><button className="button text-button danger" disabled={cloud.busy} onClick={() => void cloud.revokeConciergeConnection(activeConnections[0].id)}><X size={16}/>撤銷連結</button></div>
+        </article> : <article className="paper-card ai-start-card">
           <span className="tape" />
           <div className="ai-card-heading"><Sparkles size={25} /><div><p className="eyebrow">Free AI workflow</p><h2>從 Codex 開始整理</h2></div></div>
           <p>第一次只需下載一次私人連結檔交給 Codex。之後 Exchange Concierge 會先讀取雲端最新版本，再把待審提案送回網站；不需要每次來回下載 JSON，也不會直接套用。</p>
           <ol className="ai-steps"><li><strong>1</strong><span>首次連結 Codex（一次即可，隨時可撤銷）</span></li><li><strong>2</strong><span>Agent 依你授權的信件、檔案或網址整理</span></li><li><strong>3</strong><span>回到網站更新收件匣並逐項確認</span></li></ol>
           <div className="ai-primary-actions"><button className="button primary" disabled={!cloud.permanentAccount || cloud.privateRevision < 1 || cloud.busy} onClick={() => void pairConcierge()}><Link2 size={17} />首次連結 Codex</button><button className="button secondary" disabled={!cloud.permanentAccount || cloud.busy} onClick={() => void refreshCloudInbox()}><RefreshCw size={17} />更新提案收件匣</button></div>
           <details className="ai-offline-fallback"><summary>離線備援：下載／匯入 JSON</summary><p>只有無法連線雲端或需要攜帶完整資料到另一個環境時才使用。</p><button className="button text-button" onClick={() => void prepareHandoff()}><CloudDownload size={17} />{copied ? "交接檔與指令已準備" : "下載最新交接 JSON"}</button></details>
-          {cloud.conciergeConnections.filter((item) => !item.revokedAt).length ? <div className="ai-connections"><strong>已連結的 Agent</strong>{cloud.conciergeConnections.filter((item) => !item.revokedAt).map((item) => <span key={item.id}>{item.label}<small>{item.lastUsedAt ? `最近使用 ${new Date(item.lastUsedAt).toLocaleDateString("zh-TW")}` : "尚未使用"}</small><button className="button text-button" onClick={() => void cloud.revokeConciergeConnection(item.id)}>撤銷</button></span>)}</div> : null}
-        </article>
+        </article>}
 
         <article className="paper-card ai-import-card">
           <div className="ai-card-heading"><Inbox size={25} /><div><p className="eyebrow">Review inbox</p><h2>AI 提案收件匣</h2></div></div>
@@ -191,8 +196,9 @@ export default function AiConcierge({ state, setState, cloud }: { state: AppStat
         </article>
       </section>
 
-      <section className="proposal-section">
-        <div className="section-heading"><div><p className="eyebrow">Suggested updates</p><h2>待確認提案</h2>{pending.length ? <div className="proposal-coverage">{Object.entries(pendingByEntity).map(([entity, count]) => <span key={entity}>{entityLabel[entity as keyof typeof entityLabel]} {count}</span>)}</div> : null}</div><div className="proposal-heading-actions">{dismissedCount ? <button className="button text-button" onClick={() => { cloud.markNextSaveActor("proposal"); setState(clearDismissedAiProposals); }}>清除 {dismissedCount} 個已忽略提案</button> : null}{pending.some((proposal) => canApplyAiProposal(state, proposal, cloud.privateRevision || undefined).valid) ? <button className="button primary batch-apply" onClick={applyAllPending}><Check size={16} />套用全部可用提案</button> : null}<span className="count-badge">{pending.length}</span></div></div>
+      <details className="proposal-section paper-card ai-inbox-details" open={inboxOpen} onToggle={(event) => setInboxOpen(event.currentTarget.open)}>
+        <summary><div><p className="eyebrow">Suggested updates</p><h2>AI 提案收件匣</h2><small>待確認超過 5 天會清除；套用後 7 天未復原也會移除紀錄。</small></div><span className="count-badge">{pending.length}</span></summary>
+        <div className="proposal-inbox-body"><div className="section-heading"><div><h2>待確認提案</h2>{pending.length ? <div className="proposal-coverage">{Object.entries(pendingByEntity).map(([entity, count]) => <span key={entity}>{entityLabel[entity as keyof typeof entityLabel]} {count}</span>)}</div> : null}</div><div className="proposal-heading-actions">{dismissedCount ? <button className="button text-button" onClick={() => { cloud.markNextSaveActor("proposal"); setState(clearDismissedAiProposals); }}>清除 {dismissedCount} 個已忽略提案</button> : null}{pending.some((proposal) => canApplyAiProposal(state, proposal, cloud.privateRevision || undefined).valid) ? <button className="button primary batch-apply" onClick={applyAllPending}><Check size={16} />套用全部可用提案</button> : null}</div></div>
         {pending.length ? <div className="proposal-list">{pending.map((proposal) => {
           const sources = proposal.evidenceIds.map((id) => sourceMap.get(id)).filter(Boolean);
           const current = proposalTarget(state, proposal);
@@ -208,11 +214,11 @@ export default function AiConcierge({ state, setState, cloud }: { state: AppStat
             </article>
           );
         })}</div> : <div className="paper-card proposal-empty"><RotateCcw size={27} /><h3>目前沒有等待確認的更新</h3><p>手動修改可以照常使用。下次讓 Codex 整理時，它會以你現在的紀錄為準。</p></div>}
-      </section>
-      {applied.length ? <section className="applied-proposals paper-card"><div><p className="eyebrow">Applied history</p><h2>已套用，可以復原</h2></div><div>{applied.map((proposal) => {
+      {applied.length ? <section className="applied-proposals"><div><p className="eyebrow">Applied history</p><h2>已套用，可以復原</h2></div><div>{applied.map((proposal) => {
         const undo = canUndoAiProposal(state, proposal);
         return <div className="applied-proposal-row" key={proposal.id}><span><Check size={15} /></span><div><strong>{proposal.title}</strong><small>{undo.valid ? (proposal.appliedAt ? new Date(proposal.appliedAt).toLocaleString("zh-TW") : "已套用") : undo.reason}</small></div><button className="button text-button" disabled={!undo.valid} title={undo.reason} onClick={() => { cloud.markNextSaveActor("proposal"); setState((current) => undoAiProposal(current, proposal.id)); }}><Undo2 size={15} />復原</button></div>;
-      })}</div></section> : null}
+      })}</div></section> : null}</div>
+      </details>
     </div>
   );
 }

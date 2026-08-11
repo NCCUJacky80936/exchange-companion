@@ -1,6 +1,7 @@
 import { defaultState } from "./default-data";
 import { exchangeProfile } from "./profile";
-import type { AppState, BudgetItem, FlightAllowance, JourneyPhase, JourneyTask, Priority, TaskStatus, TaskTemplateKind } from "./types";
+import { pruneExpiredAiHistory } from "./ai-import";
+import type { AppState, BudgetItem, FlightAllowance, JourneyPhase, JourneyTask, Priority, ResourceItem, TaskStatus, TaskTemplateKind } from "./types";
 
 const LEGACY_STORAGE_KEY = "exchange-companion:v1";
 const CURRENT_DATA_REVISION = 6;
@@ -64,6 +65,18 @@ function normalizeBags(state: AppState): AppState["bags"] {
   }));
 }
 
+export function resourceSearchTags(resource: ResourceItem): string[] {
+  const explicit = Array.isArray(resource.searchTags) ? resource.searchTags.filter((tag): tag is string => typeof tag === "string" && Boolean(tag.trim())) : [];
+  const text = `${resource.title} ${resource.category} ${resource.description} ${resource.details ?? ""}`;
+  const derived: string[] = [];
+  if (/航空|航班|飛機|機票|行李|登機|托運|手提/i.test(text)) derived.push("飛機", "航班", "機票", "航空", "行李", "登機箱", "手提", "托運");
+  if (/簽證|visa|居留|passport/i.test(text)) derived.push("簽證", "visa", "居留", "護照", "申請");
+  if (/住宿|宿舍|房租|押金|rent|housing/i.test(text)) derived.push("住宿", "宿舍", "房租", "押金", "入住");
+  if (/課程|選課|學分|考試|orientation/i.test(text)) derived.push("學校", "選課", "課程", "學分", "考試", "迎新");
+  if (/交通|車票|火車|公車|地鐵|ticket/i.test(text)) derived.push("交通", "票券", "火車", "公車", "地鐵");
+  return [...new Set([...explicit, ...derived].map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 20);
+}
+
 export function normalizeImportedState(state: AppState): AppState {
   const fallback = cloneDefault();
   const tasks = Array.isArray(state.tasks) ? state.tasks.map(normalizeTask) : fallback.tasks;
@@ -72,7 +85,7 @@ export function normalizeImportedState(state: AppState): AppState {
   const travelPlans = Array.isArray(state.travelPlans) ? state.travelPlans : [];
   const resources = Array.isArray(state.resources) ? state.resources : [];
   const budget = Array.isArray(state.budget) ? state.budget : fallback.budget;
-  return {
+  return pruneExpiredAiHistory({
     ...state,
     dataRevision: CURRENT_DATA_REVISION,
     setupCompleted: typeof state.setupCompleted === "boolean"
@@ -100,6 +113,11 @@ export function normalizeImportedState(state: AppState): AppState {
     studyEvents: Array.isArray(state.studyEvents) ? state.studyEvents : [],
     flightAllowances: (state.flightAllowances ?? []).map((allowance) => {
       const legacy = allowance as FlightAllowance & { carryOnKg?: number; personalItemKg?: number };
+      const carrierKey = allowance.airline.toLowerCase().split(/\s+/).find((part) => part.length >= 3) ?? "";
+      const matchingPublicRule = carrierKey && resources.some((resource) => `${resource.title} ${resource.url}`.toLowerCase().includes(carrierKey)
+        && /40\s*[x×]\s*30\s*[x×]\s*10/i.test(`${resource.description} ${resource.details ?? ""}`));
+      const documentedUnweightedPersonalItem = allowance.personalItemMode === "unknown"
+        && (/40\s*[x×]\s*30\s*[x×]\s*10/i.test(allowance.notes ?? "") || Boolean(matchingPublicRule));
       return {
         id: allowance.id,
         label: allowance.label,
@@ -112,11 +130,11 @@ export function normalizeImportedState(state: AppState): AppState {
         carryOnMode: allowance.carryOnMode ?? (legacy.carryOnKg && legacy.carryOnKg > 0 ? "piece" : "unknown"),
         carryOnPieceCount: allowance.carryOnPieceCount ?? (legacy.carryOnKg && legacy.carryOnKg > 0 ? 1 : 0),
         carryOnPieceWeightKg: allowance.carryOnPieceWeightKg ?? legacy.carryOnKg ?? 0,
-        personalItemMode: allowance.personalItemMode ?? (legacy.personalItemKg && legacy.personalItemKg > 0 ? "piece" : "unknown"),
-        personalItemPieceCount: allowance.personalItemPieceCount ?? (legacy.personalItemKg && legacy.personalItemKg > 0 ? 1 : 0),
+        personalItemMode: documentedUnweightedPersonalItem ? "piece" : allowance.personalItemMode ?? (legacy.personalItemKg && legacy.personalItemKg > 0 ? "piece" : "unknown"),
+        personalItemPieceCount: documentedUnweightedPersonalItem ? 1 : allowance.personalItemPieceCount ?? (legacy.personalItemKg && legacy.personalItemKg > 0 ? 1 : 0),
         personalItemPieceWeightKg: allowance.personalItemPieceWeightKg ?? legacy.personalItemKg ?? 0,
         provenance: allowance.provenance ?? "manual",
-        confirmed: allowance.confirmed ?? false,
+        confirmed: documentedUnweightedPersonalItem ? true : allowance.confirmed ?? false,
         sourceLabel: allowance.sourceLabel,
         verifiedAt: allowance.verifiedAt,
         notes: allowance.notes,
@@ -128,6 +146,7 @@ export function normalizeImportedState(state: AppState): AppState {
       origin: resource.origin ?? "manual",
       privacy: resource.privacy ?? "private",
       sourceLabel: resource.sourceLabel ?? "舊版手動資料",
+      searchTags: resourceSearchTags(resource),
     })),
     resourceIntake: Array.isArray(state.resourceIntake) ? state.resourceIntake : [],
     budget: budget.map((item, index) => {
@@ -154,7 +173,7 @@ export function normalizeImportedState(state: AppState): AppState {
         ? `exchange:${state.journey.id}`
         : state.aiInbox.journeyScope,
     } : { sources: [], proposals: [] },
-  };
+  });
 }
 
 export function loadState(useLocalStorage = true): AppState {

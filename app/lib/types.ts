@@ -121,6 +121,7 @@ export interface ResourceItem {
   origin: "user-upload" | "ai-research" | "manual";
   privacy: "private" | "shareable";
   sourceLabel: string;
+  searchTags?: string[];
 }
 
 export interface ResourceIntake {
@@ -254,6 +255,8 @@ export interface AiProposal {
   cloudRunId?: string;
   previousValue?: Record<string, unknown>;
   appliedAt?: string;
+  /** Website-only retention timestamp; Agents do not author this field. */
+  createdAt?: string;
 }
 
 export interface AiImportBundle {

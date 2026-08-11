@@ -41,6 +41,7 @@ yarn-error.log*
 /output/
 /.playwright-cli/
 /work/
+/.openai/hosting.json
 *.tsbuildinfo
 __pycache__/
 *.py[cod]

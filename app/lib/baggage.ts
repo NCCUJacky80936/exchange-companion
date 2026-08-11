@@ -75,7 +75,7 @@ export function evaluateBaggageAllowances(
       issues.push(`${label}：票面不含手提行李。`);
     }
 
-    if (allowance.personalItemMode === "piece") {
+    if (allowance.personalItemMode === "piece" && allowance.personalItemPieceWeightKg > 0) {
       issues.push(...checkPieceRule(label, "個人物品", personal, allowance.personalItemPieceCount, allowance.personalItemPieceWeightKg));
     } else if (allowance.personalItemMode === "none" && personal.length) {
       issues.push(`${label}：票面不含個人物品。`);

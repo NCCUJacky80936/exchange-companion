@@ -9,6 +9,7 @@ import {
   importAiBundle,
   journeyScopeForState,
   matchesAiJourneyScope,
+  pruneExpiredAiHistory,
   sensitiveBundleWarnings,
   undoAiProposal,
   validateAiImportBundle,
@@ -16,7 +17,7 @@ import {
 import { defaultState } from "../app/lib/default-data";
 import { evaluateBaggageAllowances } from "../app/lib/baggage";
 import { createExchangeConciergeHandoff } from "../app/lib/concierge-handoff";
-import { normalizeImportedState } from "../app/lib/storage";
+import { normalizeImportedState, resourceSearchTags } from "../app/lib/storage";
 import type { AiImportBundle, AiProposal, AppState } from "../app/lib/types";
 
 function validResourceBundle(): AiImportBundle {
@@ -186,6 +187,91 @@ test("requires onboarding for untouched template journeys but preserves configur
     journey: { ...cleanState().journey, hostSchool: "Configured University", hostCity: "Configured City", destinations: ["Configured Country"] },
   });
   assert.equal(configured.setupCompleted, true);
+});
+
+test("removes stale proposal history and its unused evidence", () => {
+  const state = cleanState();
+  const now = Date.parse("2027-01-10T12:00:00Z");
+  state.aiInbox = {
+    sources: [
+      { id: "source-old", label: "Old", kind: "school", capturedAt: "2027-01-01" },
+      { id: "source-current", label: "Current", kind: "school", capturedAt: "2027-01-07" },
+    ],
+    proposals: [
+      { ...validResourceBundle().proposals[0], id: "proposal-pending-old", evidenceIds: ["source-old"], createdAt: "2027-01-04T11:59:59Z" },
+      { ...validResourceBundle().proposals[0], id: "proposal-pending-current", evidenceIds: ["source-current"], createdAt: "2027-01-07T12:00:00Z" },
+      { ...validResourceBundle().proposals[0], id: "proposal-applied-old", evidenceIds: ["source-old"], status: "applied", appliedAt: "2027-01-02T11:59:59Z" },
+      { ...validResourceBundle().proposals[0], id: "proposal-applied-current", evidenceIds: ["source-current"], status: "applied", appliedAt: "2027-01-04T12:00:00Z" },
+    ],
+  };
+  const pruned = pruneExpiredAiHistory(state, now);
+  assert.deepEqual(pruned.aiInbox?.proposals.map((proposal) => proposal.id), ["proposal-pending-current", "proposal-applied-current"]);
+  assert.deepEqual(pruned.aiInbox?.sources.map((source) => source.id), ["source-current"]);
+});
+
+test("recognizes an officially documented personal item without inventing a weight", () => {
+  const state = cleanState();
+  state.resources = [{
+    id: "resource-eva-cabin",
+    title: "EVA Air 手提行李與個人物品規定",
+    description: "經濟艙另可帶一件個人物品。",
+    details: "個人物品尺寸為 40 × 30 × 10 cm；官方未另列獨立重量。",
+    category: "交通",
+    type: "official",
+    url: "https://www.evaair.com/example",
+    verifiedAt: "2026-08-11",
+    region: "EVA Air",
+    origin: "ai-research",
+    privacy: "shareable",
+    sourceLabel: "EVA Air 官方網站",
+  }];
+  state.flightAllowances = [{
+    id: "allowance-eva",
+    label: "EVA Air outbound",
+    airline: "EVA Air",
+    segment: "TPE → BKK",
+    checkedMode: "piece",
+    checkedPieceCount: 2,
+    checkedPieceWeightKg: 23,
+    checkedTotalWeightKg: 0,
+    carryOnMode: "piece",
+    carryOnPieceCount: 1,
+    carryOnPieceWeightKg: 7,
+    personalItemMode: "unknown",
+    personalItemPieceCount: 0,
+    personalItemPieceWeightKg: 0,
+    provenance: "ticket",
+    confirmed: false,
+    sourceLabel: "Authorized ticket",
+    verifiedAt: "2026-08-11",
+    notes: "Ticket-confirmed checked and carry-on allowance.",
+  }];
+  const normalized = normalizeImportedState(state);
+  assert.equal(normalized.flightAllowances?.[0].personalItemMode, "piece");
+  assert.equal(normalized.flightAllowances?.[0].personalItemPieceCount, 1);
+  assert.equal(normalized.flightAllowances?.[0].personalItemPieceWeightKg, 0);
+  assert.equal(normalized.flightAllowances?.[0].confirmed, true);
+});
+
+test("derives hidden plain-text search synonyms for resource summaries", () => {
+  const tags = resourceSearchTags({
+    id: "resource-flight",
+    title: "航空公司登機規定",
+    description: "核對手提與托運行李。",
+    details: "出發前依本人機票確認航班、登機箱尺寸及液體限制。",
+    category: "交通",
+    type: "official",
+    url: "https://example.org/baggage",
+    verifiedAt: "2027-01-15",
+    region: "Example",
+    origin: "ai-research",
+    privacy: "shareable",
+    sourceLabel: "Official website",
+  });
+  assert.ok(tags.includes("飛機"));
+  assert.ok(tags.includes("航班"));
+  assert.ok(tags.includes("登機箱"));
+  assert.ok(tags.includes("托運"));
 });
 
 test("requires the import bundle to match the current exchange journey", () => {
