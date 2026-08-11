@@ -12,6 +12,8 @@ npm run check
 
 如果環境提供 Sites hosting，請 Codex 使用 `$create-exchange-companion` 完成最後驗證並建立一個屬於你的新站點。第一次部署後取得的 project binding 只留在自己的部署環境，不要提交到公開模板。
 
+`NEXT_PUBLIC_SUPABASE_URL` 與 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` 雖由 Sites 保存，但也必須在 production build 當下提供給前端打包。更新既有站點時，先讀取該站目前的環境設定，再只在建置程序中傳入；不要寫入 `.env`、Git 或公開模板。完成部署後必須用全新瀏覽器狀態確認第一個畫面是登入／建立帳號，而不是本機主畫面。
+
 ## Cloudflare Workers
 
 第一次使用 Wrangler 時，先登入自己的 Cloudflare 帳號：
