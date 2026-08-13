@@ -17,6 +17,16 @@ test("validates the reusable profile, skills, and privacy boundary", () => {
   assert.match(run(process.execPath, ["scripts/privacy-check.mjs"]), /隱私檢查通過/);
 });
 
+test("installed app serves the cached notebook shell before refreshing navigation", async () => {
+  const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
+  const cachedLookup = worker.indexOf('const cached = await caches.match("/")');
+  const cachedReturn = worker.indexOf("return cached", cachedLookup);
+  const backgroundRefresh = worker.indexOf("event.waitUntil(refresh.catch", cachedLookup);
+  assert.ok(cachedLookup >= 0 && cachedReturn > cachedLookup);
+  assert.ok(backgroundRefresh > cachedLookup && backgroundRefresh < cachedReturn);
+  assert.match(worker, /navigationPreload\?\.enable\(\)/);
+});
+
 test("ships only experience-level packing inspiration URLs", async () => {
   const inspiration = JSON.parse(await readFile(new URL("../config/packing-inspiration.json", import.meta.url), "utf8"));
   assert.equal(inspiration.experienceOnly, true);

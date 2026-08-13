@@ -62,6 +62,14 @@ test("risk bulletin keeps overdue and travel conflicts ahead of AI and near-term
   assert.ok(bulletins.some((item) => item.id === "ai-pending"));
 });
 
+test("connection loading is not mistaken for a disconnected Codex agent", () => {
+  const state = stateCopy();
+  state.homeExperience = { mode: "dashboard", workflow: "ai", tutorialVersion: 1 };
+  assert.equal(buildHomeBulletins(state, "2026-08-12", null).some((item) => item.id === "ai-disconnected"), false);
+  assert.equal(buildHomeBulletins(state, "2026-08-12", true).some((item) => item.id === "ai-disconnected"), false);
+  assert.equal(buildHomeBulletins(state, "2026-08-12", false).some((item) => item.id === "ai-disconnected"), true);
+});
+
 test("home budget summaries never add different currencies together", () => {
   const summary = summarizeHomeBudget([
     { id: "eur", name: "住宿", category: "housing", amount: 400, currency: "EUR", cadence: "monthly", basis: "confirmed", paid: false, notes: "", sourceLabel: "", verifiedAt: "" },

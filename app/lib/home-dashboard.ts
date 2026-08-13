@@ -133,7 +133,7 @@ function eventOverlapsPlan(event: StudyEvent, start: string, end: string): boole
   return event.startDate <= end && (event.endDate ?? event.startDate) >= start;
 }
 
-export function buildHomeBulletins(state: AppState, today: string, agentConnected = true): HomeBulletinItem[] {
+export function buildHomeBulletins(state: AppState, today: string, agentConnected: boolean | null = true): HomeBulletinItem[] {
   const activeTasks = state.tasks.filter((task) => task.status !== "done" && task.status !== "not-applicable");
   const completed = new Set(state.tasks.filter((task) => task.status === "done" || task.status === "not-applicable").map((task) => task.id));
   const bulletins: HomeBulletinItem[] = [];
@@ -154,7 +154,7 @@ export function buildHomeBulletins(state: AppState, today: string, agentConnecte
 
   const pending = (state.aiInbox?.proposals ?? []).filter((proposal) => proposal.status === "pending").length;
   if (pending) bulletins.push({ id: "ai-pending", priority: 3, tone: "info", title: `${pending} 筆 AI 更新等你確認`, summary: "AI 不會直接改手帳；請查看來源與欄位差異後再決定。", target: { section: "ai", inbox: "open" } });
-  if (state.homeExperience?.workflow === "ai" && !agentConnected) bulletins.push({ id: "ai-disconnected", priority: 3, tone: "warning", title: "Codex 連結目前未啟用", summary: "手帳不會退回教學，但之後要自動整理時需要重新連結。", target: { section: "ai" } });
+  if (state.homeExperience?.workflow === "ai" && agentConnected === false) bulletins.push({ id: "ai-disconnected", priority: 3, tone: "warning", title: "Codex 連結目前未啟用", summary: "手帳不會退回教學，但之後要自動整理時需要重新連結。", target: { section: "ai" } });
 
   const soon = shiftHomeDate(today, 13);
   activeTasks.filter((task) => (task.dueDate && isBetween(task.dueDate, today, soon)) || task.status === "waiting").forEach((task) => bulletins.push({ id: `soon:${task.id}`, priority: 4, tone: "warning", title: task.status === "waiting" ? `等待中：${task.title}` : `14 天內：${task.title}`, summary: task.dueDate ? `期限 ${task.dueDate}` : "等待外部回覆或下一步。", target: { section: "journey", task: task.id } }));

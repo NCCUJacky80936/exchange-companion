@@ -93,9 +93,9 @@ export interface VersionedPrivateState {
   revision: number;
 }
 
-export async function readPrivateState(): Promise<VersionedPrivateState | null> {
+export async function readPrivateState(currentSession?: Session): Promise<VersionedPrivateState | null> {
   const client = getCloudClient();
-  const session = await ensureCloudSession();
+  const session = currentSession ?? await ensureCloudSession();
   if (!client || !isPermanentSession(session)) return null;
   const { data, error } = await client
     .from("private_app_states")
@@ -134,9 +134,9 @@ interface ConciergeProposalRun {
   created_at: string;
 }
 
-async function invokeConcierge<T>(body: Record<string, unknown>): Promise<T> {
+async function invokeConcierge<T>(body: Record<string, unknown>, currentSession?: Session): Promise<T> {
   const client = getCloudClient();
-  const session = await ensureCloudSession();
+  const session = currentSession ?? await ensureCloudSession();
   if (!client || !isPermanentSession(session)) throw new Error("permanent_account_required");
   const { data, error } = await client.functions.invoke("exchange-concierge-sync", { body });
   if (error) throw error;
@@ -149,8 +149,8 @@ export async function createConciergeConnection(label = "Codex Exchange Concierg
   return data.connection;
 }
 
-export async function listConciergeConnections(): Promise<ConciergeConnectionInfo[]> {
-  const data = await invokeConcierge<{ connections: Array<Record<string, unknown>> }>({ action: "connections" });
+export async function listConciergeConnections(currentSession?: Session): Promise<ConciergeConnectionInfo[]> {
+  const data = await invokeConcierge<{ connections: Array<Record<string, unknown>> }>({ action: "connections" }, currentSession);
   return data.connections.map((item) => ({
     id: String(item.id),
     label: String(item.label),

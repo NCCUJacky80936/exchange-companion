@@ -48,6 +48,7 @@ export interface ExchangeCloudController {
   privateRevision: number;
   syncConflict: boolean;
   conciergeConnections: ConciergeConnectionInfo[];
+  conciergeConnectionsReady: boolean;
   busy: boolean;
   notice: string;
   setNotice: (notice: string) => void;
@@ -82,6 +83,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   const [privateRevision, setPrivateRevision] = useState(0);
   const [syncConflict, setSyncConflict] = useState(false);
   const [conciergeConnections, setConciergeConnections] = useState<ConciergeConnectionInfo[]>([]);
+  const [conciergeConnectionsReady, setConciergeConnectionsReady] = useState(!configured);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(configured ? "正在準備免費雲端…" : "尚未連接免費雲端；本機功能仍可完整使用。 ");
   const redeemedToken = useRef("");
@@ -119,8 +121,16 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     if (!isPermanentSession(currentSession)) return;
     loadedAccount.current = currentSession.user.id;
     setAccountDataReady(false);
+    setConciergeConnectionsReady(false);
+    void listConciergeConnections(currentSession).then((connections) => {
+      if (loadedAccount.current !== currentSession.user.id) return;
+      setConciergeConnections(connections);
+      setConciergeConnectionsReady(true);
+    }).catch(() => {
+      if (loadedAccount.current === currentSession.user.id) setConciergeConnectionsReady(false);
+    });
     try {
-      const remote = await readPrivateState();
+      const remote = await readPrivateState(currentSession);
       if (remote) {
         const normalized = normalizeImportedState(remote.state);
         const historyWasPruned = JSON.stringify(normalized.aiInbox) !== JSON.stringify(remote.state.aiInbox);
@@ -267,8 +277,14 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
 
   const refreshConnections = useCallback(async () => {
     if (!isPermanentSession(session)) return;
-    const connections = await listConciergeConnections();
-    setConciergeConnections(connections);
+    try {
+      const connections = await listConciergeConnections();
+      setConciergeConnections(connections);
+      setConciergeConnectionsReady(true);
+    } catch (error) {
+      setConciergeConnectionsReady(false);
+      throw error;
+    }
   }, [session]);
 
   const refreshInbox = useCallback(async (): Promise<number> => {
@@ -304,6 +320,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     privateRevision,
     syncConflict,
     conciergeConnections,
+    conciergeConnectionsReady,
     busy,
     notice,
     setNotice,
@@ -342,6 +359,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       setPrivateRevision(0);
       setSyncConflict(false);
       setConciergeConnections([]);
+      setConciergeConnectionsReady(false);
       await signOutCloud();
       setNotice("已登出，請重新登入後再開啟私人手帳。 ");
     }),
@@ -393,5 +411,5 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     upsertTravelMember: (plan, account, permission) => runBusy(() => upsertTravelMember(plan, account, permission)),
     updateTravelMember: (plan, memberId, permission) => runBusy(() => updateTravelMemberPermission(plan, memberId, permission)),
     removeTravelMember: (plan, memberId) => runBusy(() => removeTravelMember(plan, memberId)),
-  }), [accountDataReady, authReady, busy, conciergeConnections, configured, loadPermanentAccountState, notice, privateRevision, privateSyncEnabled, refreshConnections, refreshInbox, runBusy, session, setState, shareStatus, sharedPlanId, syncConflict]);
+  }), [accountDataReady, authReady, busy, conciergeConnections, conciergeConnectionsReady, configured, loadPermanentAccountState, notice, privateRevision, privateSyncEnabled, refreshConnections, refreshInbox, runBusy, session, setState, shareStatus, sharedPlanId, syncConflict]);
 }

@@ -70,7 +70,9 @@ export default function HomeDashboard({ state, setState, cloud, todayIso, forceG
   const progress = applicable.length ? Math.round((done / applicable.length) * 100) : 0;
   const countdown = daysBetween(state.journey.startDate, todayIso);
   const agenda = useMemo(() => buildHomeAgenda(state, todayIso), [state, todayIso]);
-  const agentConnected = cloud.conciergeConnections.some((connection) => !connection.revokedAt);
+  const agentConnected = cloud.conciergeConnectionsReady
+    ? cloud.conciergeConnections.some((connection) => !connection.revokedAt)
+    : null;
   const bulletins = useMemo(() => buildHomeBulletins(state, todayIso, agentConnected), [agentConnected, state, todayIso]);
   const budget = useMemo(() => summarizeHomeBudget(state.budget), [state.budget]);
   const nextTask = [...applicable].filter((task) => task.status !== "done").sort((a, b) => (a.dueDate ?? "9999-12-31").localeCompare(b.dueDate ?? "9999-12-31"))[0];
