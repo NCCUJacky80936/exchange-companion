@@ -16,6 +16,8 @@ npm run check
 
 正式發布包一律使用 `npm run build:production`；它會在缺少公開 Supabase 設定，或設定沒有真正進入前端檔案時中止，避免發布出看得到登入頁、卻無法送出登入的版本。
 
+使用 Codex Sites 發布時，`.openai/hosting.json` 仍應保持不進 Git；由 Sites 的官方封裝流程在部署包內加入站台綁定。不要為了讓遠端建置讀到它而把個人的 `project_id` 提交到公開 repository。
+
 若正式站顯示「免費雲端尚未建立」或登入按鈕停用，應視為建置失敗並停止發布；不要把這種降級畫面當成可接受的正式版本。
 
 ## Cloudflare Workers
