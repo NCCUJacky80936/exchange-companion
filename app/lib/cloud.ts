@@ -216,7 +216,11 @@ export async function updatePublishedTravelPlan(plan: TravelPlan): Promise<void>
   const client = getCloudClient();
   if (!client || !plan.cloud?.published || plan.cloud.permission === "viewer") return;
   const cloudPlanId = plan.cloud.cloudPlanId ?? plan.id;
-  const { error } = await client.from("travel_plans").update({ payload: publicTravelPayload(plan) }).eq("id", cloudPlanId);
+  const payload = publicTravelPayload(plan);
+  const { data: current, error: readError } = await client.from("travel_plans").select("payload").eq("id", cloudPlanId).single();
+  if (readError) throw readError;
+  if (JSON.stringify(current.payload) === JSON.stringify(payload)) return;
+  const { error } = await client.from("travel_plans").update({ payload }).eq("id", cloudPlanId);
   if (error) throw error;
 }
 
