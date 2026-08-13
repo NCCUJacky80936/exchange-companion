@@ -7,10 +7,18 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(Promise.all([
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))),
-    self.registration.navigationPreload?.enable(),
-  ]).then(() => self.clients.claim()));
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    const hadOlderNotebookCache = keys.some((key) => key.startsWith("exchange-companion-") && key !== CACHE_NAME);
+    await Promise.all([
+      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
+      self.registration.navigationPreload?.enable(),
+    ]);
+    await self.clients.claim();
+    if (!hadOlderNotebookCache) return;
+    const windows = await self.clients.matchAll({ type: "window" });
+    await Promise.all(windows.map((client) => client.navigate(client.url).catch(() => undefined)));
+  })());
 });
 
 self.addEventListener("fetch", (event) => {

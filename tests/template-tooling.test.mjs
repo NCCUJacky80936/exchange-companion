@@ -27,12 +27,13 @@ test("installed app fetches the current notebook before using an offline fallbac
   assert.match(worker, /navigationPreload\?\.enable\(\)/);
 });
 
-test("an existing PWA refreshes once when the repaired worker takes control", async () => {
+test("an existing PWA reopens itself once when the repaired worker takes control", async () => {
   const register = await readFile(new URL("../app/components/PwaRegister.tsx", import.meta.url), "utf8");
+  const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
   assert.match(register, /updateViaCache:\s*"none"/);
-  assert.match(register, /controllerchange/);
-  assert.match(register, /window\.location\.reload\(\)/);
-  assert.match(register, /exchange-companion:pwa-refresh-v2-4/);
+  assert.match(worker, /hadOlderNotebookCache/);
+  assert.match(worker, /clients\.matchAll\(\{ type: "window" \}\)/);
+  assert.match(worker, /client\.navigate\(client\.url\)/);
 });
 
 test("mobile navigation keeps its controls above the iPhone home indicator", async () => {
