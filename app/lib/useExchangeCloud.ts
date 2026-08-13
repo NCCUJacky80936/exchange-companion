@@ -21,6 +21,7 @@ import {
   restoreOwnedTravelPermissions,
   revokeConciergeConnection,
   sendMagicLink,
+  sendTravelGuestMagicLink,
   signInWithPasswordAccount,
   signOutCloud,
   subscribeToTravelPlan,
@@ -57,6 +58,7 @@ export interface ExchangeCloudController {
   createAccount: (accountId: string, email: string, password: string) => Promise<void>;
   accountSignIn: (accountId: string, password: string) => Promise<void>;
   emailSignIn: (email: string) => Promise<void>;
+  requestGuestEditorAccess: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   reloadPrivateState: () => Promise<void>;
   enablePrivateSync: (mode: "upload-local" | "use-cloud") => Promise<void>;
@@ -81,6 +83,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   const [accountDataReady, setAccountDataReady] = useState(!configured);
   const [shareStatus, setShareStatus] = useState<ShareRedemptionStatus>(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("share") ? "loading" : "none");
   const [sharedPlanId, setSharedPlanId] = useState("");
+  const [sharedToken, setSharedToken] = useState(() => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("share") ?? "" : "");
   const [privateSyncEnabled, setPrivateSyncEnabled] = useState(() => typeof window !== "undefined" && window.localStorage.getItem(PRIVATE_SYNC_KEY) === "on");
   const [privateRevision, setPrivateRevision] = useState(0);
   const [syncConflict, setSyncConflict] = useState(false);
@@ -100,6 +103,8 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   const sharedPlanIds = useMemo(() => (state.travelPlans ?? [])
     .filter((plan) => plan.cloud?.published)
     .map((plan) => plan.cloud?.cloudPlanId ?? plan.id), [state.travelPlans]);
+  const sharedPlanPermission = useMemo(() => (state.travelPlans ?? [])
+    .find((plan) => plan.id === sharedPlanId)?.cloud?.permission, [sharedPlanId, state.travelPlans]);
 
   useEffect(() => {
     latestState.current = state;
@@ -174,13 +179,15 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       loadedAccount.current = "";
       return;
     }
+    if (shareStatus === "loading" || (shareStatus === "active" && sharedPlanPermission !== "owner")) return;
     if (loadedAccount.current !== session.user.id) void loadPermanentAccountState(session);
-  }, [configured, loadPermanentAccountState, session]);
+  }, [configured, loadPermanentAccountState, session, sharedPlanPermission, shareStatus]);
 
   useEffect(() => {
     if (!configured || !session) return;
     const token = new URLSearchParams(window.location.search).get("share");
     if (!token || redeemedToken.current === token) return;
+    setSharedToken(token);
     redeemedToken.current = token;
     setShareStatus("loading");
     setBusy(true);
@@ -370,6 +377,16 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       await sendMagicLink(email);
       setNotice("登入連結已寄出，請回到信箱完成登入。 ");
     }),
+    requestGuestEditorAccess: (email: string) => runBusy(async () => {
+      try {
+        await sendTravelGuestMagicLink(email, sharedToken);
+        setNotice("一次性驗證連結已寄出。請用同一個受邀 Email 開信，點擊後會直接回到這趟旅行。 ");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        setNotice(message.includes("invalid_email") ? "請輸入受邀時使用的完整 Email。 " : "目前無法寄出驗證信，請稍後再試。 ");
+        throw error;
+      }
+    }),
     signOut: () => runBusy(async () => {
       window.localStorage.removeItem(PRIVATE_SYNC_KEY);
       setPrivateSyncEnabled(false);
@@ -433,5 +450,5 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     upsertTravelMember: (plan, account, permission) => runBusy(() => upsertTravelMember(plan, account, permission)),
     updateTravelMember: (plan, memberId, permission) => runBusy(() => updateTravelMemberPermission(plan, memberId, permission)),
     removeTravelMember: (plan, memberId) => runBusy(() => removeTravelMember(plan, memberId)),
-  }), [accountDataReady, authReady, busy, conciergeConnections, conciergeConnectionsReady, configured, loadPermanentAccountState, notice, privateRevision, privateSyncEnabled, refreshConnections, refreshInbox, runBusy, session, setState, shareStatus, sharedPlanId, syncConflict]);
+  }), [accountDataReady, authReady, busy, conciergeConnections, conciergeConnectionsReady, configured, loadPermanentAccountState, notice, privateRevision, privateSyncEnabled, refreshConnections, refreshInbox, runBusy, session, setState, shareStatus, sharedPlanId, sharedToken, syncConflict]);
 }

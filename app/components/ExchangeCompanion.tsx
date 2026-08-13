@@ -12,6 +12,7 @@ import {
   FileText,
   Info,
   Luggage,
+  Mail,
   LogOut,
   Map as MapIcon,
   Menu,
@@ -32,7 +33,6 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import Image from "next/image";
-import Link from "next/link";
 import {
   type ChangeEvent,
   type FormEvent,
@@ -130,8 +130,22 @@ function GuestTravelShell({ state, setState, cloud }: { state: AppState; setStat
     aiInbox: { sources: [], proposals: [] },
     travelPlans: (state.travelPlans ?? []).filter((plan) => plan.id === cloud.sharedPlanId),
   }), [cloud.sharedPlanId, state]);
+  const sharedPlan = guestState.travelPlans?.[0];
+  const canEdit = sharedPlan?.cloud?.permission === "editor" || sharedPlan?.cloud?.permission === "owner";
 
-  return <div className="guest-travel-shell" data-heading-language={guestState.personalization?.headingLanguage ?? "zh-TW"}><header className="guest-travel-topbar"><div className="auth-brand"><span className="brand-stamp">TRIP</span><div><strong>共同旅行手冊</strong><small>只顯示這趟被分享的行程</small></div></div><Link className="button secondary" href="/">登入我的手帳</Link></header><main><Suspense fallback={<SectionFallback />}><TravelPlanner state={guestState} setState={setState} cloud={cloud} /></Suspense></main></div>;
+  return <div className="guest-travel-shell" data-heading-language={guestState.personalization?.headingLanguage ?? "zh-TW"}><header className="guest-travel-topbar"><div className="auth-brand"><span className="brand-stamp">TRIP</span><div><strong>共同旅行手冊</strong><small>只顯示這趟被分享的行程</small></div></div><span className={`guest-permission-badge ${canEdit ? "editor" : "viewer"}`}>{canEdit ? "受邀編輯者 · 可以編輯" : "一般連結 · 只能查看"}</span></header>{canEdit ? null : <GuestEditorAccess cloud={cloud} />}<main><Suspense fallback={<SectionFallback />}><TravelPlanner state={guestState} setState={setState} cloud={cloud} /></Suspense></main></div>;
+}
+
+function GuestEditorAccess({ cloud }: { cloud: ExchangeCloudController }) {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSent(false);
+    void cloud.requestGuestEditorAccess(email).then(() => setSent(true)).catch(() => setSent(false));
+  };
+
+  return <section className="guest-editor-access" aria-labelledby="guest-editor-title"><div><Mail size={24} /><div><strong id="guest-editor-title">你是受邀的編輯者嗎？</strong><p>輸入被邀請的 Email，我們會寄一封一次性驗證信。點開後直接回到這趟旅行，不需要建立交換手帳或密碼。</p></div></div><form onSubmit={submit}><label><span>受邀 Email</span><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" required /></label><button className="button primary" disabled={!email || cloud.busy}>{cloud.busy ? "正在寄出…" : "寄給我一次性連結"}</button></form><small role="status">{sent ? "已寄出，請到信箱點擊驗證連結。" : "未列在指定帳戶中的 Email，驗證後仍會保持唯讀。"}</small></section>;
 }
 
 const statusMeta: Record<TaskStatus, { label: string; className: string }> = {
@@ -1664,7 +1678,8 @@ export default function ExchangeCompanion() {
     return <div className="boot-shell" role="status"><span className="brand-stamp">旅</span><strong>交換手帳</strong><p>{cloud.shareStatus === "loading" ? "正在確認旅行分享權限…" : "正在確認登入狀態…"}</p></div>;
   }
 
-  if (cloud.configured && !cloud.permanentAccount && cloud.shareStatus === "active") {
+  const activeSharedPlan = (state.travelPlans ?? []).find((plan) => plan.id === cloud.sharedPlanId);
+  if (cloud.configured && cloud.shareStatus === "active" && activeSharedPlan?.cloud?.permission !== "owner") {
     return <GuestTravelShell state={state} setState={setState} cloud={cloud} />;
   }
 

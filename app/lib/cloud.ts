@@ -80,6 +80,24 @@ export async function sendMagicLink(email: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function sendTravelGuestMagicLink(email: string, shareToken: string): Promise<void> {
+  const client = getCloudClient();
+  if (!client) throw new Error("cloud_not_configured");
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) throw new Error("invalid_email");
+  if (!shareToken) throw new Error("share_token_required");
+  const redirect = new URL(window.location.href.split("?")[0]);
+  redirect.searchParams.set("share", shareToken);
+  const { error } = await client.auth.signInWithOtp({
+    email: normalizedEmail,
+    options: {
+      emailRedirectTo: redirect.toString(),
+      shouldCreateUser: true,
+    },
+  });
+  if (error) throw error;
+}
+
 export async function signOutCloud(): Promise<void> {
   const client = getCloudClient();
   if (!client) return;

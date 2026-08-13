@@ -2050,6 +2050,17 @@ h3 {
 
 .guest-travel-shell { min-height: 100svh; background: var(--cream); }
 .guest-travel-topbar { display: flex; min-height: 74px; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1.5px solid var(--ink); background: var(--paper); padding: 10px max(18px, calc((100vw - 1320px) / 2)); }
+.guest-permission-badge { border: 1.5px solid var(--ink); border-radius: 999px; padding: 7px 11px; font-size: 12px; font-weight: 800; }
+.guest-permission-badge.viewer { background: var(--paper-gray); }
+.guest-permission-badge.editor { background: var(--sage-soft); }
+.guest-editor-access { display: grid; grid-template-columns: minmax(250px, 1fr) minmax(340px, .9fr); align-items: center; gap: 18px; border-bottom: 1.5px solid var(--ink); background: var(--yellow-soft); padding: 16px max(18px, calc((100vw - 1320px) / 2)); }
+.guest-editor-access > div { display: flex; align-items: flex-start; gap: 10px; }
+.guest-editor-access > div > svg { flex: 0 0 auto; margin-top: 2px; }
+.guest-editor-access p { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.guest-editor-access form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 9px; }
+.guest-editor-access label { display: grid; gap: 5px; font-size: 11px; font-weight: 800; }
+.guest-editor-access input { width: 100%; min-width: 0; box-sizing: border-box; border: 1.5px solid var(--ink); background: var(--paper); padding: 10px 11px; }
+.guest-editor-access > small { grid-column: 2; color: var(--muted); font-size: 11px; }
 .guest-travel-shell > main { padding: 26px max(18px, calc((100vw - 1320px) / 2)) 60px; }
 
 .ai-header { background: linear-gradient(105deg, rgba(246, 196, 174, 0.62), rgba(255, 254, 248, 0.86) 62%); }
@@ -2210,7 +2221,10 @@ h1, h2, h3 { text-wrap: balance; }
   .onboarding-submit small { text-align: left; }
   .onboarding-final-actions > div { display: grid; width: 100%; }
   .guest-travel-topbar { align-items: flex-start; flex-direction: column; }
-  .guest-travel-topbar .button { width: 100%; }
+  .guest-editor-access { grid-template-columns: 1fr; padding: 14px 13px; }
+  .guest-editor-access form { grid-template-columns: 1fr; }
+  .guest-editor-access form .button { width: 100%; }
+  .guest-editor-access > small { grid-column: 1; }
   .guest-travel-shell > main { padding: 18px 13px 35px; }
   .ai-header > img { width: 78px; height: 78px; }
   .ai-start-card,
