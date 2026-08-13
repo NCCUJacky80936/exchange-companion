@@ -38,8 +38,12 @@ export async function generateMetadata(): Promise<Metadata> {
     title,
     description,
     icons: {
-      icon: exchangeProfile.visual.icon,
-      shortcut: exchangeProfile.visual.icon,
+      icon: [
+        { url: "/icons/exchange-48.png", sizes: "48x48", type: "image/png" },
+        { url: exchangeProfile.visual.icon, sizes: "192x192", type: "image/png" },
+      ],
+      shortcut: "/icons/exchange-48.png",
+      apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
     },
     manifest: "/manifest.webmanifest",
     appleWebApp: {

@@ -1,5 +1,5 @@
-const CACHE_NAME = "exchange-companion-v2-1";
-const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/exchange-192.png", "/images/doodle-icons/home-safe.png"];
+const CACHE_NAME = "exchange-companion-v2-2";
+const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/exchange-48.png", "/icons/exchange-192.png", "/icons/exchange-512.png", "/icons/apple-touch-icon.png", "/images/doodle-icons/home-safe.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
