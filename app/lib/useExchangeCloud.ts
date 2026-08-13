@@ -312,7 +312,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     for (const run of runs) {
       const bundle = run.bundle;
       if (!validateAiImportBundle(bundle) || !matchesAiJourneyScope(next, bundle)) continue;
-      if (bundle.baseRevision !== revisionRef.current || Number(run.base_revision) !== revisionRef.current) continue;
+      if (bundle.baseRevision !== Number(run.base_revision) || bundle.baseRevision > revisionRef.current) continue;
       const collisions = findAiBundleCollisions(next, bundle);
       if (collisions.length) continue;
       next = importAiBundle(next, bundle, run.id);
