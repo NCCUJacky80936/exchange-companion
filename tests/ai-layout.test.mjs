@@ -14,6 +14,13 @@ test("proposal inbox appears before connection and JSON cards", () => {
   assert.match(css, /\.ai-workflow-grid\.has-connection\s*>\s*article\s*\{[^}]*height:\s*100%/);
 });
 
+test("AI page automatically polls the connected proposal inbox", () => {
+  assert.match(ai, /setInterval\(\(\) => void refresh\(\), 60_000\)/);
+  assert.match(ai, /visibilitychange/);
+  assert.match(ai, /網站會每分鐘及回到分頁時自動收取新提案/);
+  assert.match(ai, /Codex 主動巡檢/);
+});
+
 test("URL intake is collapsed by default and explains its retention", () => {
   assert.match(resources, /<details className="paper-card resource-intake-card">/);
   assert.doesNotMatch(resources, /<details className="paper-card resource-intake-card" open/);

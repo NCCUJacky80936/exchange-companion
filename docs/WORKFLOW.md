@@ -12,6 +12,15 @@
 8. 正式雲端版依首頁啟用指南下載一次私人 `exchange-concierge-connection.json`，放在不會提交到 Git 的私人工作區。之後 Agent 每次從雲端讀最新版本並送回 pending 提案；連結 token 與公開 Skill 安裝指令必須分開。
 9. 需要信件時先由 `$exchange-email-intake` 在目前使用者授權範圍內擷取，再讓 `$exchange-concierge` 完整比對任務、基礎預算、資源、行李、本人機票額度、課表與旅行。每個分頁都必須標示已更新、沒有新證據或需要確認。
 10. 沒有雲端連線時，改從 AI 頁下載自我說明的 `exchange-concierge-input-YYYY-MM-DD.json`；`state` 保存完整進度，`editableSurfaces` 說明可更新欄位，`setupSnapshot` 保存第一次建站背景。Agent 產生並驗證 `outputs/exchange-companion-import.json` 後，再回網站匯入。
+
+## 主動巡檢與送達
+
+1. 網站的私人 Agent 連線是送達通道；Codex automation 是觸發器，兩者缺一不可。
+2. 同一專案只建立一個主動巡檢。每次被喚醒後，先檢查 `work/exchange-concierge-connection.json`，再 pull 最新 handoff。
+3. 掃描範圍只包含使用者已授權的 Germany-exchange workspace、網站 pending intake，以及另行明確授權的信箱／行事曆；不可因為自動化而擴大私人資料權限。
+4. 使用 gitignored 的 `work/exchange-concierge-monitor-state.json` 保存最近一次成功巡檢時間與已處理來源摘要。只在 bundle 驗證且成功 push 後前移 checkpoint。
+5. 新證據必須完成全 surface reconciliation、兩個 validator 與 cloud push；沒有新證據就不產生空提案。連線遺失、撤銷、過期、revision conflict 或驗證失敗都必須通知使用者。
+6. 網站 AI 頁開啟時每分鐘與重新回到分頁時自動抓取新提案；提案仍維持 pending，必須由使用者決定是否套用。
 11. 不論雲端或 JSON 回傳，使用者都在網站逐項確認或批次套用目前可安全套用的提案。
 12. 使用 image generation 產生原創目的地 Hero、社群預覽和情境插圖。
 13. 驗證桌機、平板、手機、鍵盤、焦點、reduced motion、建置與隱私。

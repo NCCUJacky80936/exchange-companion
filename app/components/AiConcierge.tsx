@@ -47,6 +47,7 @@ function displayValue(value: unknown): string {
 export default function AiConcierge({ state, setState, cloud, openInboxRequest = 0 }: { state: AppState; setState: Dispatch<SetStateAction<AppState>>; cloud: ExchangeCloudController; openInboxRequest?: number }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const refreshedAccount = useRef("");
+  const refreshInboxRef = useRef(cloud.refreshConciergeInbox);
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(openInboxRequest > 0);
@@ -59,6 +60,10 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
   const pendingByEntity = useMemo(() => pending.reduce<Record<string, number>>((counts, proposal) => ({ ...counts, [proposal.entity]: (counts[proposal.entity] ?? 0) + 1 }), {}), [pending]);
 
   useEffect(() => {
+    refreshInboxRef.current = cloud.refreshConciergeInbox;
+  }, [cloud.refreshConciergeInbox]);
+
+  useEffect(() => {
     if (!cloud.permanentAccount || !cloud.accountDataReady) return;
     const accountId = cloud.session?.user.id ?? "";
     if (!accountId || refreshedAccount.current === accountId) return;
@@ -68,6 +73,30 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
       if (count) setMessage(`已從雲端收件匣帶回 ${count} 個待確認提案；尚未自動套用。`);
     });
   }, [cloud]);
+
+  useEffect(() => {
+    if (!cloud.permanentAccount || !cloud.accountDataReady || !activeConnections.length) return;
+    let stopped = false;
+    const refresh = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const count = await refreshInboxRef.current();
+        if (!stopped && count) setMessage(`Agent 已主動送回 ${count} 個待確認提案；尚未自動套用。`);
+      } catch {
+        if (!stopped) setMessage("Agent 提案自動收件暫時失敗；本機手帳沒有變更，重新連線後會再嘗試。");
+      }
+    };
+    const onVisible = () => { if (document.visibilityState === "visible") void refresh(); };
+    const timer = window.setInterval(() => void refresh(), 60_000);
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [activeConnections.length, cloud.accountDataReady, cloud.permanentAccount]);
 
   async function importBundle(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -203,13 +232,13 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
       <section className={`ai-workflow-grid ${activeConnections.length ? "has-connection" : ""}`}>
         {activeConnections.length ? <article className="paper-card ai-connected-card">
           <div className="ai-card-heading"><Link2 size={22}/><div><p className="eyebrow">Connected agent</p><h2>已連結 Exchange Concierge</h2></div></div>
-          <p>{activeConnections[0].lastUsedAt ? `最近使用：${new Date(activeConnections[0].lastUsedAt).toLocaleString("zh-TW")}` : "連結已建立，尚未第一次使用。"}</p>
+          <p>{activeConnections[0].lastUsedAt ? `最近使用：${new Date(activeConnections[0].lastUsedAt).toLocaleString("zh-TW")}` : "連結已建立，尚未第一次使用。"} 網站會每分鐘及回到分頁時自動收取新提案；Codex 主動巡檢負責叫醒 Agent。</p>
           <div className="ai-connected-actions"><button className="button secondary" disabled={cloud.busy} onClick={() => void refreshCloudInbox()}><RefreshCw size={16}/>更新收件匣</button><button className="button text-button danger" disabled={cloud.busy} onClick={() => void cloud.revokeConciergeConnection(activeConnections[0].id)}><X size={16}/>撤銷連結</button></div>
         </article> : <article className="paper-card ai-start-card">
           <span className="tape" />
           <div className="ai-card-heading"><Sparkles size={25} /><div><p className="eyebrow">Free AI workflow</p><h2>從 Codex 開始整理</h2></div></div>
-          <p>第一次只需下載一次私人連結檔交給 Codex。之後 Exchange Concierge 會先讀取雲端最新版本，再把待審提案送回網站；不需要每次來回下載 JSON，也不會直接套用。</p>
-          <ol className="ai-steps"><li><strong>1</strong><span>首次連結 Codex（一次即可，隨時可撤銷）</span></li><li><strong>2</strong><span>Agent 依你授權的信件、檔案或網址整理</span></li><li><strong>3</strong><span>回到網站更新收件匣並逐項確認</span></li></ol>
+          <p>第一次只需下載一次私人連結檔交給 Codex。連結負責安全送達；啟用 Codex 主動巡檢後，Agent 會定期讀取新狀態並把待審提案推回網站，不需要反覆下載 JSON。</p>
+          <ol className="ai-steps"><li><strong>1</strong><span>首次連結 Codex（一次即可，隨時可撤銷）</span></li><li><strong>2</strong><span>在 Codex 啟用這趟交換的主動巡檢</span></li><li><strong>3</strong><span>Agent 依授權資料整理並推送待審提案</span></li><li><strong>4</strong><span>網站自動收件，你再逐項確認是否套用</span></li></ol>
           <div className="ai-primary-actions"><button className="button primary" disabled={!cloud.permanentAccount || cloud.privateRevision < 1 || cloud.busy} onClick={() => void pairConcierge()}><Link2 size={17} />首次連結 Codex</button><button className="button secondary" disabled={!cloud.permanentAccount || cloud.busy} onClick={() => void refreshCloudInbox()}><RefreshCw size={17} />更新提案收件匣</button></div>
           <details className="ai-offline-fallback"><summary>離線備援：下載／匯入 JSON</summary><p>只有無法連線雲端或需要攜帶完整資料到另一個環境時才使用。</p><button className="button text-button" onClick={() => void prepareHandoff()}><CloudDownload size={17} />{copied ? "交接檔與指令已準備" : "下載最新交接 JSON"}</button></details>
         </article>}

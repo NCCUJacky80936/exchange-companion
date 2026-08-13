@@ -18,3 +18,10 @@ First-use country, school, time zone, currencies, fixed interface copy, and artw
 - Keep the local-only experience functional when cloud variables are absent.
 - Run `npm run check` and responsive visual QA before deployment.
 - Deploy one reviewed release after local validation; do not repeatedly provision or publish during development.
+
+## Continuous reconciliation contract
+
+- A user-confirmed exchange status added in the current conversation, an authorized project file, or the website is new evidence. When `$exchange-concierge` is active, do not stop after updating or reading Markdown, project memory, a task note, or a local output file.
+- In the same run, pull the latest website handoff, reconcile every editable surface, validate the pending bundle, and push it to the cloud proposal inbox. If the private connection is missing, expired, revoked, or rejected, report that delivery failure prominently; never imply the website was updated.
+- Proactive monitoring is a separate trigger layer. The project should have one Codex automation that periodically checks authorized Germany-exchange workspace changes and invokes the repository skill. Do not create duplicate monitors.
+- A successful cloud push updates the review inbox, not the saved journey. Proposals remain pending until the user applies them.

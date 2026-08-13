@@ -7,6 +7,14 @@ description: Automatically collect, reconcile, research, or update an exchange j
 
 Turn authorized exchange evidence into proposed changes for Exchange Companion. In the preferred cloud flow, a revocable one-time connection lets Codex pull the latest versioned website state and submit a review-only proposal run back to the same account. The JSON download/upload flow remains an offline fallback. Never silently mark an inference as confirmed or overwrite a manual record.
 
+## Continuous trigger and delivery contract
+
+- Treat a direct user statement about exchange progress, an authorized project-file update, an authorized message, or a pending website intake as an event that requires reconciliation. Reading or updating the source record is not completion.
+- During every invoked run, continue through pull, all-surface comparison, validation, and cloud push. Do not leave a validated bundle only on disk when a usable private connection exists.
+- Proactive behavior requires one Codex automation to wake the Agent and inspect the authorized Germany-exchange workspace. Use a local checkpoint under gitignored `work/` to compare successful runs; never commit the checkpoint or private connection.
+- When there is no new evidence, make no proposal and avoid noisy success messages. When new pending proposals are pushed, report their count. When the connection is missing, expired, revoked, or a revision conflict persists, notify the user instead of silently falling back and pretending the inbox is current.
+- The website review inbox remains the safety gate: proactive delivery never means automatically applying a proposal.
+
 ## Workflow
 
 1. Read `app/lib/types.ts`. If `work/exchange-concierge-connection.json` exists, first run `python3 .agents/skills/exchange-concierge/scripts/concierge_cloud_sync.py pull`; use the resulting `work/latest-exchange-companion-handoff.json`. Otherwise require the exact latest `exchange-concierge-input-*.json` downloaded from the website. Handoffs are self-describing envelopes: use `state` as the authoritative current progress, `baseRevision` as the concurrency precondition, `editableSurfaces` as the website coverage map, and `setupSnapshot` only as first-use context. Legacy raw `AppState` backups remain supported only in offline mode. If the handoff still contains placeholder journey fields or authorized evidence proves a different school, city, country, or date, create a private `journey` update proposal instead of carrying demonstration content forward.
