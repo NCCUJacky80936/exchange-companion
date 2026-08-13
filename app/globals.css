@@ -3013,7 +3013,11 @@ h1, h2, h3 { text-wrap: balance; }
 
   .home-status-progress { grid-column: 1 / -1; order: 3; padding: 12px 0 0; border: 0; border-top: 1px dashed color-mix(in srgb, var(--ink) 35%, transparent); }
   .home-status-progress > span { display: none; }
-  .home-status-progress small { justify-self: end; margin-top: -25px; }
+  .home-status-progress small {
+    justify-self: end;
+    margin-top: 0;
+    line-height: 1.2;
+  }
   .home-daily-grid { grid-template-columns: 1fr; grid-template-areas: "bulletin" "agenda"; }
   .home-weeks { grid-template-columns: 1fr 1fr; }
   .home-week-column + .home-week-column { padding: 0 0 0 16px; border: 0; border-left: 1px dashed color-mix(in srgb, var(--ink) 35%, transparent); }
