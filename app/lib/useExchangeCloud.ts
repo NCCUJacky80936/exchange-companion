@@ -31,6 +31,7 @@ import {
 } from "./cloud";
 import { findAiBundleCollisions, importAiBundle, matchesAiJourneyScope, validateAiImportBundle } from "./ai-import";
 import { normalizeImportedState, resetState } from "./storage";
+import { publicTravelPayload } from "./travel-cloud";
 import type { AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
 
 const PRIVATE_SYNC_KEY = "exchange-companion:private-cloud-sync";
@@ -94,6 +95,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   const nextSaveActor = useRef<"manual" | "proposal" | "system">("manual");
   const skipNextPrivateSave = useRef(false);
   const saveInFlight = useRef(false);
+  const publishedPayloads = useRef(new Map<string, string>());
   const sharedPlanIds = useMemo(() => (state.travelPlans ?? [])
     .filter((plan) => plan.cloud?.published)
     .map((plan) => plan.cloud?.cloudPlanId ?? plan.id), [state.travelPlans]);
@@ -216,8 +218,19 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     if (!configured || !session) return;
     const published = (state.travelPlans ?? []).filter((plan) => plan.cloud?.published && plan.cloud.permission !== "viewer");
     if (!published.length) return;
+    const changed = published.filter((plan) => {
+      const planId = plan.cloud?.cloudPlanId ?? plan.id;
+      const payload = JSON.stringify(publicTravelPayload(plan));
+      if (publishedPayloads.current.get(planId) === payload) return false;
+      publishedPayloads.current.set(planId, payload);
+      return true;
+    });
+    if (!changed.length) return;
     const timer = window.setTimeout(() => {
-      published.forEach((plan) => void updatePublishedTravelPlan(plan).catch(() => setNotice("共編更新尚未送出；已保留在本機，稍後會再試。")));
+      changed.forEach((plan) => void updatePublishedTravelPlan(plan).catch(() => {
+        publishedPayloads.current.delete(plan.cloud?.cloudPlanId ?? plan.id);
+        setNotice("共編更新尚未送出；已保留在本機，稍後會再試。");
+      }));
     }, 900);
     return () => window.clearTimeout(timer);
   }, [configured, session, state.travelPlans]);
