@@ -48,7 +48,16 @@ flowchart LR
   E --> F["登入帳號後自動同步私人手帳"]
 ```
 
-登入後在 AI 頁面按一次「首次連結 Codex」，把下載的私人連結檔放到 gitignored 的 `work/exchange-concierge-connection.json`。之後 Agent 會用 `baseRevision` 先讀最新手帳再送回 pending 提案，不需反覆下載／上傳 JSON；網站若有較新的手動修改，舊提案會被拒絕而不是覆蓋。連結可隨時從網站撤銷，權限只有讀取這趟私人手帳與提交待審提案，不能自行套用。完整信件、附件與證件仍不會匯入網站。
+第一次連結請照順序操作：
+
+1. 在首頁啟用指南複製公開 Skill 安裝指令，貼到自己的 Codex 任務；等 Codex 回報三個 Skills 都可使用。
+2. 回網站按「下載私人連結檔」，取得 `exchange-concierge-connection.json`。不要打開、分享、貼出 token 或上傳 GitHub。
+3. 按「複製第一次整理指令」，回到同一個 Codex 任務。
+4. 用 Codex 的附件按鈕加入完整的 `exchange-concierge-connection.json`，再貼上指令並送出；不要把 JSON 內容貼成訊息。
+5. Codex 詢問信箱、資料夾、網址、行事曆或日期時，只授權自己願意提供的精確範圍。
+6. 等 Codex 回報提案已送回後，回網站按「檢查提案收件匣」。看到「待確認提案」才算連結與第一次整理成功。
+
+正式連結檔應由 Agent 存放在 gitignored 的 `work/exchange-concierge-connection.json`。之後 Agent 會用 `baseRevision` 先讀最新手帳再送回 pending 提案，不需反覆下載／上傳 JSON。連結可隨時從網站撤銷，權限只有讀取這趟私人手帳與提交待審提案，不能自行套用。完整信件、附件與證件仍不會匯入網站。
 
 私人連線只負責安全讀取與送達，不會自己叫醒 Agent。這個專案使用一個每週 Codex 主動巡檢，擷取已授權的德國交換信件並檢查 workspace 新增的截圖或文件；若使用者在 Codex 對話中直接確認新狀態，則在同一輪立即整理，不等待下週。兩種觸發都會拉取網站最新 revision、完整驗證後只推送 pending 提案。網站在 AI 頁開啟時會每分鐘及回到分頁時自動收件。連線失效、版本衝突或驗證失敗必須主動通知，不能靜默留下只存在本機的結果。
 

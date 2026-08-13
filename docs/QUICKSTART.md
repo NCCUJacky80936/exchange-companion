@@ -31,7 +31,18 @@ npm run dev
 
 ## 4. 讓 Codex 補齊內容
 
-在 repository 內要求 Codex 使用 `$create-exchange-companion`。Codex 會先確認你願意授權的資料範圍。正式雲端版可依首頁指南下載一次私人 `exchange-concierge-connection.json`；之後 `$exchange-concierge` 每次先讀雲端最新手帳，再送回待審提案，不必反覆下載 JSON。純本機或連線不可用時，AI 頁仍可下載最新交接檔並匯入回傳 bundle。兩種方式都不會自動套用，必須回到網站審核。
+在 repository 內要求 Codex 使用 `$create-exchange-companion`。Codex 會先確認你願意授權的資料範圍。
+
+正式雲端版第一次連結：
+
+1. 在網站首頁的啟用指南複製 Skill 安裝指令，貼到自己的 Codex 任務。
+2. 等 Codex 回報 Skills 已可使用，再回網站下載 `exchange-concierge-connection.json`。
+3. 不要打開或分享連結檔；回到同一個 Codex 任務，直接把完整檔案當附件加入。
+4. 在網站複製「第一次整理指令」，貼到剛才附檔的 Codex 任務並送出。
+5. 只授權你願意提供的精確信箱、檔案、網址、行事曆與日期範圍。
+6. Codex 回報已送出提案後，回網站按「檢查提案收件匣」。看到待確認提案即完成。
+
+之後 `$exchange-concierge` 每次先讀雲端最新手帳，再送回待審提案，不必反覆下載 JSON。純本機或連線不可用時，AI 頁仍可下載最新交接檔並匯入回傳 bundle。兩種方式都不會自動套用，必須回到網站審核。
 
 ## 5. 上版前
 

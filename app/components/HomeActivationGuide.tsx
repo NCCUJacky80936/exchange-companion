@@ -104,7 +104,7 @@ export default function HomeActivationGuide({
         <section className="activation-step-card paper-card">
           <div className="activation-step-heading"><FolderGit2 /><div><span>STEP 02</span><h2>準備 AI Skills</h2></div></div>
           <div className="activation-route-tabs" role="tablist" aria-label="使用方式"><button role="tab" aria-selected={route === "online"} className={route === "online" ? "active" : ""} onClick={() => setRoute("online")}>只使用線上網站</button><button role="tab" aria-selected={route === "repository"} className={route === "repository" ? "active" : ""} onClick={() => setRoute("repository")}>已下載 GitHub 專案</button></div>
-          {route === "online" ? <div className="activation-route-copy"><p>把公開 Skills 安裝到你自己的 Codex。這一步不會帶入 Email、token 或手帳內容。</p><button className="button primary" onClick={() => void copySkillPrompt()}><Copy size={17} />{skillPromptCopied ? "再次複製安裝指令" : "複製給 Codex 的安裝指令"}</button></div> : <div className="activation-route-copy"><p>Repository 已包含 project-local Skills，直接在專案內呼叫即可，不必重複安裝。</p><a className="button secondary" href={EXCHANGE_COMPANION_REPOSITORY} target="_blank" rel="noreferrer"><FolderGit2 size={17} />查看公開專案</a></div>}
+          {route === "online" ? <div className="activation-route-copy activation-route-detailed"><p>先把三個公開 Skills 裝進你自己的 Codex。這一步只安裝操作說明，不會讀取你的信件、檔案或手帳。</p><ol className="activation-micro-steps"><li><strong>打開 Codex</strong><span>建立一個新任務，或回到你準備交換資料的任務。</span></li><li><strong>複製並貼上安裝指令</strong><span>按下方按鈕，回到 Codex 貼上後送出。</span></li><li><strong>等 Codex 回報完成</strong><span>看到 3 個 Skills 都可使用後，再回來做 STEP 03。</span></li></ol><button className="button primary" onClick={() => void copySkillPrompt()}><Copy size={17} />{skillPromptCopied ? "再次複製安裝指令" : "複製安裝指令"}</button></div> : <div className="activation-route-copy activation-route-detailed"><p>你下載的 GitHub 專案已經內建 Skills，不需要再安裝。</p><ol className="activation-micro-steps"><li><strong>用 Codex 開啟專案資料夾</strong><span>確認工作資料夾是這個 Exchange Companion 專案。</span></li><li><strong>直接前往 STEP 03</strong><span>稍後把私人連結檔交給同一個 Codex 任務。</span></li></ol><a className="button secondary" href={EXCHANGE_COMPANION_REPOSITORY} target="_blank" rel="noreferrer"><FolderGit2 size={17} />查看公開專案</a></div>}
         </section>
       </li>
 
@@ -112,8 +112,9 @@ export default function HomeActivationGuide({
         <div className="activation-step-number">{activeConnection ? <Check /> : "3"}</div>
         <section className="activation-step-card paper-card">
           <div className="activation-step-heading"><Link2 /><div><span>STEP 03</span><h2>首次連結 Codex</h2></div></div>
-          <p>連結檔只讓你的 Agent 讀寫「待審提案」。原始信件與私人文件仍留在你明確授權的環境。</p>
-          <button className="button primary" disabled={!cloud.permanentAccount || cloud.privateRevision < 1 || cloud.busy} onClick={() => void createConnection()}><Download size={17} />{activeConnection ? "重新下載私人連結檔" : "下載私人連結檔"}</button>
+          <p>這一步會下載一個名為 <strong>exchange-concierge-connection.json</strong> 的私人連結檔。它只讓 Agent 讀取最新手帳並送回待審提案，不能替你直接套用。</p>
+          <ol className="activation-micro-steps"><li><strong>按下方按鈕下載</strong><span>通常會出現在瀏覽器的「下載項目」。不用打開或修改檔案。</span></li><li><strong>把檔案留在私人位置</strong><span>不要傳給別人，也不要放上 GitHub、雲端公開連結或群組。</span></li><li><strong>下一步會把它附給 Codex</strong><span>連結檔只需交給自己的 Codex 一次，之後可隨時撤銷。</span></li></ol>
+          <button className="button primary" disabled={!cloud.permanentAccount || cloud.privateRevision < 1 || cloud.busy} onClick={() => void createConnection()}><Download size={17} />{activeConnection ? "重新下載私人連結檔" : "下載 exchange-concierge-connection.json"}</button>
           {!cloud.configured ? <p className="activation-offline-note"><FileJson size={16} />離線使用時可改到 AI 頁下載 JSON 交接檔；第一次合法匯入也會完成啟用。</p> : null}
         </section>
       </li>
@@ -122,7 +123,8 @@ export default function HomeActivationGuide({
         <div className="activation-step-number">{firstImport ? <Check /> : "4"}</div>
         <section className="activation-step-card paper-card">
           <div className="activation-step-heading"><Sparkles /><div><span>STEP 04</span><h2>完成第一次整理</h2></div></div>
-          <p>先讓 Agent 讀最新手帳，再選擇要授權的信件、檔案、網址或行事曆。提案回來後仍由你逐筆決定。</p>
+          <p>最後把私人連結檔與第一次整理指令放進同一個 Codex 任務。Codex 會先問你願意開放哪些資料，不會直接掃描全部內容。</p>
+          <ol className="activation-micro-steps"><li><strong>複製第一次整理指令</strong><span>按下方「複製第一次整理指令」。</span></li><li><strong>回到剛才的 Codex 任務</strong><span>用附件按鈕加入 STEP 03 下載的 <code>exchange-concierge-connection.json</code>。</span></li><li><strong>貼上指令並送出</strong><span>不要把連結檔內容或 token 貼成文字，只要附上原檔。</span></li><li><strong>確認授權範圍</strong><span>Codex 問到信箱、資料夾、網址或日期時，只勾選你願意提供的範圍。</span></li><li><strong>等 Codex 說提案已送回</strong><span>再回到這裡按「檢查回傳」。看到待確認提案就代表成功。</span></li></ol>
           <div className="activation-verification-grid"><span className={activeConnection?.lastUsedAt ? "done" : ""}>{activeConnection?.lastUsedAt ? <Check /> : <Bot />}Agent 已讀取</span><span className={firstImport ? "done" : ""}>{firstImport ? <Check /> : <RefreshCw />}提案已送回</span><span className={pending ? "done" : ""}>{pending ? <Check /> : <ChevronRight />}等待你確認 {pending ? `· ${pending}` : ""}</span></div>
           <div className="activation-final-actions"><button className="button primary" onClick={() => void copyFirstRunPrompt()}><Copy size={17} />{copiedFirstRun ? "已複製" : "複製第一次整理指令"}</button>{cloud.permanentAccount ? <button className="button secondary" disabled={cloud.busy} onClick={() => void cloud.refreshConciergeInbox()}><RefreshCw size={17} />檢查回傳</button> : null}</div>
         </section>

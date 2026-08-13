@@ -1,10 +1,11 @@
 "use client";
 
-import { Check, CloudDownload, ExternalLink, FileCheck2, Inbox, Link2, LockKeyhole, RefreshCw, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
+import { Check, CloudDownload, Copy, ExternalLink, FileCheck2, Inbox, Link2, LockKeyhole, RefreshCw, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react";
 import { applyAiProposal, canApplyAiProposal, canUndoAiProposal, clearDismissedAiProposals, dismissAiProposal, findAiBundleCollisions, importAiBundle, journeyScopeForState, matchesAiJourneyScope, rebaseAiProposal, sensitiveBundleWarnings, undoAiProposal, validateAiImportBundle } from "../lib/ai-import";
 import { createExchangeConciergeHandoff } from "../lib/concierge-handoff";
+import { buildFirstConciergePrompt } from "../lib/concierge-starter";
 import type { ExchangeCloudController } from "../lib/useExchangeCloud";
 import type { AiProposal, AppState } from "../lib/types";
 
@@ -50,6 +51,7 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
   const refreshInboxRef = useRef(cloud.refreshConciergeInbox);
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedConnectionPrompt, setCopiedConnectionPrompt] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(openInboxRequest > 0);
   const inbox = state.aiInbox ?? { sources: [], proposals: [] };
   const sourceMap = useMemo(() => new Map(inbox.sources.map((source) => [source.id, source])), [inbox.sources]);
@@ -160,9 +162,20 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
       anchor.download = "exchange-concierge-connection.json";
       anchor.click();
       URL.revokeObjectURL(url);
-      setMessage("連結檔已下載。只要交給使用這個專案的 Codex 一次，之後 Agent 可讀最新雲端手帳並把提案送回這裡。連結檔是私人憑證，請勿上傳 GitHub 或分享。 ");
+      setMessage("步驟 1 完成：私人連結檔已下載。接著按「2. 複製給 Codex 的指令」，回到 Codex，把連結檔當附件加入後再貼上指令。 ");
     } catch {
       setMessage("目前無法建立 Agent 連結。請確認已登入且私人手帳已完成同步。 ");
+    }
+  }
+
+  async function copyConnectionPrompt() {
+    try {
+      await navigator.clipboard.writeText(buildFirstConciergePrompt());
+      setCopiedConnectionPrompt(true);
+      setMessage("步驟 2 完成：指令已複製。請回到 Codex，先附上剛下載的 exchange-concierge-connection.json，再貼上指令並送出。 ");
+      window.setTimeout(() => setCopiedConnectionPrompt(false), 2200);
+    } catch {
+      setMessage("瀏覽器沒有允許複製。請從首頁重新打開使用指南，或允許剪貼簿權限後再試。 ");
     }
   }
 
@@ -237,9 +250,10 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
         </article> : <article className="paper-card ai-start-card">
           <span className="tape" />
           <div className="ai-card-heading"><Sparkles size={25} /><div><p className="eyebrow">Free AI workflow</p><h2>從 Codex 開始整理</h2></div></div>
-          <p>第一次只需下載一次私人連結檔交給 Codex。每週巡檢會整理已授權信件與新放入資料夾的截圖或文件；你在 Codex 對話中新增狀態時則立即推送。</p>
-          <ol className="ai-steps"><li><strong>1</strong><span>首次連結 Codex（一次即可，隨時可撤銷）</span></li><li><strong>2</strong><span>每週主動抓信件與新增文件</span></li><li><strong>3</strong><span>對話中新狀態立即產生待審提案</span></li><li><strong>4</strong><span>網站自動收件，你再決定是否套用</span></li></ol>
-          <div className="ai-primary-actions"><button className="button primary" disabled={!cloud.permanentAccount || cloud.privateRevision < 1 || cloud.busy} onClick={() => void pairConcierge()}><Link2 size={17} />首次連結 Codex</button><button className="button secondary" disabled={!cloud.permanentAccount || cloud.busy} onClick={() => void refreshCloudInbox()}><RefreshCw size={17} />更新提案收件匣</button></div>
+          <p>第一次連結只做一次。照下面順序完成；私人連結檔不要打開、不要把內容貼成文字，也不要上傳 GitHub。</p>
+          <ol className="ai-steps ai-first-link-steps"><li><strong>1</strong><span><b>下載私人連結檔</b><small>檔名是 exchange-concierge-connection.json。</small></span></li><li><strong>2</strong><span><b>複製給 Codex 的指令</b><small>回到自己的 Codex 任務，把連結檔當附件加入，再貼上指令。</small></span></li><li><strong>3</strong><span><b>回答 Codex 的授權問題</b><small>只開放你願意提供的信箱、資料夾、網址與日期範圍。</small></span></li><li><strong>4</strong><span><b>回網站檢查提案</b><small>看到「待確認提案」才算完成；網站不會自動套用。</small></span></li></ol>
+          <p className="ai-after-link-note"><strong>連結成功後：</strong>每週巡檢會整理已授權信件與新增文件；對話中新狀態立即產生待審提案，網站會自動收件。</p>
+          <div className="ai-primary-actions"><button className="button primary" disabled={!cloud.permanentAccount || cloud.privateRevision < 1 || cloud.busy} onClick={() => void pairConcierge()}><Link2 size={17} />1. 下載私人連結檔</button><button className="button secondary" onClick={() => void copyConnectionPrompt()}><Copy size={17} />{copiedConnectionPrompt ? "指令已複製" : "2. 複製給 Codex 的指令"}</button><button className="button secondary" disabled={!cloud.permanentAccount || cloud.busy} onClick={() => void refreshCloudInbox()}><RefreshCw size={17} />4. 檢查提案收件匣</button></div>
           <details className="ai-offline-fallback"><summary>離線備援：下載／匯入 JSON</summary><p>只有無法連線雲端或需要攜帶完整資料到另一個環境時才使用。</p><button className="button text-button" onClick={() => void prepareHandoff()}><CloudDownload size={17} />{copied ? "交接檔與指令已準備" : "下載最新交接 JSON"}</button></details>
         </article>}
 
