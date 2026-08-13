@@ -63,6 +63,22 @@ export function publicTravelPayload(plan: TravelPlan): TravelPlan {
   };
 }
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((item) => item === undefined ? "null" : canonicalJson(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+export function matchesPublicTravelPayload(value: unknown, plan: TravelPlan): boolean {
+  return canonicalJson(value) === canonicalJson(publicTravelPayload(plan));
+}
+
 function bytesToUuid(bytes: Uint8Array): string {
   const value = [...bytes.slice(0, 16)];
   value[6] = (value[6] & 0x0f) | 0x50;

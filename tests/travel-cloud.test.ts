@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cloudPlanIdFor, publicTravelPayload } from "../app/lib/travel-cloud";
+import { cloudPlanIdFor, matchesPublicTravelPayload, publicTravelPayload } from "../app/lib/travel-cloud";
 import type { TravelPlan, TravelReference, TravelStay } from "../app/lib/types";
 
 function plan(overrides: Partial<TravelPlan> = {}): TravelPlan {
@@ -63,4 +63,12 @@ test("shared payload uses an explicit travel-only whitelist", () => {
 test("an existing cloud mapping is always reused", async () => {
   const mapped = plan({ cloud: { published: true, cloudPlanId: "5abfae62-55a4-5cc0-9f84-5b076b431a9f", permission: "owner" } });
   assert.equal(await cloudPlanIdFor(mapped, "another-user"), mapped.cloud?.cloudPlanId);
+});
+
+test("shared payload comparison ignores database key ordering", () => {
+  const source = plan();
+  const payload = publicTravelPayload(source);
+  const reordered = Object.fromEntries(Object.entries(payload).reverse());
+  assert.equal(matchesPublicTravelPayload(reordered, source), true);
+  assert.equal(matchesPublicTravelPayload({ ...reordered, title: "Changed" }, source), false);
 });

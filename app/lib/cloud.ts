@@ -2,7 +2,7 @@
 
 import { createClient, type RealtimeChannel, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import type { AiImportBundle, AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
-import { cloudPlanIdFor, publicTravelPayload } from "./travel-cloud";
+import { cloudPlanIdFor, matchesPublicTravelPayload, publicTravelPayload } from "./travel-cloud";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
@@ -219,7 +219,7 @@ export async function updatePublishedTravelPlan(plan: TravelPlan): Promise<void>
   const payload = publicTravelPayload(plan);
   const { data: current, error: readError } = await client.from("travel_plans").select("payload").eq("id", cloudPlanId).single();
   if (readError) throw readError;
-  if (JSON.stringify(current.payload) === JSON.stringify(payload)) return;
+  if (matchesPublicTravelPayload(current.payload, plan)) return;
   const { error } = await client.from("travel_plans").update({ payload }).eq("id", cloudPlanId);
   if (error) throw error;
 }
