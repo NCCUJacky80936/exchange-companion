@@ -30,7 +30,8 @@ test("installed app serves the cached notebook shell before refreshing navigatio
 test("mobile navigation keeps its controls above the iPhone home indicator", async () => {
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(styles, /height: calc\(78px \+ env\(safe-area-inset-bottom\)\)/);
-  assert.match(styles, /padding-bottom: calc\(12px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(styles, /min-height: 100%[^}]+padding: 0 0 calc\(12px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.doesNotMatch(styles, /mobile-bottom-nav \{[^}]+padding-bottom:/);
   assert.match(styles, /body \{ padding-bottom: calc\(88px \+ env\(safe-area-inset-bottom\)\); \}/);
 });
 
