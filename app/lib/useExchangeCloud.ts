@@ -205,7 +205,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     const channels = sharedPlanIds.map((planId) => subscribeToTravelPlan(planId, (incoming) => {
       setState((current) => {
         const existing = (current.travelPlans ?? []).find((item) => item.id === incoming.id);
-        if (existing && matchesPublicTravelPayload(incoming, existing)) return current;
+        if (existing && (incoming.updatedAt === existing.updatedAt || matchesPublicTravelPayload(incoming, existing))) return current;
         return {
           ...current,
           travelPlans: (current.travelPlans ?? []).map((item) => item.id === incoming.id ? {
