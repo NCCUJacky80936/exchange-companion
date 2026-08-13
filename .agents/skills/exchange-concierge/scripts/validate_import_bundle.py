@@ -24,6 +24,8 @@ ACTIVITY_FIELDS = {"id", "time", "title", "kind", "location", "mapsUrl", "durati
 TRAVEL_DAY_FIELDS = {"id", "date", "title", "activities"}
 TRAVEL_NOTE_FIELDS = {"id", "title", "details", "category", "important"}
 TRAVEL_PACKING_FIELDS = {"id", "name", "category", "quantity", "packed", "notes"}
+TRAVEL_STAY_FIELDS = {"id", "name", "checkIn", "checkOut", "area", "address", "mapsUrl", "sourceUrl", "imageUrl", "imageAlt", "summary", "highlights", "notes"}
+TRAVEL_REFERENCE_FIELDS = {"id", "label", "kind", "url", "description"}
 ENTITY_ARRAYS = {
     "journey": "journey",
     "task": "tasks",
@@ -46,7 +48,7 @@ REQUIRED_ADD_FIELDS = {
     "flight-allowance": {"id", "label", "airline", "segment", "checkedMode", "checkedPieceCount", "checkedPieceWeightKg", "checkedTotalWeightKg", "carryOnMode", "carryOnPieceCount", "carryOnPieceWeightKg", "personalItemMode", "personalItemPieceCount", "personalItemPieceWeightKg", "provenance", "confirmed", "sourceLabel", "verifiedAt", "notes"},
     "budget-item": {"id", "name", "category", "amount", "currency", "cadence", "basis", "paid", "notes", "sourceLabel", "verifiedAt"},
     "study-event": {"id", "title", "kind", "startDate", "mandatory", "notes"},
-    "travel-plan": {"id", "kind", "title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days", "travelNotes", "packingItems", "createdAt", "updatedAt"},
+    "travel-plan": {"id", "kind", "title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days", "stays", "references", "travelNotes", "packingItems", "createdAt", "updatedAt"},
 }
 ALLOWED_FIELDS = {
     "journey": {"title", "ownerName", "homeCity", "hostCity", "hostSchool", "program", "startDate", "endDate", "orientationDate", "destinations"},
@@ -58,7 +60,7 @@ ALLOWED_FIELDS = {
     "flight-allowance": {"id", "label", "airline", "segment", "checkedMode", "checkedPieceCount", "checkedPieceWeightKg", "checkedTotalWeightKg", "carryOnMode", "carryOnPieceCount", "carryOnPieceWeightKg", "personalItemMode", "personalItemPieceCount", "personalItemPieceWeightKg", "provenance", "confirmed", "sourceLabel", "verifiedAt", "notes"},
     "budget-item": {"id", "name", "category", "amount", "currency", "cadence", "basis", "paid", "notes", "sourceLabel", "verifiedAt"},
     "study-event": {"id", "title", "kind", "startDate", "endDate", "startTime", "repeatWeekly", "mandatory", "notes"},
-    "travel-plan": {"id", "kind", "title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days", "travelNotes", "packingItems", "createdAt", "updatedAt"},
+    "travel-plan": {"id", "kind", "title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days", "stays", "references", "travelNotes", "packingItems", "createdAt", "updatedAt"},
 }
 SECRET_PATTERNS = (
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
@@ -196,6 +198,46 @@ def valid_travel_packing(value: object) -> bool:
         and nonnegative_number(item.get("quantity"))
         and isinstance(item.get("packed"), bool)
         and isinstance(item.get("notes"), str)
+        for item in value
+    )
+
+
+def valid_travel_stays(value: object) -> bool:
+    return isinstance(value, list) and unique_ids(value) and all(
+        isinstance(item, dict)
+        and only_keys(item, TRAVEL_STAY_FIELDS)
+        and nonempty_text(item.get("id"), 160)
+        and nonempty_text(item.get("name"), 200)
+        and valid_date(item.get("checkIn"))
+        and valid_date(item.get("checkOut"))
+        and item["checkOut"] >= item["checkIn"]
+        and isinstance(item.get("area"), str)
+        and isinstance(item.get("address"), str)
+        and (item.get("mapsUrl") == "" or valid_http_url(item.get("mapsUrl")))
+        and (item.get("sourceUrl") == "" or valid_http_url(item.get("sourceUrl")))
+        and (item.get("imageUrl") == "" or valid_http_url(item.get("imageUrl")))
+        and isinstance(item.get("imageAlt"), str)
+        and nonempty_text(item.get("summary"), 2000)
+        and isinstance(item.get("highlights"), list)
+        and len(item["highlights"]) <= 12
+        and all(isinstance(highlight, str) and len(highlight) <= 200 for highlight in item["highlights"])
+        and isinstance(item.get("notes"), str)
+        and len(item["notes"]) <= 2000
+        for item in value
+    )
+
+
+def valid_travel_references(value: object) -> bool:
+    kinds = {"map-list", "spreadsheet", "guide", "booking", "other"}
+    return isinstance(value, list) and unique_ids(value) and all(
+        isinstance(item, dict)
+        and only_keys(item, TRAVEL_REFERENCE_FIELDS)
+        and nonempty_text(item.get("id"), 160)
+        and nonempty_text(item.get("label"), 200)
+        and item.get("kind") in kinds
+        and valid_http_url(item.get("url"))
+        and isinstance(item.get("description"), str)
+        and len(item["description"]) <= 1000
         for item in value
     )
 
@@ -401,6 +443,10 @@ def validate_field(entity: str, key: str, value: object) -> bool:
             return isinstance(value, str) and bool(re.fullmatch(r"[A-Z]{3}", value))
         if key == "days":
             return valid_travel_days(value)
+        if key == "stays":
+            return valid_travel_stays(value)
+        if key == "references":
+            return valid_travel_references(value)
         if key == "travelNotes":
             return valid_travel_notes(value)
         if key == "packingItems":

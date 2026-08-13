@@ -22,7 +22,7 @@ Turn this template into one person's exchange website while keeping every manual
 - **Mailbox evidence**: invoke `$exchange-email-intake` for the current user's authorized account/message/query scope, then pass its evidence report to `$exchange-concierge`.
 - **Visual customization**: follow [visuals-and-web.md](references/visuals-and-web.md), use the installed image-generation skill for original artwork, and validate each crop in the real interface.
 - **Cloud and sharing**: follow [cloud-deployment.md](references/cloud-deployment.md) only when the user explicitly asks for accounts, sync, collaboration, or deployment.
-- **Existing site update**: read the newest exported website backup first and reconcile rather than resetting the user's manual records.
+- **Existing site update**: when a private Concierge connection exists, read the newest cloud revision first. Use the newest exported website handoff only for local/offline fallback. Reconcile rather than resetting the user's manual records.
 
 ## End-to-end workflow
 

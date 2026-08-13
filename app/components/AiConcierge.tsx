@@ -44,12 +44,12 @@ function displayValue(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-export default function AiConcierge({ state, setState, cloud }: { state: AppState; setState: Dispatch<SetStateAction<AppState>>; cloud: ExchangeCloudController }) {
+export default function AiConcierge({ state, setState, cloud, openInboxRequest = 0 }: { state: AppState; setState: Dispatch<SetStateAction<AppState>>; cloud: ExchangeCloudController; openInboxRequest?: number }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const refreshedAccount = useRef("");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
-  const [inboxOpen, setInboxOpen] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(openInboxRequest > 0);
   const inbox = state.aiInbox ?? { sources: [], proposals: [] };
   const sourceMap = useMemo(() => new Map(inbox.sources.map((source) => [source.id, source])), [inbox.sources]);
   const pending = inbox.proposals.filter((proposal) => proposal.status === "pending");
@@ -171,32 +171,7 @@ export default function AiConcierge({ state, setState, cloud }: { state: AppStat
         <Image src="/images/doodle-icons/documents-safe.png" alt="手繪文件與行政資料圖示" width={112} height={112} />
       </header>
 
-      <section className={`ai-workflow-grid ${activeConnections.length ? "has-connection" : ""}`}>
-        {activeConnections.length ? <article className="paper-card ai-connected-card">
-          <div className="ai-card-heading"><Link2 size={22}/><div><p className="eyebrow">Connected agent</p><h2>已連結 Exchange Concierge</h2></div></div>
-          <p>{activeConnections[0].lastUsedAt ? `最近使用：${new Date(activeConnections[0].lastUsedAt).toLocaleString("zh-TW")}` : "連結已建立，尚未第一次使用。"}</p>
-          <div className="ai-connected-actions"><button className="button secondary" disabled={cloud.busy} onClick={() => void refreshCloudInbox()}><RefreshCw size={16}/>更新收件匣</button><button className="button text-button danger" disabled={cloud.busy} onClick={() => void cloud.revokeConciergeConnection(activeConnections[0].id)}><X size={16}/>撤銷連結</button></div>
-        </article> : <article className="paper-card ai-start-card">
-          <span className="tape" />
-          <div className="ai-card-heading"><Sparkles size={25} /><div><p className="eyebrow">Free AI workflow</p><h2>從 Codex 開始整理</h2></div></div>
-          <p>第一次只需下載一次私人連結檔交給 Codex。之後 Exchange Concierge 會先讀取雲端最新版本，再把待審提案送回網站；不需要每次來回下載 JSON，也不會直接套用。</p>
-          <ol className="ai-steps"><li><strong>1</strong><span>首次連結 Codex（一次即可，隨時可撤銷）</span></li><li><strong>2</strong><span>Agent 依你授權的信件、檔案或網址整理</span></li><li><strong>3</strong><span>回到網站更新收件匣並逐項確認</span></li></ol>
-          <div className="ai-primary-actions"><button className="button primary" disabled={!cloud.permanentAccount || cloud.privateRevision < 1 || cloud.busy} onClick={() => void pairConcierge()}><Link2 size={17} />首次連結 Codex</button><button className="button secondary" disabled={!cloud.permanentAccount || cloud.busy} onClick={() => void refreshCloudInbox()}><RefreshCw size={17} />更新提案收件匣</button></div>
-          <details className="ai-offline-fallback"><summary>離線備援：下載／匯入 JSON</summary><p>只有無法連線雲端或需要攜帶完整資料到另一個環境時才使用。</p><button className="button text-button" onClick={() => void prepareHandoff()}><CloudDownload size={17} />{copied ? "交接檔與指令已準備" : "下載最新交接 JSON"}</button></details>
-        </article>}
-
-        <article className="paper-card ai-import-card">
-          <div className="ai-card-heading"><Inbox size={25} /><div><p className="eyebrow">Review inbox</p><h2>AI 提案收件匣</h2></div></div>
-          <p>雲端提案只會進入待確認區。你會先看到來源、日期、可信度與實際欄位差異，再決定要不要更新手帳。</p>
-          <p className="ai-scope"><strong>目前旅程範圍</strong><span>{journeyScopeForState(state)}</span>{inbox.journeyScope ? <small>最近匯入：{inbox.journeyScope}</small> : null}</p>
-          <button className="button secondary" onClick={() => inputRef.current?.click()}><Upload size={17} />選擇提案 JSON</button>
-          <input ref={inputRef} className="sr-only" type="file" accept="application/json" onChange={importBundle} />
-          <div className="ai-privacy-note"><LockKeyhole size={18} /><span>簽證、財力、住址、帳戶與信件內容一律保持私人；AI 不會把它們加入旅行分享。</span></div>
-          {message ? <p className="settings-message" role="status">{message}</p> : null}
-        </article>
-      </section>
-
-      <details className="proposal-section paper-card ai-inbox-details" open={inboxOpen} onToggle={(event) => setInboxOpen(event.currentTarget.open)}>
+      <details id="ai-proposal-inbox" className="proposal-section paper-card ai-inbox-details" open={inboxOpen} onToggle={(event) => setInboxOpen(event.currentTarget.open)}>
         <summary><div><p className="eyebrow">Suggested updates</p><h2>AI 提案收件匣</h2><small>待確認超過 5 天會清除；套用後 7 天未復原也會移除紀錄。</small></div><span className="count-badge">{pending.length}</span></summary>
         <div className="proposal-inbox-body"><div className="section-heading"><div><h2>待確認提案</h2>{pending.length ? <div className="proposal-coverage">{Object.entries(pendingByEntity).map(([entity, count]) => <span key={entity}>{entityLabel[entity as keyof typeof entityLabel]} {count}</span>)}</div> : null}</div><div className="proposal-heading-actions">{dismissedCount ? <button className="button text-button" onClick={() => { cloud.markNextSaveActor("proposal"); setState(clearDismissedAiProposals); }}>清除 {dismissedCount} 個已忽略提案</button> : null}{pending.some((proposal) => canApplyAiProposal(state, proposal, cloud.privateRevision || undefined).valid) ? <button className="button primary batch-apply" onClick={applyAllPending}><Check size={16} />套用全部可用提案</button> : null}</div></div>
         {pending.length ? <div className="proposal-list">{pending.map((proposal) => {
@@ -224,6 +199,32 @@ export default function AiConcierge({ state, setState, cloud }: { state: AppStat
         return <div className="applied-proposal-row" key={proposal.id}><span><Check size={15} /></span><div><strong>{proposal.title}</strong><small>{undo.valid ? (proposal.appliedAt ? new Date(proposal.appliedAt).toLocaleString("zh-TW") : "已套用") : undo.reason}</small></div><button className="button text-button" disabled={!undo.valid} title={undo.reason} onClick={() => { cloud.markNextSaveActor("proposal"); setState((current) => undoAiProposal(current, proposal.id)); }}><Undo2 size={15} />復原</button></div>;
       })}</div></section> : null}</div>
       </details>
+
+      <section className={`ai-workflow-grid ${activeConnections.length ? "has-connection" : ""}`}>
+        {activeConnections.length ? <article className="paper-card ai-connected-card">
+          <div className="ai-card-heading"><Link2 size={22}/><div><p className="eyebrow">Connected agent</p><h2>已連結 Exchange Concierge</h2></div></div>
+          <p>{activeConnections[0].lastUsedAt ? `最近使用：${new Date(activeConnections[0].lastUsedAt).toLocaleString("zh-TW")}` : "連結已建立，尚未第一次使用。"}</p>
+          <div className="ai-connected-actions"><button className="button secondary" disabled={cloud.busy} onClick={() => void refreshCloudInbox()}><RefreshCw size={16}/>更新收件匣</button><button className="button text-button danger" disabled={cloud.busy} onClick={() => void cloud.revokeConciergeConnection(activeConnections[0].id)}><X size={16}/>撤銷連結</button></div>
+        </article> : <article className="paper-card ai-start-card">
+          <span className="tape" />
+          <div className="ai-card-heading"><Sparkles size={25} /><div><p className="eyebrow">Free AI workflow</p><h2>從 Codex 開始整理</h2></div></div>
+          <p>第一次只需下載一次私人連結檔交給 Codex。之後 Exchange Concierge 會先讀取雲端最新版本，再把待審提案送回網站；不需要每次來回下載 JSON，也不會直接套用。</p>
+          <ol className="ai-steps"><li><strong>1</strong><span>首次連結 Codex（一次即可，隨時可撤銷）</span></li><li><strong>2</strong><span>Agent 依你授權的信件、檔案或網址整理</span></li><li><strong>3</strong><span>回到網站更新收件匣並逐項確認</span></li></ol>
+          <div className="ai-primary-actions"><button className="button primary" disabled={!cloud.permanentAccount || cloud.privateRevision < 1 || cloud.busy} onClick={() => void pairConcierge()}><Link2 size={17} />首次連結 Codex</button><button className="button secondary" disabled={!cloud.permanentAccount || cloud.busy} onClick={() => void refreshCloudInbox()}><RefreshCw size={17} />更新提案收件匣</button></div>
+          <details className="ai-offline-fallback"><summary>離線備援：下載／匯入 JSON</summary><p>只有無法連線雲端或需要攜帶完整資料到另一個環境時才使用。</p><button className="button text-button" onClick={() => void prepareHandoff()}><CloudDownload size={17} />{copied ? "交接檔與指令已準備" : "下載最新交接 JSON"}</button></details>
+        </article>}
+
+        <article className="paper-card ai-import-card">
+          <div className="ai-card-heading"><Inbox size={25} /><div><p className="eyebrow">Review inbox</p><h2>AI 提案收件匣</h2></div></div>
+          <p>雲端提案只會進入待確認區。你會先看到來源、日期、可信度與實際欄位差異，再決定要不要更新手帳。</p>
+          <p className="ai-scope"><strong>目前旅程範圍</strong><span>{journeyScopeForState(state)}</span>{inbox.journeyScope ? <small>最近匯入：{inbox.journeyScope}</small> : null}</p>
+          <button className="button secondary" onClick={() => inputRef.current?.click()}><Upload size={17} />選擇提案 JSON</button>
+          <input ref={inputRef} className="sr-only" type="file" accept="application/json" onChange={importBundle} />
+          <div className="ai-privacy-note"><LockKeyhole size={18} /><span>簽證、財力、住址、帳戶與信件內容一律保持私人；AI 不會把它們加入旅行分享。</span></div>
+          {message ? <p className="settings-message" role="status">{message}</p> : null}
+        </article>
+      </section>
+
     </div>
   );
 }

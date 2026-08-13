@@ -7,27 +7,31 @@ import {
   acknowledgeConciergeProposalRuns,
   createConciergeConnection,
   createPasswordAccount,
-  createTravelShareLink,
   ensureCloudSession,
   getCloudClient,
   isPermanentSession,
   listConciergeConnections,
+  loadTravelSharingSettings,
   publishTravelPlan,
   pullConciergeProposalRuns,
   readPrivateState,
   redeemTravelShare,
+  removeTravelMember,
   removeTravelSubscription,
   revokeConciergeConnection,
   sendMagicLink,
   signInWithPasswordAccount,
   signOutCloud,
   subscribeToTravelPlan,
+  updateTravelLinkSettings,
+  updateTravelMemberPermission,
   updatePublishedTravelPlan,
+  upsertTravelMember,
   writePrivateState,
 } from "./cloud";
 import { findAiBundleCollisions, importAiBundle, matchesAiJourneyScope, validateAiImportBundle } from "./ai-import";
 import { normalizeImportedState, resetState } from "./storage";
-import type { AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TravelPlan, TravelShareAccess, TravelShareLink } from "./types";
+import type { AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
 
 const PRIVATE_SYNC_KEY = "exchange-companion:private-cloud-sync";
 export type ShareRedemptionStatus = "none" | "loading" | "active" | "login-required" | "invalid";
@@ -60,13 +64,11 @@ export interface ExchangeCloudController {
   revokeConciergeConnection: (connectionId: string) => Promise<void>;
   refreshConciergeInbox: () => Promise<number>;
   publishPlan: (plan: TravelPlan) => Promise<TravelPlan>;
-  createShare: (options: {
-    plan: TravelPlan;
-    permission: "viewer" | "editor";
-    accessMode: TravelShareAccess;
-    approvedEmail?: string;
-    expiresAt?: string;
-  }) => Promise<TravelShareLink>;
+  loadTravelSharing: (plan: TravelPlan) => Promise<TravelSharingSettings>;
+  updateTravelLink: (plan: TravelPlan, settings: { enabled: boolean; permission: "viewer" | "editor"; expiresAt?: string }) => Promise<TravelLinkSettings>;
+  upsertTravelMember: (plan: TravelPlan, account: string, permission: "viewer" | "editor") => Promise<TravelMemberAccess[]>;
+  updateTravelMember: (plan: TravelPlan, memberId: string, permission: "viewer" | "editor") => Promise<TravelMemberAccess[]>;
+  removeTravelMember: (plan: TravelPlan, memberId: string) => Promise<TravelMemberAccess[]>;
 }
 
 export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAction<AppState>>): ExchangeCloudController {
@@ -90,7 +92,9 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   const nextSaveActor = useRef<"manual" | "proposal" | "system">("manual");
   const skipNextPrivateSave = useRef(false);
   const saveInFlight = useRef(false);
-  const sharedPlanIds = useMemo(() => (state.travelPlans ?? []).filter((plan) => plan.cloud?.published).map((plan) => plan.id), [state.travelPlans]);
+  const sharedPlanIds = useMemo(() => (state.travelPlans ?? [])
+    .filter((plan) => plan.cloud?.published)
+    .map((plan) => plan.cloud?.cloudPlanId ?? plan.id), [state.travelPlans]);
 
   useEffect(() => {
     latestState.current = state;
@@ -316,8 +320,13 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       try {
         await runBusy(() => signInWithPasswordAccount(accountId, password));
         setNotice("手帳帳號已登入。 ");
-      } catch {
-        setNotice("Email／舊版帳號代號或密碼不正確。 ");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        setNotice(message.includes("cloud_not_configured")
+          ? "本機尚未連接雲端，請補上本機設定並重新啟動網站。 "
+          : message.includes("fetch") || message.includes("network")
+            ? "目前無法連到雲端，請確認網路後再試。 "
+            : "Email／舊版帳號代號或密碼不正確。 ");
       }
     },
     emailSignIn: (email: string) => runBusy(async () => {
@@ -379,6 +388,10 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     }),
     refreshConciergeInbox: () => runBusy(refreshInbox),
     publishPlan: (plan: TravelPlan) => runBusy(() => publishTravelPlan(plan)),
-    createShare: (options) => runBusy(() => createTravelShareLink(options)),
+    loadTravelSharing: (plan) => runBusy(() => loadTravelSharingSettings(plan)),
+    updateTravelLink: (plan, settings) => runBusy(() => updateTravelLinkSettings(plan, settings)),
+    upsertTravelMember: (plan, account, permission) => runBusy(() => upsertTravelMember(plan, account, permission)),
+    updateTravelMember: (plan, memberId, permission) => runBusy(() => updateTravelMemberPermission(plan, memberId, permission)),
+    removeTravelMember: (plan, memberId) => runBusy(() => removeTravelMember(plan, memberId)),
   }), [accountDataReady, authReady, busy, conciergeConnections, configured, loadPermanentAccountState, notice, privateRevision, privateSyncEnabled, refreshConnections, refreshInbox, runBusy, session, setState, shareStatus, sharedPlanId, syncConflict]);
 }

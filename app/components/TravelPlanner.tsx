@@ -3,12 +3,14 @@
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   ChevronRight,
   Copy,
   Download,
   ExternalLink,
   GraduationCap,
   MapPin,
+  MoreHorizontal,
   Pencil,
   Plus,
   Route,
@@ -19,7 +21,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
-import { type Dispatch, type FormEvent, type SetStateAction, useMemo, useState } from "react";
+import { type Dispatch, type FormEvent, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import type { ExchangeCloudController } from "../lib/useExchangeCloud";
 import type {
   AppState,
@@ -29,51 +31,158 @@ import type {
   TravelActivityKind,
   TravelDay,
   TravelPlan,
+  TravelSharingSettings,
 } from "../lib/types";
 import { exchangeCurrencies, exchangeProfile } from "../lib/profile";
+import { localDateKey, sortTravelPlansForDisplay, travelTemporalStatus } from "../lib/travel-sort";
 import { DayMapPanel, mapsUrlForActivity, TravelNotesPanel, TravelPackingPanel } from "./TravelTripPanels";
+import { TravelStaySection } from "./TravelStaySection";
 
 type TripView = "itinerary" | "notes" | "packing";
 
 function ShareTravelModal({ plan, cloud, onPlanPublished, onClose }: { plan: TravelPlan; cloud: ExchangeCloudController; onPlanPublished: (plan: TravelPlan) => void; onClose: () => void }) {
-  const [permission, setPermission] = useState<"viewer" | "editor">("viewer");
-  const [accessMode, setAccessMode] = useState<"anyone" | "approved_google">("anyone");
-  const [approvedEmail, setApprovedEmail] = useState("");
+  const [settings, setSettings] = useState<TravelSharingSettings | null>(null);
+  const [linkAccess, setLinkAccess] = useState<"off" | "viewer" | "editor">("off");
+  const [memberAccount, setMemberAccount] = useState("");
+  const [memberPermission, setMemberPermission] = useState<"viewer" | "editor">("viewer");
   const [expiresAt, setExpiresAt] = useState("");
-  const [link, setLink] = useState("");
   const [message, setMessage] = useState("");
+  const [publishing, setPublishing] = useState(false);
+  const [sharingAction, setSharingAction] = useState("");
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!plan.cloud?.published || plan.cloud.permission !== "owner") return;
+    let active = true;
+    void cloud.loadTravelSharing(plan).then((next) => {
+      if (!active) return;
+      setSettings(next);
+      setLinkAccess(next.link.enabled ? next.link.permission : "off");
+      setExpiresAt(next.link.expiresAt?.slice(0, 10) ?? "");
+    }).catch((error) => {
+      console.error("[travel-share] settings load failed", error);
+      if (active) setMessage("目前無法讀取分享設定，本機旅行不受影響。 ");
+    });
+    return () => { active = false; };
+    // The cloud controller reflects global busy state; only the selected cloud trip should reload this modal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan.cloud?.cloudPlanId, plan.cloud?.permission, plan.cloud?.published]);
 
   async function publish() {
+    if (publishing) return;
+    setPublishing(true);
+    setMessage("正在建立雲端旅行…");
     try {
       const published = await cloud.publishPlan(plan);
       onPlanPublished(published);
       setMessage("旅行已放上免費雲端；尚未產生任何分享連結。 ");
-    } catch {
+    } catch (error) {
+      const cloudError = error as { code?: string; status?: number; message?: string; details?: string; hint?: string };
+      console.error("[travel-share] publish failed", JSON.stringify({ code: cloudError.code, status: cloudError.status, message: cloudError.message, details: cloudError.details, hint: cloudError.hint }));
       setMessage("目前無法建立雲端旅行，本機內容沒有遺失。 ");
+    } finally {
+      setPublishing(false);
     }
   }
 
-  async function createLink() {
+  async function saveLinkSettings() {
+    if (!settings || sharingAction) return;
+    setSharingAction("link");
+    setMessage("正在更新固定連結權限…");
     try {
-      const result = await cloud.createShare({ plan, permission, accessMode, approvedEmail, expiresAt: expiresAt ? new Date(`${expiresAt}T23:59:59`).toISOString() : undefined });
-      setLink(result.url);
-      await navigator.clipboard.writeText(result.url);
-      setMessage("連結已建立並複製。可隨時撤銷；私人交換資料沒有包含在內。 ");
+      const next = await cloud.updateTravelLink(plan, {
+        enabled: linkAccess !== "off",
+        permission: linkAccess === "editor" ? "editor" : linkAccess === "viewer" ? "viewer" : settings.link.permission,
+        expiresAt: expiresAt ? new Date(`${expiresAt}T23:59:59`).toISOString() : undefined,
+      });
+      setSettings((current) => current ? { ...current, link: next } : current);
+      setMessage(next.enabled ? `固定連結已改成${next.permission === "editor" ? "可以編輯" : "只能查看"}；網址沒有改變。 ` : "固定連結已關閉；網址保留，之後重新開啟仍是同一個。 ");
     } catch (error) {
-      setMessage(error instanceof Error && error.message.includes("account") ? "請填入 3–32 字元的手帳帳號代號。" : "連結建立失敗，請確認帳戶與雲端連線。 ");
+      const cloudError = error as { code?: string; status?: number; message?: string; details?: string; hint?: string };
+      console.error("[travel-share] link update failed", JSON.stringify({ code: cloudError.code, status: cloudError.status, message: cloudError.message, details: cloudError.details, hint: cloudError.hint }));
+      setMessage("固定連結權限更新失敗，原設定沒有改變。 ");
+    } finally {
+      setSharingAction("");
+    }
+  }
+
+  async function copyStableLink() {
+    if (!settings) return;
+    await navigator.clipboard.writeText(settings.link.url);
+    setMessage("固定連結已複製。之後調整權限時不需要重新傳網址。 ");
+  }
+
+  async function addMember() {
+    if (!memberAccount.trim() || sharingAction) return;
+    setSharingAction("member-add");
+    try {
+      const members = await cloud.upsertTravelMember(plan, memberAccount, memberPermission);
+      setSettings((current) => current ? { ...current, members } : current);
+      setMemberAccount("");
+      setMessage("指定帳戶已加入；他的權限與固定連結分開管理。 ");
+    } catch (error) {
+      console.error("[travel-share] member add failed", error);
+      setMessage("無法加入這個帳戶。請確認 Email 或舊版手帳帳號代號。 ");
+    } finally {
+      setSharingAction("");
+    }
+  }
+
+  async function changeMember(memberId: string, permission: "viewer" | "editor") {
+    if (sharingAction) return;
+    setSharingAction(`member-${memberId}`);
+    try {
+      const members = await cloud.updateTravelMember(plan, memberId, permission);
+      setSettings((current) => current ? { ...current, members } : current);
+      setMessage("指定帳戶權限已更新。 ");
+    } catch (error) {
+      console.error("[travel-share] member update failed", error);
+      setMessage("指定帳戶權限更新失敗。 ");
+    } finally {
+      setSharingAction("");
+    }
+  }
+
+  async function deleteMember(memberId: string) {
+    if (sharingAction) return;
+    setSharingAction(`member-${memberId}`);
+    try {
+      const members = await cloud.removeTravelMember(plan, memberId);
+      setSettings((current) => current ? { ...current, members } : current);
+      setMessage("已移除指定帳戶；固定連結設定沒有改變。 ");
+    } catch (error) {
+      console.error("[travel-share] member removal failed", error);
+      setMessage("目前無法移除這個帳戶。 ");
+    } finally {
+      setSharingAction("");
     }
   }
 
   return <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <motion.div className="modal-card share-modal paper-card" role="dialog" aria-modal="true" aria-labelledby="share-travel-title" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 7 }}>
       <div className="modal-heading"><div><p className="eyebrow">Scoped sharing</p><h2 id="share-travel-title">分享「{plan.title}」</h2></div><button className="icon-button" onClick={onClose} aria-label="關閉"><X size={20} /></button></div>
-      {!cloud.configured ? <div className="share-unavailable"><Sparkles size={24} /><div><strong>免費雲端會在最後一次上版時啟用</strong><p>現在先保留匯出與複製摘要；完成全部本機驗證後才建立雲端，避免反覆消耗部署額度。</p></div></div> : !plan.cloud?.published ? <div className="share-publish-step"><p>分享前只會上傳這一趟旅行的行程、地圖、注意事項與旅行行李。簽證、信件、住宿、帳戶、任務進度與私人課表都不會上傳到共編資料。</p><button className="button primary" disabled={cloud.busy} onClick={() => void publish()}><Share2 size={17} />建立這趟旅行的雲端版本</button><small>建立雲端版本不等於公開，下一步才會選擇分享條件。</small></div> : plan.cloud.permission !== "owner" ? <div className="share-unavailable"><Check size={24} /><div><strong>{plan.cloud.permission === "viewer" ? "你目前是唯讀成員" : "你可以編輯這趟旅行"}</strong><p>只有旅行擁有者能建立新的分享連結或指定其他帳號。</p></div></div> : <div className="share-form">
-        <label className="field"><span>收到的人可以</span><select value={permission} onChange={(event) => setPermission(event.target.value as "viewer" | "editor")}><option value="viewer">只能查看</option><option value="editor">共同編輯</option></select></label>
-        <label className="field"><span>誰能開啟</span><select value={accessMode} onChange={(event) => setAccessMode(event.target.value as "anyone" | "approved_google")}><option value="anyone">拿到連結的任何人（免登入）</option><option value="approved_google">只有指定手帳帳號</option></select></label>
-        {accessMode === "approved_google" ? <label className="field field-full"><span>允許的手帳帳號代號</span><input name="approvedAccountId" autoComplete="username" spellCheck={false} value={approvedEmail} onChange={(event) => setApprovedEmail(event.target.value)} placeholder="例如：travel-friend" pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}" /><small>對方需先免費建立相同代號的手帳帳號；不會寄送 Email。</small></label> : null}
-        <label className="field field-full"><span>連結到期日（可留空）</span><input type="date" value={expiresAt} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setExpiresAt(event.target.value)} /></label>
-        <button className="button primary field-full" disabled={cloud.busy} onClick={() => void createLink()}><Share2 size={17} />建立並複製連結</button>
-        {link ? <label className="field field-full"><span>剛建立的連結</span><input readOnly value={link} onFocus={(event) => event.currentTarget.select()} /></label> : null}
+      {!cloud.configured ? <div className="share-unavailable"><Sparkles size={24} /><div><strong>免費雲端會在最後一次上版時啟用</strong><p>現在先保留匯出與複製摘要；完成全部本機驗證後才建立雲端，避免反覆消耗部署額度。</p></div></div> : !plan.cloud?.published ? <div className="share-publish-step"><p>分享前只會上傳這一趟旅行的行程、地圖、注意事項與旅行行李。簽證、信件、住宿、帳戶、任務進度與私人課表都不會上傳到共編資料。</p><button className="button primary" disabled={publishing || cloud.busy} onClick={() => void publish()}><Share2 size={17} />{publishing ? "正在建立雲端旅行…" : "建立這趟旅行的雲端版本"}</button><small>建立雲端版本不等於公開，下一步才會設定連結與指定帳戶。</small></div> : plan.cloud.permission !== "owner" ? <div className="share-unavailable"><Check size={24} /><div><strong>{plan.cloud.permission === "viewer" ? "你目前是唯讀成員" : "你可以編輯這趟旅行"}</strong><p>只有旅行擁有者能調整分享連結與指定帳戶。</p></div></div> : !settings ? <div className="share-unavailable"><Sparkles size={24} /><div><strong>正在讀取分享設定</strong><p>固定連結與指定帳戶會分開顯示。</p></div></div> : <div className="sharing-control-stack">
+        <section className="sharing-control-section">
+          <div className="sharing-control-heading"><div><p className="eyebrow">General access</p><h3>固定連結</h3></div><span className={`sharing-status ${settings.link.enabled ? "active" : "off"}`}>{settings.link.enabled ? "已開啟" : "已關閉"}</span></div>
+          <p>這趟旅行只有這一個連結。改成唯讀或可編輯時，網址保持不變並立即套用。</p>
+          <div className="stable-link-row"><input readOnly value={settings.link.url} onFocus={(event) => event.currentTarget.select()} /><button className="button secondary" onClick={() => void copyStableLink()}><Copy size={16} />複製連結</button></div>
+          <div className="sharing-link-controls">
+            <label className="field"><span>連結權限</span><select value={linkAccess} onChange={(event) => setLinkAccess(event.target.value as "off" | "viewer" | "editor")}><option value="off">關閉連結</option><option value="viewer">拿到連結的人只能查看</option><option value="editor">拿到連結的人可以編輯</option></select></label>
+            <label className="field"><span>到期日（可留空）</span><input type="date" value={expiresAt} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setExpiresAt(event.target.value)} /></label>
+            <button className="button primary" disabled={Boolean(sharingAction)} onClick={() => void saveLinkSettings()}>{sharingAction === "link" ? "正在儲存…" : "儲存連結設定"}</button>
+          </div>
+        </section>
+        <section className="sharing-control-section">
+          <div className="sharing-control-heading"><div><p className="eyebrow">People with access</p><h3>指定帳戶</h3></div><span>{settings.members.length} 人</span></div>
+          <p>帳戶權限與連結分開存在。即使關閉一般連結，指定帳戶仍可用上方同一網址開啟。</p>
+          <div className="member-add-row"><label className="field"><span>Email 或舊版手帳帳號代號</span><input value={memberAccount} onChange={(event) => setMemberAccount(event.target.value)} placeholder="friend@example.com" /></label><label className="field"><span>權限</span><select value={memberPermission} onChange={(event) => setMemberPermission(event.target.value as "viewer" | "editor")}><option value="viewer">只能查看</option><option value="editor">可以編輯</option></select></label><button className="button secondary" disabled={!memberAccount.trim() || Boolean(sharingAction)} onClick={() => void addMember()}><Plus size={16} />加入</button></div>
+          {settings.members.length ? <div className="sharing-member-list">{settings.members.map((member) => <div className="sharing-member-row" key={member.id}><div><strong>{member.account}</strong><small>指定帳戶</small></div><select aria-label={`調整 ${member.account} 權限`} value={member.permission} disabled={Boolean(sharingAction)} onChange={(event) => void changeMember(member.id, event.target.value as "viewer" | "editor")}><option value="viewer">只能查看</option><option value="editor">可以編輯</option></select><button className="icon-button danger" disabled={Boolean(sharingAction)} onClick={() => void deleteMember(member.id)} aria-label={`移除 ${member.account}`}><Trash2 size={15} /></button></div>)}</div> : <div className="sharing-empty-members">尚未加入指定帳戶。</div>}
+        </section>
       </div>}
       {message ? <p className="settings-message" role="status">{message}</p> : null}
       <div className="travel-sharing-note"><Sparkles size={16} /><span>分享是明確、限旅行、可預覽且可撤銷；個人衝突檢查仍只看每個人自己的課表。</span></div>
@@ -182,6 +291,8 @@ function TravelModal({ plan, onClose, onSave }: { plan: TravelPlan | null; onClo
       currency: form.get("currency") as TravelPlan["currency"],
       notes: form.get("notes")?.toString().trim() ?? "",
       days: makeDays(startDate, endDate, plan?.days),
+      stays: plan?.stays ?? [],
+      references: plan?.references ?? [],
       travelNotes: plan?.travelNotes ?? [],
       packingItems: plan?.packingItems ?? [],
       createdAt: plan?.createdAt ?? now,
@@ -246,6 +357,24 @@ function ActivityForm({ activity, onSave, onCancel }: { activity?: TravelActivit
   );
 }
 
+function ActivityModal({ day, onSave, onClose }: { day: TravelDay; onSave: (activity: TravelActivity) => void; onClose: () => void }) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <motion.div className="modal-card travel-entry-modal activity-entry-modal paper-card" role="dialog" aria-modal="true" aria-labelledby="activity-modal-title" initial={{ opacity: 0, y: 18, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.99 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}>
+        <div className="modal-heading"><div><p className="eyebrow">Add a stop · {day.title}</p><h2 id="activity-modal-title">加入 {formatDate(day.date, true)}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="關閉"><X size={20} /></button></div>
+        <p className="travel-entry-modal-hint">先記下時間、地點和 Google Maps；儲存後會依時間自動排進這一天。</p>
+        <ActivityForm onSave={onSave} onCancel={onClose} />
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function StudyCalendar({ events, onAdd, onDelete }: { events: StudyEvent[]; onAdd: (event: StudyEvent) => void; onDelete: (id: string) => void }) {
   const [adding, setAdding] = useState(false);
 
@@ -297,19 +426,25 @@ function StudyCalendar({ events, onAdd, onDelete }: { events: StudyEvent[]; onAd
   );
 }
 
-export default function TravelPlanner({ state, setState, cloud }: { state: AppState; setState: Dispatch<SetStateAction<AppState>>; cloud: ExchangeCloudController }) {
-  const plans = state.travelPlans ?? [];
+export default function TravelPlanner({ state, setState, cloud, focusTripId = "" }: { state: AppState; setState: Dispatch<SetStateAction<AppState>>; cloud: ExchangeCloudController; focusTripId?: string }) {
+  const plans = useMemo(() => state.travelPlans ?? [], [state.travelPlans]);
+  const today = localDateKey();
+  const sortedPlans = useMemo(() => sortTravelPlansForDisplay(plans, today), [plans, today]);
   const studyEvents = useMemo(() => state.studyEvents ?? [], [state.studyEvents]);
-  const [selectedTripId, setSelectedTripId] = useState(plans[0]?.id ?? "");
-  const [selectedDate, setSelectedDate] = useState(plans[0]?.days[0]?.date ?? "");
+  const [selectedTripId, setSelectedTripId] = useState(sortedPlans[0]?.id ?? "");
+  const [expandedTripId, setExpandedTripId] = useState(sortedPlans[0]?.id ?? "");
+  const [selectedDate, setSelectedDate] = useState(sortedPlans[0]?.days[0]?.date ?? "");
   const [editingPlan, setEditingPlan] = useState<TravelPlan | null | "new">(null);
   const [editingActivityId, setEditingActivityId] = useState("");
+  const [addingActivity, setAddingActivity] = useState(false);
   const [copied, setCopied] = useState(false);
   const [tripView, setTripView] = useState<TripView>("itinerary");
   const [sharing, setSharing] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState("");
+  const [tripActionsOpen, setTripActionsOpen] = useState(false);
+  const tripActionsRef = useRef<HTMLDivElement>(null);
 
-  const selectedPlan = plans.find((plan) => plan.id === selectedTripId) ?? plans[0] ?? null;
+  const selectedPlan = sortedPlans.find((plan) => plan.id === selectedTripId) ?? sortedPlans[0] ?? null;
   const selectedDay = selectedPlan?.days.find((day) => day.date === selectedDate) ?? selectedPlan?.days[0] ?? null;
   const taskEvents = useMemo<StudyEvent[]>(() => state.tasks
     .filter((task) => task.dueDate && task.status !== "done" && task.status !== "not-applicable")
@@ -325,6 +460,34 @@ export default function TravelPlanner({ state, setState, cloud }: { state: AppSt
   const conflicts = selectedPlan ? allBlockingEvents.filter((event) => overlaps(selectedPlan.startDate, selectedPlan.endDate, event)) : [];
   const plannedCost = selectedPlan?.days.flatMap((day) => day.activities).reduce((sum, activity) => sum + activity.cost, 0) ?? 0;
   const editable = selectedPlan?.cloud?.permission !== "viewer";
+  const sharedView = cloud.shareStatus === "active";
+
+  useEffect(() => {
+    if (!focusTripId || !sortedPlans.some((plan) => plan.id === focusTripId)) return;
+    const plan = sortedPlans.find((item) => item.id === focusTripId)!;
+    const timer = window.setTimeout(() => {
+      setSelectedTripId(plan.id);
+      setExpandedTripId(plan.id);
+      setSelectedDate(plan.days[0]?.date ?? "");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [focusTripId, sortedPlans]);
+
+  useEffect(() => {
+    if (!tripActionsOpen) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!tripActionsRef.current?.contains(event.target as Node)) setTripActionsOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTripActionsOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [tripActionsOpen]);
 
   function savePlan(plan: TravelPlan) {
     setState((current) => ({
@@ -334,6 +497,8 @@ export default function TravelPlanner({ state, setState, cloud }: { state: AppSt
         : [...(current.travelPlans ?? []), plan],
     }));
     setSelectedTripId(plan.id);
+    setTripActionsOpen(false);
+    setExpandedTripId(plan.id);
     setSelectedDate(plan.days[0]?.date ?? "");
     setTripView("itinerary");
     setEditingPlan(null);
@@ -357,6 +522,7 @@ export default function TravelPlanner({ state, setState, cloud }: { state: AppSt
       } : day),
     }));
     setEditingActivityId("");
+    setAddingActivity(false);
   }
 
   function deleteActivity(activityId: string) {
@@ -366,9 +532,11 @@ export default function TravelPlanner({ state, setState, cloud }: { state: AppSt
 
   function deletePlan(planId: string) {
     const remaining = plans.filter((plan) => plan.id !== planId);
+    const nextPlan = sortTravelPlansForDisplay(remaining, today)[0];
     setState((current) => ({ ...current, travelPlans: remaining }));
-    setSelectedTripId(remaining[0]?.id ?? "");
-    setSelectedDate(remaining[0]?.days[0]?.date ?? "");
+    setSelectedTripId(nextPlan?.id ?? "");
+    setExpandedTripId(nextPlan?.id ?? "");
+    setSelectedDate(nextPlan?.days[0]?.date ?? "");
     setDeleteConfirmId("");
   }
 
@@ -378,6 +546,8 @@ export default function TravelPlanner({ state, setState, cloud }: { state: AppSt
       selectedPlan.title,
       formatDateRange(selectedPlan.startDate, selectedPlan.endDate),
       selectedPlan.destinations.join(" → "),
+      ...((selectedPlan.stays ?? []).length ? ["\n住宿", ...(selectedPlan.stays ?? []).map((stay) => `${stay.name}｜${stay.checkIn}–${stay.checkOut}${stay.mapsUrl ? `｜${stay.mapsUrl}` : ""}`)] : []),
+      ...((selectedPlan.references ?? []).length ? ["\n旅行參考資料", ...(selectedPlan.references ?? []).map((reference) => `${reference.label}｜${reference.url}`)] : []),
       ...selectedPlan.days.flatMap((day) => [`\n${formatDate(day.date)} ${day.title}`, ...day.activities.map((item) => `${item.time} ${item.title}${item.location ? `｜${item.location}` : ""}${item.mapsUrl ? `｜${item.mapsUrl}` : ""}`)]),
       ...(selectedPlan.travelNotes.length ? ["\n注意事項", ...selectedPlan.travelNotes.map((note) => `${note.important ? "[重要] " : ""}${note.title}｜${note.details}`)] : []),
       ...(selectedPlan.packingItems.length ? ["\n旅行行李", ...selectedPlan.packingItems.map((item) => `${item.packed ? "[已裝]" : "[未裝]"} ${item.name} × ${item.quantity}`)] : []),
@@ -391,11 +561,11 @@ export default function TravelPlanner({ state, setState, cloud }: { state: AppSt
     <div className="page-stack travel-page">
       <header className="page-header travel-header">
         <div><p className="eyebrow">Trips around the exchange year</p><h1>旅行規劃</h1><p>先把想去的地方全部丟進來，再慢慢排成每天的路線；系統會先替你守住上課、考試與交換期限。</p></div>
-        <button className="button primary travel-add-button" onClick={() => setEditingPlan("new")} aria-label="新增旅行"><Plus size={18} /><span>新增旅行</span></button>
+        {sharedView ? null : <button className="button primary travel-add-button" onClick={() => setEditingPlan("new")} aria-label="新增旅行"><Plus size={18} /><span>新增旅行</span></button>}
       </header>
 
       {plans.length === 0 ? (
-        <div className="travel-empty-layout">
+        <div className="travel-empty-layout travel-empty-layout-single">
           <motion.section className="travel-empty paper-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
             <div className="empty-route-art"><Image src="/images/doodle-icons/return-safe.png" alt="飛機繞著地球的手繪旅行圖示" width={180} height={180} /></div>
             <p className="eyebrow">An empty page is a good start</p>
@@ -404,30 +574,35 @@ export default function TravelPlanner({ state, setState, cloud }: { state: AppSt
             <button className="button primary tag-button" onClick={() => setEditingPlan("new")}><Plus size={18} />新增第一趟旅行</button>
             <div className="empty-steps"><span><strong>01</strong>選城市</span><ChevronRight /><span><strong>02</strong>選日期</span><ChevronRight /><span><strong>03</strong>檢查衝突</span></div>
           </motion.section>
-          <StudyCalendar events={studyEvents} onAdd={(event) => setState((current) => ({ ...current, studyEvents: [...(current.studyEvents ?? []), event] }))} onDelete={(id) => setState((current) => ({ ...current, studyEvents: (current.studyEvents ?? []).filter((event) => event.id !== id) }))} />
         </div>
       ) : selectedPlan ? (
-        <div className="travel-workspace">
-          <aside className="travel-rail">
-            <div className="travel-rail-heading"><div><p className="eyebrow">My travel year</p><h2>這一年想去哪</h2></div><span>{plans.length} trips</span></div>
-            <div className="trip-card-list">
-              {plans.map((plan, index) => {
+        <>
+        <div className="travel-workspace travel-accordion-workspace">
+          <section className="travel-rail travel-accordion" aria-labelledby="travel-year-title">
+            <div className="travel-rail-heading"><div><p className="eyebrow">My travel year</p><h2 id="travel-year-title">這一年想去哪</h2></div><span>{plans.length} trips</span></div>
+            <div className="trip-card-list trip-accordion-list">
+              {sortedPlans.map((plan, index) => {
                 const planConflicts = allBlockingEvents.filter((event) => overlaps(plan.startDate, plan.endDate, event));
+                const temporalStatus = travelTemporalStatus(plan, today);
+                const expanded = selectedPlan.id === plan.id && expandedTripId === plan.id;
                 return (
-                  <button key={plan.id} className={`trip-ticket ${selectedPlan.id === plan.id ? "active" : ""}`} onClick={() => { setSelectedTripId(plan.id); setSelectedDate(plan.days[0]?.date ?? ""); setTripView("itinerary"); }}>
+                  <article key={plan.id} className={`trip-accordion-item ${temporalStatus} ${expanded ? "expanded" : "collapsed"}`}>
+                  <button className={`trip-ticket ${expanded ? "active" : ""}`} aria-expanded={expanded} aria-controls={`trip-panel-${plan.id}`} onClick={() => {
+                    setSelectedTripId(plan.id);
+                    setTripActionsOpen(false);
+                    setSelectedDate(plan.days[0]?.date ?? "");
+                    setTripView("itinerary");
+                    setExpandedTripId((current) => current === plan.id ? "" : plan.id);
+                  }}>
                     <span className="trip-ticket-index">0{index + 1}</span>
                     <div><strong>{plan.title}</strong><small>{formatDateRange(plan.startDate, plan.endDate)}</small><em>{plan.destinations.join(" · ")}</em></div>
-                    {planConflicts.length ? <span className="trip-conflict-count"><AlertTriangle size={13} />{planConflicts.length}</span> : <span className="trip-safe"><Check size={13} /></span>}
+                    <span className="trip-ticket-end"><span className="trip-time-label">{temporalStatus === "past" ? "已結束" : temporalStatus === "ongoing" ? "旅途中" : "即將出發"}</span>{planConflicts.length ? <span className="trip-conflict-count"><AlertTriangle size={13} />{planConflicts.length}</span> : <span className="trip-safe"><Check size={13} /></span>}<span className="trip-accordion-chevron"><ChevronDown size={19} /></span></span>
                   </button>
-                );
-              })}
-            </div>
-            <StudyCalendar events={studyEvents} onAdd={(event) => setState((current) => ({ ...current, studyEvents: [...(current.studyEvents ?? []), event] }))} onDelete={(id) => setState((current) => ({ ...current, studyEvents: (current.studyEvents ?? []).filter((event) => event.id !== id) }))} />
-          </aside>
-
-          <div className="travel-main">
+                  <AnimatePresence initial={false}>
+                  {expanded ? <motion.div id={`trip-panel-${plan.id}`} className="trip-accordion-panel" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.24, ease: "easeOut" }}>
+                  <div className="travel-main">
             <section className="travel-overview paper-card">
-              <div className="travel-overview-top"><span className="trip-stamp">TRIP<br />{new Date(selectedPlan.startDate).getFullYear()}</span><div><p className="eyebrow">{travelDuration(selectedPlan)} days · {selectedPlan.travelers || "traveler not set"}</p><h2>{selectedPlan.title}</h2><p>{formatDateRange(selectedPlan.startDate, selectedPlan.endDate)}{selectedPlan.cloud?.published ? ` · ${selectedPlan.cloud.permission === "viewer" ? "唯讀共編" : selectedPlan.cloud.permission === "editor" ? "共同編輯" : "雲端旅行"}` : ""}</p></div>{editable ? <div className="travel-overview-actions"><button className="icon-button" onClick={() => setEditingPlan(selectedPlan)} aria-label="編輯旅行"><Pencil size={16} /></button><button className="icon-button danger" onClick={() => setDeleteConfirmId(selectedPlan.id)} aria-label="刪除旅行"><Trash2 size={16} /></button></div> : null}</div>
+              <div className="travel-overview-top"><span className="trip-stamp">TRIP<br />{new Date(selectedPlan.startDate).getFullYear()}</span><div><p className="eyebrow">{travelDuration(selectedPlan)} days · {selectedPlan.travelers || "traveler not set"}</p><h2>{selectedPlan.title}</h2><p>{formatDateRange(selectedPlan.startDate, selectedPlan.endDate)}{selectedPlan.cloud?.published ? ` · ${selectedPlan.cloud.permission === "viewer" ? "唯讀共編" : selectedPlan.cloud.permission === "editor" ? "共同編輯" : "雲端旅行"}` : ""}</p></div><div className="travel-overview-actions"><div className="travel-action-menu" ref={tripActionsRef}><button className={`icon-button ${tripActionsOpen ? "active" : ""}`} onClick={() => setTripActionsOpen((open) => !open)} aria-expanded={tripActionsOpen} aria-haspopup="menu" aria-controls={`travel-actions-${selectedPlan.id}`} aria-label="更多旅行操作"><MoreHorizontal size={18} /></button>{tripActionsOpen ? <div id={`travel-actions-${selectedPlan.id}`} className="travel-action-popover paper-card" role="menu"><button role="menuitem" onClick={() => { void copySummary(); setTripActionsOpen(false); }}><Copy size={15} />{copied ? "已複製摘要" : "複製摘要"}</button><button role="menuitem" onClick={() => { downloadTravel(selectedPlan); setTripActionsOpen(false); }}><Download size={15} />匯出旅行</button><button role="menuitem" onClick={() => { setSharing(true); setTripActionsOpen(false); }}><Share2 size={15} />分享與共編</button></div> : null}</div>{editable ? <><button className="icon-button" onClick={() => setEditingPlan(selectedPlan)} aria-label="編輯旅行"><Pencil size={16} /></button><button className="icon-button danger" onClick={() => setDeleteConfirmId(selectedPlan.id)} aria-label="刪除旅行"><Trash2 size={16} /></button></> : null}</div></div>
               <div className="destination-route">{selectedPlan.destinations.map((destination, index) => <span key={`${destination}-${index}`}><MapPin size={15} /><strong>{destination}</strong>{index < selectedPlan.destinations.length - 1 ? <i /> : null}</span>)}</div>
               {selectedPlan.notes ? <p className="travel-note">“{selectedPlan.notes}”</p> : null}
               <div className="travel-metrics"><div><span>預算</span><strong>{selectedPlan.currency} {selectedPlan.budget.toLocaleString()}</strong></div><div><span>已排費用</span><strong>{selectedPlan.currency} {plannedCost.toLocaleString()}</strong></div><div><span>已排景點</span><strong>{selectedPlan.days.reduce((sum, day) => sum + day.activities.length, 0)}</strong></div></div>
@@ -439,13 +614,14 @@ export default function TravelPlanner({ state, setState, cloud }: { state: AppSt
             </section>
 
             <section className="itinerary-board paper-card">
-              <div className="itinerary-heading"><div><p className="eyebrow">Trip handbook</p><h2>{tripView === "itinerary" ? "每日行程" : tripView === "notes" ? "注意事項" : "旅行行李"}</h2></div><div className="share-actions"><button className="button text-button" onClick={copySummary}><Copy size={16} />{copied ? "已複製" : "複製摘要"}</button><button className="button secondary" onClick={() => downloadTravel(selectedPlan)}><Download size={16} />匯出旅行</button><button className="button primary" onClick={() => setSharing(true)}><Share2 size={16} />分享</button></div></div>
+              <div className="itinerary-heading"><div><p className="eyebrow">Trip handbook</p><h2>{tripView === "itinerary" ? "每日行程" : tripView === "notes" ? "注意事項" : "旅行行李"}</h2></div></div>
               <div className="trip-section-tabs" role="tablist" aria-label="旅行手冊內容">
                 <button role="tab" aria-selected={tripView === "itinerary"} className={tripView === "itinerary" ? "active" : ""} onClick={() => setTripView("itinerary")}><Image src="/images/doodle-icons/journey-safe.png" alt="" width={28} height={28} /><span>行程與地圖</span><small>{selectedPlan.days.reduce((sum, day) => sum + day.activities.length, 0)} 個地點</small></button>
                 <button role="tab" aria-selected={tripView === "notes"} className={tripView === "notes" ? "active" : ""} onClick={() => setTripView("notes")}><Image src="/images/doodle-icons/documents-safe.png" alt="" width={28} height={28} /><span>注意事項</span><small>{selectedPlan.travelNotes.length} 則提醒</small></button>
                 <button role="tab" aria-selected={tripView === "packing"} className={tripView === "packing" ? "active" : ""} onClick={() => setTripView("packing")}><Image src="/images/doodle-icons/packing-complete-balanced.png" alt="" width={28} height={28} /><span>旅行行李</span><small>{selectedPlan.packingItems.filter((item) => item.packed).length}/{selectedPlan.packingItems.length} 已裝</small></button>
               </div>
               {tripView === "itinerary" ? <>
+              <TravelStaySection plan={selectedPlan} readOnly={!editable} onUpdate={(plan) => updatePlan(plan.id, () => plan)} />
               <div className="day-tabs" role="tablist" aria-label="旅行日期">
                 {selectedPlan.days.map((day, index) => <button key={day.id} role="tab" aria-selected={selectedDay?.id === day.id} className={selectedDay?.id === day.id ? "active" : ""} onClick={() => setSelectedDate(day.date)}><small>DAY {index + 1}</small><strong>{formatDate(day.date)}</strong><span>{day.activities.length} stops</span></button>)}
               </div>
@@ -461,8 +637,8 @@ export default function TravelPlanner({ state, setState, cloud }: { state: AppSt
                           {editingActivityId === activity.id ? <ActivityForm activity={activity} onSave={saveActivity} onCancel={() => setEditingActivityId("")} /> : <>
                             <div className="activity-time"><strong>{activity.time}</strong><span>{activity.durationMinutes ? `${activity.durationMinutes} min` : "時間未定"}</span></div>
                             <div className="activity-content"><div className="activity-title-row"><h4>{activity.title}</h4><span className={`activity-kind ${meta.color}`}>{meta.label}</span></div>{activity.location ? <p><MapPin size={13} />{activity.location}</p> : null}{activity.notes ? <small>{activity.notes}</small> : null}<a className="activity-map-link" href={mapsUrlForActivity(activity, selectedPlan.destinations)} target="_blank" rel="noreferrer"><MapPin size={13} />Google Maps<ExternalLink size={11} /></a></div>
-                            <div className="activity-cost"><span>{activity.cost ? `${selectedPlan.currency} ${activity.cost.toLocaleString()}` : "—"}</span><label><input type="checkbox" checked={activity.booked} onChange={(event) => saveActivity({ ...activity, booked: event.target.checked })} />{activity.booked ? "已訂" : "待確認"}</label></div>
-                            <div className="activity-actions"><button className="icon-button" onClick={() => setEditingActivityId(activity.id)} aria-label={`編輯 ${activity.title}`}><Pencil size={15} /></button><button className="icon-button danger" onClick={() => deleteActivity(activity.id)} aria-label={`刪除 ${activity.title}`}><Trash2 size={15} /></button></div>
+                            <div className="activity-cost"><span>{activity.cost ? `${selectedPlan.currency} ${activity.cost.toLocaleString()}` : "—"}</span><label><input type="checkbox" checked={activity.booked} disabled={!editable} onChange={(event) => saveActivity({ ...activity, booked: event.target.checked })} />{activity.booked ? "已訂" : "待確認"}</label></div>
+                            {editable ? <div className="activity-actions"><button className="icon-button" onClick={() => setEditingActivityId(activity.id)} aria-label={`編輯 ${activity.title}`}><Pencil size={15} /></button><button className="icon-button danger" onClick={() => deleteActivity(activity.id)} aria-label={`刪除 ${activity.title}`}><Trash2 size={15} /></button></div> : null}
                           </>}
                         </motion.article>
                       );
@@ -470,18 +646,29 @@ export default function TravelPlanner({ state, setState, cloud }: { state: AppSt
                   </div>
                   {!selectedDay.activities.length ? <div className="empty-day"><Route size={30} /><strong>這一天還沒有任何安排</strong><span>先把所有想去的地方加進來，再依時間慢慢調整。</span></div> : null}
                   <DayMapPanel activities={selectedDay.activities} destinations={selectedPlan.destinations} />
-                  {editable ? <div className="add-activity-panel"><div><p className="eyebrow">Add a stop</p><h3>加入這一天</h3></div><ActivityForm onSave={saveActivity} /></div> : null}
+                  {editable ? <div className="add-activity-trigger"><div><p className="eyebrow">Add a stop</p><h3>還想去哪裡？</h3><span>新增後會依時間自動排進 {selectedDay.title}。</span></div><button className="button primary" type="button" onClick={() => setAddingActivity(true)}><Plus size={17} />加入這一天</button></div> : null}
                 </div>
               ) : null}</> : null}
-              {tripView === "notes" ? <TravelNotesPanel plan={selectedPlan} onUpdate={(plan) => updatePlan(plan.id, () => plan)} /> : null}
-              {tripView === "packing" ? <TravelPackingPanel plan={selectedPlan} onUpdate={(plan) => updatePlan(plan.id, () => plan)} /> : null}
+              {tripView === "notes" ? <TravelNotesPanel plan={selectedPlan} readOnly={!editable} onUpdate={(plan) => updatePlan(plan.id, () => plan)} /> : null}
+              {tripView === "packing" ? <TravelPackingPanel plan={selectedPlan} readOnly={!editable} onUpdate={(plan) => updatePlan(plan.id, () => plan)} /> : null}
               <div className="travel-sharing-note"><Sparkles size={16} /><span>這裡匯出的只有旅行內容，不包含簽證、帳戶、住宿合約或私人交換進度。</span></div>
             </section>
           </div>
+                  </motion.div> : null}
+                  </AnimatePresence>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
         </div>
+        </>
       ) : null}
 
+      {sharedView ? null : <div className="travel-calendar-bottom"><StudyCalendar events={studyEvents} onAdd={(event) => setState((current) => ({ ...current, studyEvents: [...(current.studyEvents ?? []), event] }))} onDelete={(id) => setState((current) => ({ ...current, studyEvents: (current.studyEvents ?? []).filter((event) => event.id !== id) }))} /></div>}
+
       <AnimatePresence>{editingPlan ? <TravelModal plan={editingPlan === "new" ? null : editingPlan} onClose={() => setEditingPlan(null)} onSave={savePlan} /> : null}</AnimatePresence>
+      <AnimatePresence>{addingActivity && selectedDay ? <ActivityModal day={selectedDay} onSave={saveActivity} onClose={() => setAddingActivity(false)} /> : null}</AnimatePresence>
       <AnimatePresence>{sharing && selectedPlan ? <ShareTravelModal plan={selectedPlan} cloud={cloud} onPlanPublished={(plan) => setState((current) => ({ ...current, travelPlans: (current.travelPlans ?? []).map((item) => item.id === plan.id ? plan : item) }))} onClose={() => setSharing(false)} /> : null}</AnimatePresence>
       <AnimatePresence>{deleteConfirmId && selectedPlan?.id === deleteConfirmId ? <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => event.target === event.currentTarget && setDeleteConfirmId("")}><motion.div className="modal-card delete-travel-modal paper-card" role="alertdialog" aria-modal="true" aria-labelledby="delete-travel-title" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}><p className="eyebrow">Remove this ticket</p><h2 id="delete-travel-title">刪除「{selectedPlan.title}」？</h2><p>這只會刪除這趟旅行，不會影響交換任務或其他人的個人課表。</p><div className="modal-actions"><button className="button secondary" onClick={() => setDeleteConfirmId("")}>保留旅行</button><button className="button text-danger" onClick={() => deletePlan(selectedPlan.id)}><Trash2 size={16} />確認刪除</button></div></motion.div></motion.div> : null}</AnimatePresence>
     </div>

@@ -14,6 +14,7 @@ import type {
   StudyEvent,
   TravelPlan,
 } from "./types";
+import { stampProcessedResourceIntake } from "./resource-intake";
 
 const SOURCE_KINDS = new Set(["official", "school", "city", "email", "file", "video", "research"]);
 const ENTITIES = new Set<AiProposalEntity>(["journey", "task", "resource", "resource-intake", "packing-item", "bag", "flight-allowance", "budget-item", "study-event", "travel-plan"]);
@@ -30,6 +31,8 @@ const ACTIVITY_FIELDS = new Set(["id", "time", "title", "kind", "location", "map
 const TRAVEL_DAY_FIELDS = new Set(["id", "date", "title", "activities"]);
 const TRAVEL_NOTE_FIELDS = new Set(["id", "title", "details", "category", "important"]);
 const TRAVEL_PACKING_FIELDS = new Set(["id", "name", "category", "quantity", "packed", "notes"]);
+const TRAVEL_STAY_FIELDS = new Set(["id", "name", "checkIn", "checkOut", "area", "address", "mapsUrl", "sourceUrl", "imageUrl", "imageAlt", "summary", "highlights", "notes"]);
+const TRAVEL_REFERENCE_FIELDS = new Set(["id", "label", "kind", "url", "description"]);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const SECRET_PATTERNS = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
@@ -158,6 +161,22 @@ function validTravelPacking(value: unknown): boolean {
   return Array.isArray(value) && hasUniqueIds(value) && value.every((item) => isRecord(item) && hasOnlyKeys(item, TRAVEL_PACKING_FIELDS)
     && isText(item.id, 160) && isText(item.name, 200)
     && isText(item.category, 100) && isNumber(item.quantity) && isBoolean(item.packed) && typeof item.notes === "string");
+}
+
+function validTravelStays(value: unknown): boolean {
+  return Array.isArray(value) && hasUniqueIds(value) && value.every((item) => isRecord(item) && hasOnlyKeys(item, TRAVEL_STAY_FIELDS)
+    && isText(item.id, 160) && isText(item.name, 200) && isDate(item.checkIn) && isDate(item.checkOut) && item.checkOut >= item.checkIn
+    && typeof item.area === "string" && typeof item.address === "string" && (item.mapsUrl === "" || isHttpUrl(item.mapsUrl))
+    && (item.sourceUrl === "" || isHttpUrl(item.sourceUrl)) && (item.imageUrl === "" || isHttpUrl(item.imageUrl))
+    && typeof item.imageAlt === "string" && isText(item.summary, 2_000) && isStringArray(item.highlights) && item.highlights.length <= 12
+    && item.highlights.every((highlight) => highlight.length <= 200) && typeof item.notes === "string" && item.notes.length <= 2_000);
+}
+
+function validTravelReferences(value: unknown): boolean {
+  const kinds = new Set(["map-list", "spreadsheet", "guide", "booking", "other"]);
+  return Array.isArray(value) && hasUniqueIds(value) && value.every((item) => isRecord(item) && hasOnlyKeys(item, TRAVEL_REFERENCE_FIELDS)
+    && isText(item.id, 160) && isText(item.label, 200) && kinds.has(String(item.kind)) && isHttpUrl(item.url)
+    && typeof item.description === "string" && item.description.length <= 1_000);
 }
 
 function validFlightAllowanceSemantics(value: Record<string, unknown>): boolean {
@@ -308,6 +327,8 @@ function validatesEntityField(entity: AiProposalEntity, key: string, value: unkn
   if (key === "budget") return isNumber(value);
   if (key === "currency") return isCurrency(value);
   if (key === "days") return validTravelDays(value);
+  if (key === "stays") return validTravelStays(value);
+  if (key === "references") return validTravelReferences(value);
   if (key === "travelNotes") return validTravelNotes(value);
   if (key === "packingItems") return validTravelPacking(value);
   if (key === "createdAt" || key === "updatedAt") return isTimestamp(value);
@@ -327,7 +348,7 @@ function validatesEntityValue(entity: AiProposalEntity, action: "add" | "update"
             : entity === "flight-allowance" ? ["id", "label", "airline", "segment", "checkedMode", "checkedPieceCount", "checkedPieceWeightKg", "checkedTotalWeightKg", "carryOnMode", "carryOnPieceCount", "carryOnPieceWeightKg", "personalItemMode", "personalItemPieceCount", "personalItemPieceWeightKg", "provenance", "confirmed", "sourceLabel", "verifiedAt", "notes"]
               : entity === "budget-item" ? ["id", "name", "category", "amount", "currency", "cadence", "basis", "paid", "notes", "sourceLabel", "verifiedAt"]
                 : entity === "study-event" ? ["id", "title", "kind", "startDate", "mandatory", "notes"]
-                  : ["id", "kind", "title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days", "travelNotes", "packingItems", "createdAt", "updatedAt"];
+                  : ["id", "kind", "title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days", "stays", "references", "travelNotes", "packingItems", "createdAt", "updatedAt"];
   if (action === "add" && !hasKeys(value, required)) return false;
   if (!Object.entries(value).every(([key, field]) => validatesEntityField(entity, key, field))) return false;
   if (entity === "journey" && typeof value.startDate === "string" && typeof value.endDate === "string" && value.endDate < value.startDate) return false;
@@ -415,10 +436,18 @@ export function importAiBundle(state: AppState, bundle: AiImportBundle, cloudRun
       createdAt: bundle.generatedAt,
     });
   });
+  const importedAt = new Date().toISOString();
   return {
     ...state,
+    homeExperience: {
+      mode: "dashboard",
+      workflow: "ai",
+      tutorialVersion: state.homeExperience?.tutorialVersion ?? 1,
+      starterPromptCopiedAt: state.homeExperience?.starterPromptCopiedAt,
+      activatedAt: state.homeExperience?.activatedAt ?? importedAt,
+    },
     aiInbox: {
-      lastImportedAt: new Date().toISOString(),
+      lastImportedAt: importedAt,
       journeyScope: bundle.journeyScope,
       sources: [...existingSources.values()],
       proposals: [...existingProposals.values()],
@@ -558,7 +587,15 @@ export function applyAiProposal(state: AppState, proposalId: string, currentRevi
   if (proposal.entity === "journey") next = { ...next, journey: { ...next.journey, ...proposal.value, id: next.journey.id, kind: next.journey.kind } as Journey };
   if (proposal.entity === "task") next = { ...next, tasks: addOrUpdate<JourneyTask>(next.tasks, proposal) };
   if (proposal.entity === "resource") next = { ...next, resources: addOrUpdate<ResourceItem>(next.resources, proposal) };
-  if (proposal.entity === "resource-intake") next = { ...next, resourceIntake: addOrUpdate<ResourceIntake>(next.resourceIntake ?? [], proposal) };
+  if (proposal.entity === "resource-intake") {
+    const updated = addOrUpdate<ResourceIntake>(next.resourceIntake ?? [], proposal);
+    next = {
+      ...next,
+      resourceIntake: updated.map((item) => item.id === (proposal.targetId ?? proposal.value.id)
+        ? stampProcessedResourceIntake(item)
+        : item),
+    };
+  }
   if (proposal.entity === "packing-item") next = { ...next, packingItems: addOrUpdate<PackingItem>(next.packingItems, proposal) };
   if (proposal.entity === "bag") next = { ...next, bags: addOrUpdate<Bag>(next.bags, proposal) };
   if (proposal.entity === "flight-allowance") next = { ...next, flightAllowances: addOrUpdate<FlightAllowance>(next.flightAllowances ?? [], proposal) };
@@ -623,7 +660,12 @@ export function undoAiProposal(state: AppState, proposalId: string): AppState {
   if (proposal.entity === "journey") next = { ...next, journey: restorePatchedFields<Journey>([next.journey], proposal)[0] };
   if (proposal.entity === "task") next = { ...next, tasks: revert(next.tasks) };
   if (proposal.entity === "resource") next = { ...next, resources: revert(next.resources) };
-  if (proposal.entity === "resource-intake") next = { ...next, resourceIntake: revert(next.resourceIntake ?? []) };
+  if (proposal.entity === "resource-intake") next = {
+    ...next,
+    resourceIntake: revert(next.resourceIntake ?? []).map((item) => item.status === "pending" && item.processedAt
+      ? { ...item, processedAt: undefined }
+      : item),
+  };
   if (proposal.entity === "packing-item") next = { ...next, packingItems: revert(next.packingItems) };
   if (proposal.entity === "bag") next = { ...next, bags: revert(next.bags) };
   if (proposal.entity === "flight-allowance") next = { ...next, flightAllowances: revert(next.flightAllowances ?? []) };

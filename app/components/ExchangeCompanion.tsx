@@ -30,7 +30,7 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -46,19 +46,24 @@ import {
   useSyncExternalStore,
 } from "react";
 import { downloadIcs, googleCalendarUrl } from "../lib/calendar";
-import { bagWeightMap, evaluateBaggageAllowances } from "../lib/baggage";
+import { assignedBagWeightBreakdown, bagWeightMap, evaluateBaggageAllowances } from "../lib/baggage";
 import { cloudIsConfigured } from "../lib/cloud";
 import { phaseMeta } from "../lib/default-data";
 import { exchangeCurrencies, exchangeProfile, exchangeTimeZones } from "../lib/profile";
+import { limitSidebarNote, notebookCharacterCount, SIDEBAR_NOTE_LIMIT } from "../lib/personalization";
+import { pruneProcessedResourceIntake } from "../lib/resource-intake";
+import type { HomeAgendaTarget } from "../lib/home-dashboard";
 import { loadState, normalizeImportedState, resetState, saveState, validateImport } from "../lib/storage";
 import { useExchangeCloud, type ExchangeCloudController } from "../lib/useExchangeCloud";
 import AuthGate from "./AuthGate";
+import HomeDashboard from "./HomeDashboard";
 import OnboardingWizard from "./OnboardingWizard";
 import type {
   AppState,
   Bag,
   BudgetItem,
   FlightAllowance,
+  JourneyView,
   JourneyPhase,
   JourneyTask,
   NavSection,
@@ -78,6 +83,39 @@ function SectionFallback() {
   return <div className="section-fallback" role="status"><span className="brand-stamp">旅</span><strong>正在打開手帳頁面…</strong></div>;
 }
 
+function AvatarContent({ state, fallback }: { state: AppState; fallback: string }) {
+  const avatarDataUrl = state.personalization?.avatarDataUrl;
+  return avatarDataUrl
+    ? <Image className="avatar-photo" src={avatarDataUrl} alt="" width={96} height={96} unoptimized />
+    : <span aria-hidden="true">{fallback || "A"}</span>;
+}
+
+async function createAvatarDataUrl(file: File): Promise<string> {
+  if (!/^image\/(?:png|jpeg|webp)$/.test(file.type)) throw new Error("type");
+  if (file.size > 8 * 1024 * 1024) throw new Error("size");
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const candidate = new window.Image();
+      candidate.onload = () => resolve(candidate);
+      candidate.onerror = () => reject(new Error("image"));
+      candidate.src = objectUrl;
+    });
+    const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+    const sourceX = (image.naturalWidth - sourceSize) / 2;
+    const sourceY = (image.naturalHeight - sourceSize) / 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 320;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("canvas");
+    context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, 320, 320);
+    return canvas.toDataURL("image/webp", 0.82);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 function GuestTravelShell({ state, setState, cloud }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; cloud: ExchangeCloudController }) {
   const guestState = useMemo<AppState>(() => ({
     ...state,
@@ -93,7 +131,7 @@ function GuestTravelShell({ state, setState, cloud }: { state: AppState; setStat
     travelPlans: (state.travelPlans ?? []).filter((plan) => plan.id === cloud.sharedPlanId),
   }), [cloud.sharedPlanId, state]);
 
-  return <div className="guest-travel-shell"><header className="guest-travel-topbar"><div className="auth-brand"><span className="brand-stamp">TRIP</span><div><strong>共同旅行手冊</strong><small>只顯示這趟被分享的行程</small></div></div><Link className="button secondary" href="/">登入我的手帳</Link></header><main><Suspense fallback={<SectionFallback />}><TravelPlanner state={guestState} setState={setState} cloud={cloud} /></Suspense></main></div>;
+  return <div className="guest-travel-shell" data-heading-language={guestState.personalization?.headingLanguage ?? "zh-TW"}><header className="guest-travel-topbar"><div className="auth-brand"><span className="brand-stamp">TRIP</span><div><strong>共同旅行手冊</strong><small>只顯示這趟被分享的行程</small></div></div><Link className="button secondary" href="/">登入我的手帳</Link></header><main><Suspense fallback={<SectionFallback />}><TravelPlanner state={guestState} setState={setState} cloud={cloud} /></Suspense></main></div>;
 }
 
 const statusMeta: Record<TaskStatus, { label: string; className: string }> = {
@@ -129,9 +167,8 @@ const navItems: Array<{ id: NavSection; label: string; shortLabel: string; doodl
   { id: "home", label: "我的交換", shortLabel: "首頁", doodleIcon: "/images/doodle-icons/home-safe.png" },
   { id: "journey", label: "交換旅程", shortLabel: "旅程", doodleIcon: "/images/doodle-icons/journey-safe.png" },
   { id: "travel", label: "旅行規劃", shortLabel: "旅行", doodleIcon: "/images/doodle-icons/return-safe.png" },
-  { id: "packing", label: "行李工作台", shortLabel: "行李", doodleIcon: "/images/doodle-icons/packing-complete-balanced.png" },
-  { id: "resources", label: "重要資源", shortLabel: "資源", doodleIcon: "/images/doodle-icons/resources-safe.png" },
   { id: "ai", label: "AI 幫我整理", shortLabel: "AI", doodleIcon: "/images/doodle-icons/documents-safe.png" },
+  { id: "resources", label: "重要資源", shortLabel: "資源", doodleIcon: "/images/doodle-icons/resources-safe.png" },
   { id: "settings", label: "設定與備份", shortLabel: "設定", doodleIcon: "/images/doodle-icons/passport-safe.png" },
 ];
 const validSections = new Set<NavSection>(navItems.map((item) => item.id));
@@ -140,9 +177,35 @@ function initialSection(): NavSection {
   if (typeof window === "undefined") return "home";
   const params = new URLSearchParams(window.location.search);
   if (params.has("share")) return "travel";
+  if (params.get("section") === "packing") return "journey";
   const requested = params.get("section") as NavSection | null;
   return requested && validSections.has(requested) ? requested : "home";
 }
+
+function initialJourneyView(): JourneyView {
+  if (typeof window === "undefined") return "progress";
+  const params = new URLSearchParams(window.location.search);
+  return params.get("section") === "packing" || (params.get("section") === "journey" && params.get("view") === "packing")
+    ? "packing"
+    : "progress";
+}
+
+type NavigateToSection = (section: NavSection, journeyView?: JourneyView, options?: { task?: string; trip?: string; inbox?: "open"; guide?: "1"; hash?: string }) => void;
+
+const proposalEntityLabel = {
+  journey: "交換基本資料",
+  task: "交換任務",
+  resource: "資源",
+  "resource-intake": "待辨識網址",
+  "packing-item": "行李物品",
+  bag: "實體行李",
+  "flight-allowance": "機票行李規則",
+  "budget-item": "基礎預算",
+  "study-event": "個人行程",
+  "travel-plan": "旅行",
+} as const;
+
+const proposalConfidenceLabel = { high: "高可信", medium: "待確認", low: "線索" } as const;
 
 function localAppPreviewEnabled(): boolean {
   return process.env.NODE_ENV !== "production" && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "app";
@@ -482,6 +545,8 @@ function TaskCard({
 
   return (
     <motion.article
+      id={`task-${task.id}`}
+      data-task-id={task.id}
       layout
       className={`task-card ${task.status === "done" ? "task-done" : ""}`}
       initial={{ opacity: 0, y: 10 }}
@@ -580,7 +645,8 @@ function TaskCard({
   );
 }
 
-function Dashboard({ state, setSection, todayIso }: { state: AppState; setSection: (section: NavSection) => void; todayIso: string }) {
+function Dashboard({ state, setState, cloud, navigate, navigateTarget, todayIso, forceGuide, onCloseGuide }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; cloud: ExchangeCloudController; navigate: NavigateToSection; navigateTarget: (target: HomeAgendaTarget) => void; todayIso: string; forceGuide: boolean; onCloseGuide: () => void }) {
+  if (state.homeExperience) return <HomeDashboard state={state} setState={setState} cloud={cloud} todayIso={todayIso} forceGuide={forceGuide} onNavigate={navigateTarget} onCloseGuide={onCloseGuide} />;
   const applicable = state.tasks.filter((task) => task.status !== "not-applicable");
   const done = applicable.filter((task) => task.status === "done").length;
   const progress = Math.round((done / applicable.length) * 100);
@@ -604,7 +670,7 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
           <motion.div className="airmail-label" variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }}>
             EXCHANGE JOURNEY
           </motion.div>
-          <motion.p className="eyebrow" variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { delay: 0.08 } } }}>
+          <motion.p className="eyebrow structural-eyebrow" variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { delay: 0.08 } } }}>
             {state.journey.homeCity || "出發地待補"} <ArrowRight size={14} /> {state.journey.hostCity || "目的地待補"}
           </motion.p>
           <motion.h1 variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0, transition: { delay: 0.14 } } }}>
@@ -614,8 +680,8 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
             把複雜的行政手續、行李和生活準備，整理成今天真的做得完的下一步。
           </motion.p>
           <motion.div className="hero-actions" variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { delay: 0.3 } } }}>
-            <button className="button primary tag-button" onClick={() => setSection("journey")}>查看下一步 <ArrowRight size={18} /></button>
-            <button className="button text-button" onClick={() => setSection("packing")}><Luggage size={18} />整理行李</button>
+            <button className="button primary tag-button" onClick={() => navigate("journey", "progress")}>查看下一步 <ArrowRight size={18} /></button>
+            <button className="button text-button" onClick={() => navigate("journey", "packing")}><Luggage size={18} />整理行李</button>
           </motion.div>
         </div>
         <motion.div
@@ -653,11 +719,11 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
         <div className="next-panel paper-card tape-card">
           <div className="section-heading">
             <div><p className="eyebrow">Do these next</p><h2>現在先做這三件事</h2></div>
-            <button className="link-button" onClick={() => setSection("journey")}>全部旅程 <ArrowRight size={15} /></button>
+            <button className="link-button" onClick={() => navigate("journey", "progress")}>全部旅程 <ArrowRight size={15} /></button>
           </div>
           <div className="next-list">
             {nextTasks.map((task, index) => (
-              <button className="next-task" key={task.id} onClick={() => setSection("journey")}>
+              <button className="next-task" key={task.id} onClick={() => navigate("journey", "progress")}>
                 <span className="next-number">0{index + 1}</span>
                 <span><strong>{task.title}</strong><small>{task.dueDate ? `${formatDate(task.dueDate)} · ${statusMeta[task.status].label}` : statusMeta[task.status].label}</small></span>
                 <ArrowRight size={18} />
@@ -668,10 +734,10 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
 
         <div className="dashboard-side">
           <div className="alert-grid">
-            <button className="alert-note yellow" onClick={() => setSection("journey")}>
+            <button className="alert-note yellow" onClick={() => navigate("journey", "progress")}>
               <Clock3 size={23} /><strong>{waiting}</strong><span>等待中的事項</span>
             </button>
-            <button className={`alert-note ${overdue ? "red" : "sage"}`} onClick={() => setSection("journey")}>
+            <button className={`alert-note ${overdue ? "red" : "sage"}`} onClick={() => navigate("journey", "progress")}>
               {overdue ? <AlertTriangle size={23} /> : <Check size={23} />}<strong>{overdue}</strong><span>已逾期事項</span>
             </button>
           </div>
@@ -687,18 +753,18 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
           <div className="budget-peek paper-card">
             <PiggyBank size={25} />
             <div><span>每月基礎預算</span><strong>約 {monthlySummary}</strong></div>
-            <button className="icon-button" onClick={() => setSection("settings")} aria-label="查看預算"><ArrowRight size={17} /></button>
+            <button className="icon-button" onClick={() => navigate("settings")} aria-label="查看預算"><ArrowRight size={17} /></button>
           </div>
         </div>
       </section>
 
       <section className="quick-modes">
-        <button className="mode-card blue" onClick={() => setSection("journey")}>
+        <button className="mode-card blue" onClick={() => navigate("journey", "progress")}>
           <span className="mode-icon"><Image src="/images/doodle-icons/arrival-safe.png" alt="" width={58} height={58} /></span>
           <div><p className="eyebrow">Quick mode</p><h3>抵達 72 小時</h3><p>鑰匙、入住、第一晚補給與 Orientation。</p></div>
           <ArrowRight />
         </button>
-        <button className="mode-card terracotta" onClick={() => setSection("journey")}>
+        <button className="mode-card terracotta" onClick={() => navigate("journey", "progress")}>
           <span className="mode-icon"><Image src="/images/doodle-icons/return-safe.png" alt="" width={58} height={58} /></span>
           <div><p className="eyebrow">Finish well</p><h3>返國收尾模式</h3><p>退租、註銷、押金、成績單一次收好。</p></div>
           <ArrowRight />
@@ -708,12 +774,32 @@ function Dashboard({ state, setSection, todayIso }: { state: AppState; setSectio
   );
 }
 
-function JourneyPage({ state, setState }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> }) {
+function JourneyPage({ state, setState, view, onViewChange, focusTaskId = "" }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; view: JourneyView; onViewChange: (view: JourneyView) => void; focusTaskId?: string }) {
   const [phase, setPhase] = useState<JourneyPhase | "all">("all");
   const [status, setStatus] = useState<TaskStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [editingTask, setEditingTask] = useState<JourneyTask | null>(null);
   const deferredSearch = useDeferredValue(search.toLowerCase());
+  const reduceMotion = useReducedMotion();
+  const panelTransition = reduceMotion
+    ? { duration: 0 }
+    : { duration: 0.24, ease: [0.22, 1, 0.36, 1] as const };
+
+  useEffect(() => {
+    if (!focusTaskId) return;
+    const timer = window.setTimeout(() => {
+      setPhase("all");
+      setStatus("all");
+      setSearch("");
+      window.setTimeout(() => {
+        const target = document.getElementById(`task-${focusTaskId}`);
+        target?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+        target?.classList.add("task-deep-linked");
+        window.setTimeout(() => target?.classList.remove("task-deep-linked"), 1800);
+      }, 80);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [focusTaskId, reduceMotion]);
 
   const filtered = useMemo(() => state.tasks.filter((task) => {
     const phaseMatch = phase === "all" || task.phase === phase;
@@ -766,11 +852,31 @@ function JourneyPage({ state, setState }: { state: AppState; setState: React.Dis
           <h1>交換旅程</h1>
           <p>不是另一份長清單，而是把每個前置條件、期限和下一步接起來。</p>
         </div>
-        <div className="page-header-actions">
-          <button className="button secondary" onClick={() => downloadIcs(state.tasks)}><Download size={17} />匯出全部期限</button>
-          <button className="button primary" onClick={() => setEditingTask({ ...emptyTask })}><Plus size={18} />新增任務</button>
-        </div>
       </header>
+
+      <div className="journey-view-tabs" data-view={view} role="tablist" aria-label="交換旅程內容">
+        <span className="journey-tab-slider" aria-hidden="true" />
+        <button type="button" role="tab" aria-selected={view === "progress"} className={view === "progress" ? "active" : ""} onClick={() => onViewChange("progress")}>
+          <span className="journey-tab-label"><Check size={17} />準備進度</span>
+        </button>
+        <button type="button" role="tab" aria-selected={view === "packing"} className={view === "packing" ? "active" : ""} onClick={() => onViewChange("packing")}>
+          <span className="journey-tab-label"><Luggage size={17} />出發行李</span>
+        </button>
+      </div>
+
+      <AnimatePresence initial={false} mode="wait">
+      {view === "progress" ? <motion.div
+        key="journey-progress"
+        className="journey-view-panel"
+        initial={reduceMotion ? false : { opacity: 0, y: 8, scale: 0.996 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -4, scale: 0.998 }}
+        transition={panelTransition}
+      >
+      <div className="journey-progress-actions" aria-label="準備進度操作">
+        <button className="button secondary" onClick={() => downloadIcs(state.tasks)}><Download size={17} />匯出全部期限</button>
+        <button className="button primary" onClick={() => setEditingTask({ ...emptyTask })}><Plus size={18} />新增任務</button>
+      </div>
 
       <div className="phase-tabs" role="tablist" aria-label="旅程階段">
         <button className={phase === "all" ? "active" : ""} onClick={() => setPhase("all")}>全部 <span>{state.tasks.length}</span></button>
@@ -799,7 +905,7 @@ function JourneyPage({ state, setState }: { state: AppState; setState: React.Dis
             <section className={`phase-section phase-${meta.color}`} key={phaseId}>
               <div className="phase-heading">
                 <span className="phase-number">{meta.number}</span>
-                <div><p className="eyebrow">Chapter {meta.number}</p><h2>{meta.label}</h2></div>
+                <div><p className="eyebrow structural-eyebrow">Chapter {meta.number}</p><h2>{meta.label}</h2></div>
                 <span className="phase-progress">{completed} / {phaseTasks.length} 完成</span>
               </div>
               <div className="task-list">
@@ -825,12 +931,22 @@ function JourneyPage({ state, setState }: { state: AppState; setState: React.Dis
       </div>
       {filtered.length === 0 ? <div className="empty-state paper-card"><Search size={28} /><h2>沒有符合的任務</h2><p>換個關鍵字或清除篩選條件。</p></div> : null}
 
+      </motion.div> : <motion.div
+        key="journey-packing"
+        className="journey-view-panel"
+        initial={reduceMotion ? false : { opacity: 0, y: 8, scale: 0.996 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -4, scale: 0.998 }}
+        transition={panelTransition}
+      ><PackingPage state={state} setState={setState} embedded /></motion.div>}
+      </AnimatePresence>
+
       <AnimatePresence>{editingTask ? <TaskModal task={editingTask} tasks={state.tasks} onClose={() => setEditingTask(null)} onSave={saveTask} /> : null}</AnimatePresence>
     </div>
   );
 }
 
-function PackingPage({ state, setState }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> }) {
+function PackingPage({ state, setState, embedded = false }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; embedded?: boolean }) {
   const [query, setQuery] = useState("");
   const [decision, setDecision] = useState<PackingDecision | "all">("all");
   const [showAdd, setShowAdd] = useState(false);
@@ -846,7 +962,12 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
   }), [state.packingItems, deferredQuery, decision]);
 
   const packedCount = state.packingItems.filter((item) => item.packed).length;
-  const totalWeight = [...bagWeights.values()].reduce((sum, weight) => sum + weight, 0);
+  const weightBreakdown = useMemo(() => assignedBagWeightBreakdown(state.bags, state.packingItems), [state.bags, state.packingItems]);
+  const knownBagIds = useMemo(() => new Set(state.bags.map((bag) => bag.id)), [state.bags]);
+  const unassignedWeight = useMemo(() => state.packingItems
+    .filter((item) => !item.bagId || !knownBagIds.has(item.bagId))
+    .reduce((sum, item) => sum + item.weightKg * item.quantity, 0), [knownBagIds, state.packingItems]);
+  const unassignedCount = state.packingItems.filter((item) => !item.bagId || !knownBagIds.has(item.bagId)).length;
   const flightAllowances = useMemo(() => state.flightAllowances ?? [], [state.flightAllowances]);
   const baggageEvaluation = useMemo(
     () => evaluateBaggageAllowances(state.bags, state.packingItems, flightAllowances),
@@ -856,6 +977,8 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
   const strictCheckedLimit = baggageEvaluation.strictCheckedLimitKg;
   const checkedOverLimit = baggageEvaluation.ready && baggageEvaluation.issues.length > 0;
   const categories = [...new Set(filteredItems.map((item) => item.category))];
+  const todayIso = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" });
+  const baggageIsPast = Boolean(state.journey.startDate && state.journey.startDate < todayIso);
 
   function updateItem(id: string, patch: Partial<PackingItem>) {
     setState((current) => ({ ...current, packingItems: current.packingItems.map((item) => item.id === id ? { ...item, ...patch } : item) }));
@@ -976,29 +1099,42 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
     return `${checked} · ${carry} · ${personal}`;
   }
 
-  return (
-    <div className="page-stack">
-      <header className="page-header packing-header">
-        <div><p className="eyebrow">Pack lighter, live easier</p><h1>行李工作台</h1><p>用實際公斤數分配每件行李，也知道哪些東西到了目的地再買就好。</p></div>
-      </header>
-
-      <section className={`flight-allowance-card paper-card ${checkedOverLimit ? "over-limit" : ""}`}>
-        <Image src="/images/doodle-icons/packing-complete-balanced.png" alt="" width={78} height={78} />
-        <div>
+  const allowanceDisclosure = (
+    <details className={`flight-allowance-disclosure paper-card ${checkedOverLimit ? "over-limit" : ""} ${baggageIsPast ? "past" : ""}`} open={!baggageEvaluation.ready && !baggageIsPast}>
+      <summary>
+        <Image src="/images/doodle-icons/packing-complete-balanced.png" alt="" width={58} height={58} />
+        <div className="flight-allowance-summary-copy">
           <p className="eyebrow">{baggageEvaluation.ready ? "Confirmed personal allowance" : flightAllowances.length ? "Needs ticket confirmation" : "Waiting for your ticket"}</p>
           <h2>{baggageEvaluation.ready ? "已依本人的機票核對所有行李規則" : flightAllowances.length ? "仍有航段或行李類型待確認" : "尚未從本人的機票確認行李額度"}</h2>
+          <small>{baggageIsPast ? "這趟去程已結束，規則已收入過去行李" : baggageEvaluation.ready ? `${flightAllowances.length} 組本人機票規則 · 點擊查看` : "展開確認航段與行李額度"}</small>
+        </div>
+        <div className="flight-allowance-summary-weight"><span>托運箱內</span><strong>{checkedWeight.toFixed(1)} kg</strong></div>
+        <ChevronDown className="disclosure-chevron" size={22} aria-hidden="true" />
+      </summary>
+      <div className="flight-allowance-card-body">
+        <div className="flight-allowance-rules">
           {flightAllowances.length ? <div className="allowance-chips">{flightAllowances.map((allowance) => <span key={allowance.id} className={allowance.confirmed ? "confirmed" : "unconfirmed"}><strong>{allowance.airline}</strong><small>{allowance.segment} · {allowance.confirmed ? "已確認" : "待核對"}</small>{allowanceSummary(allowance)}<button type="button" onClick={() => deleteAllowance(allowance.id)} aria-label={`刪除 ${allowance.label}`}><X size={13} /></button></span>)}</div> : null}
           <p>{flightAllowances.length ? "若不同航段或不同訂位的規則不一，配置時以實際適用的較嚴格限制為準；不保存乘客姓名、票號或訂位代碼。" : "請把自己的電子機票或訂位確認單明確授權給 Exchange Concierge；AI 只會提出可審核的航段與額度，不會沿用示範航空公司。你也可以手動填寫。"}</p>
           {baggageEvaluation.issues.length ? <ul className="allowance-issues">{baggageEvaluation.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : null}
           <button className="button text-button" type="button" onClick={() => setShowAllowanceForm((value) => !value)}>{showAllowanceForm ? <X size={15} /> : <Plus size={15} />}{showAllowanceForm ? "取消填寫" : "手動新增機票規則"}</button>
         </div>
         <div className="combined-weight">
-          <span>目前托運合計</span>
+          <span>托運箱內合計</span>
           <strong>{checkedWeight.toFixed(1)}{baggageEvaluation.ready && strictCheckedLimit !== undefined ? ` / ${strictCheckedLimit} kg` : " kg"}</strong>
           <div className="weight-bar"><motion.span animate={{ width: `${baggageEvaluation.ready && strictCheckedLimit !== undefined ? (strictCheckedLimit > 0 ? Math.min(100, checkedWeight / strictCheckedLimit * 100) : checkedWeight > 0 ? 100 : 0) : 0}%` }} /></div>
           {!baggageEvaluation.ready ? <small>所有適用航段都確認後才判斷剩餘額度</small> : checkedOverLimit ? <em>目前配置違反至少一段行李規則</em> : strictCheckedLimit !== undefined ? <small>托運總量距最嚴格上限 {(strictCheckedLimit - checkedWeight).toFixed(1)}kg；仍需符合每件上限</small> : <small>本人機票規則已確認</small>}
         </div>
-      </section>
+      </div>
+    </details>
+  );
+
+  return (
+    <div className="page-stack">
+      {!embedded ? <header className="page-header packing-header">
+        <div><p className="eyebrow">Pack lighter, live easier</p><h1>行李工作台</h1><p>用實際公斤數分配每件行李，也知道哪些東西到了目的地再買就好。</p></div>
+      </header> : <header className="embedded-packing-intro"><div><p className="eyebrow">Long-stay packing</p><h2>一年份的生活，分進真正會帶走的行李</h2><p>這裡只整理交換長住行李；每趟短途旅行的小行李仍留在旅行規劃裡。</p></div>{baggageIsPast ? <span className="past-packing-tag">已成為過去行李</span> : null}</header>}
+
+      {!baggageIsPast ? allowanceDisclosure : null}
 
       <AnimatePresence>{showAllowanceForm ? <motion.div className="modal-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={(event) => event.target === event.currentTarget && setShowAllowanceForm(false)}><motion.form className="modal-card allowance-form paper-card" onSubmit={addAllowance} initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0,y:8}}>
         <div className="modal-heading field-full"><div><p className="eyebrow">Manual fallback</p><h2>新增本人機票的行李規則</h2></div><button className="icon-button" type="button" onClick={() => setShowAllowanceForm(false)} aria-label="關閉"><X size={20}/></button></div>
@@ -1022,10 +1158,11 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
       {allowanceMessage ? <p className="settings-message" role="status">{allowanceMessage}</p> : null}
 
       <section className="packing-summary">
-        <div className="summary-sticker terracotta"><Luggage /><strong>{totalWeight.toFixed(1)} kg</strong><span>目前已分配重量</span></div>
+        <div className="summary-sticker terracotta assigned-weight-summary"><Luggage /><div><strong>{weightBreakdown.totalKg.toFixed(1)} kg</strong><span>已分配總重</span></div><dl><div><dt>托運</dt><dd>{weightBreakdown.checkedKg.toFixed(1)} kg</dd></div><div><dt>手提</dt><dd>{weightBreakdown.carryOnKg.toFixed(1)} kg</dd></div><div><dt>個人物品</dt><dd>{weightBreakdown.personalKg.toFixed(1)} kg</dd></div></dl></div>
         <div className="summary-sticker blue"><PackageCheck /><strong>{packedCount} / {state.packingItems.length}</strong><span>已裝入行李</span></div>
         <div className="summary-sticker sage"><Sparkles /><strong>{state.packingItems.filter((item) => item.decision === "buy-there").length}</strong><span>留到當地再買</span></div>
       </section>
+      {unassignedCount ? <div className="unassigned-weight-alert" role="status"><AlertTriangle size={19} /><div><strong>{unassignedCount} 項尚未分配</strong><span>共 {unassignedWeight.toFixed(1)} kg，尚未計入上方已分配總重。</span></div></div> : null}
 
       <div className="bag-section-heading"><div><p className="eyebrow">Physical pieces</p><h2>實際會帶的每一件行李</h2></div><button className="button secondary" type="button" onClick={() => setShowBagForm((value) => !value)}>{showBagForm ? <X size={16} /> : <Plus size={16} />}{showBagForm ? "取消" : "新增一件行李"}</button></div>
       <AnimatePresence>{showBagForm ? <motion.div className="modal-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={(event) => event.target === event.currentTarget && setShowBagForm(false)}><motion.form className="modal-card bag-form paper-card" onSubmit={addBag} initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0,y:8}}>
@@ -1081,7 +1218,7 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
         <div className="packing-table-head"><span>完成</span><span>物品</span><span>建議</span><span>數量／重量</span><span>行李位置</span><span /></div>
         {categories.map((category) => (
           <div className="packing-category" key={category}>
-            <h2><span>{category}</span><em>{filteredItems.filter((item) => item.category === category).length} items</em></h2>
+            <h2><span>{category}</span><em>{filteredItems.filter((item) => item.category === category).length} {state.personalization?.headingLanguage === "en" ? "items" : "項"}</em></h2>
             {filteredItems.filter((item) => item.category === category).map((item) => (
               <motion.div layout className={`packing-row ${item.packed ? "packed" : ""}`} key={item.id}>
                 <button className={`drawn-check ${item.packed ? "checked" : ""}`} onClick={() => updateItem(item.id, { packed: !item.packed })} aria-label={`${item.packed ? "取消" : "標記"}裝入 ${item.name}`}>{item.packed ? <Check size={17} strokeWidth={3} /> : null}</button>
@@ -1100,6 +1237,7 @@ function PackingPage({ state, setState }: { state: AppState; setState: React.Dis
         <ShieldAlert size={28} />
         <div><p className="eyebrow">Before you zip it up</p><h2>海關與航空限制要最後再確認一次</h2><p>藥品、食品、液體、鋰電池與現金的限制會因目的地、物品和航班而不同。本站提供提醒，但請以目的國海關和實際承運航空公司的最新規則為準。</p></div>
       </aside>
+      {baggageIsPast ? <section className="past-baggage-section"><div className="past-baggage-heading"><p className="eyebrow">Archived packing</p><h2>過去行李</h2><p>交換出發日已過，去程機票規則自動收合保留在這裡，需要回查時仍可展開。</p></div>{allowanceDisclosure}</section> : null}
     </div>
   );
 }
@@ -1158,6 +1296,10 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
   const filtered = state.resources.filter((resource) => (category === "全部" || resourceGroup(resource.category) === category) && (!deferredQuery || `${resource.title} ${resource.description} ${resource.details ?? ""} ${resource.region} ${resource.sourceLabel} ${(resource.searchTags ?? []).join(" ")}`.toLowerCase().includes(deferredQuery)));
   const typeLabel = { official: "官方", school: "學校", city: "城市", experience: "經驗分享", personal: "個人資料" };
 
+  useEffect(() => {
+    setState((current) => pruneProcessedResourceIntake(current));
+  }, [setState]);
+
   function addResourceUrl(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1205,12 +1347,15 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
   return (
     <div className="page-stack">
       <header className="page-header resources-header"><div className="resources-header-copy"><p className="eyebrow">Verified bookmarks</p><h1>重要資源庫</h1><p>每份資料先整理成可快速判斷的摘要，再保留適用對象、準備事項與步驟；會變動的資訊仍附上來源與查核日期。</p></div><div className="resources-header-tools"><button className="button primary" onClick={() => setEditingResource(null)}><Plus size={17} />手動新增資源</button><div className="resource-stamp"><span>RESEARCH SINCE</span><strong>{exchangeProfile.research.minimumVerifiedDate.slice(0, 7).replace("-", ".")}</strong></div></div></header>
-      <section className="paper-card resource-intake-card">
-        <div><p className="eyebrow">Send a link to AI</p><h2>交給 AI 辨識的網址</h2><p>網址會先私人保存在這台裝置，不會立刻公開或加入資源庫。Exchange Concierge 讀取最新備份後，會附來源提出可審核的資源。</p></div>
-        <form onSubmit={addResourceUrl}><label className="field"><span>網址</span><input name="url" type="url" required placeholder="https://…" /></label><label className="field"><span>希望 AI 注意什麼（選填）</span><input name="note" maxLength={1000} placeholder="例如：確認交換生申請期限" /></label><button className="button secondary" type="submit"><Plus size={16} />加入待辨識</button></form>
-        {intakeMessage ? <p className="settings-message" role="status">{intakeMessage}</p> : null}
-        {(state.resourceIntake ?? []).length ? <div className="resource-intake-list">{(state.resourceIntake ?? []).map((item) => <div key={item.id}><span className={item.status}>{item.status === "pending" ? "待辨識" : "已處理"}</span><a href={item.url} target="_blank" rel="noreferrer">{item.url}</a>{item.note ? <small>{item.note}</small> : null}<button className="icon-button danger" onClick={() => deleteResourceIntake(item.id)} aria-label={`刪除待辨識網址 ${item.url}`}><Trash2 size={15} /></button></div>)}</div> : null}
-      </section>
+      <details className="paper-card resource-intake-card">
+        <summary><div><p className="eyebrow">Send a link to AI</p><h2>交給 AI 辨識的網址</h2><p>需要時再展開加入網址；已處理的紀錄會在 2 天後自動清除。</p></div><span className="resource-intake-summary-end"><strong>{(state.resourceIntake ?? []).filter((item) => item.status === "pending").length}</strong><small>待辨識</small><ChevronDown size={20} /></span></summary>
+        <div className="resource-intake-body">
+          <p>網址會先私人保存在手帳，不會立刻公開或加入資源庫。Exchange Concierge 會先比對任務、預算、行李、航班、課程與旅行，再提出可審核的更新。</p>
+          <form onSubmit={addResourceUrl}><label className="field"><span>網址</span><input name="url" type="url" required placeholder="https://…" /></label><label className="field"><span>希望 AI 注意什麼（選填）</span><input name="note" maxLength={1000} placeholder="例如：確認交換生申請期限" /></label><button className="button secondary" type="submit"><Plus size={16} />加入待辨識</button></form>
+          {intakeMessage ? <p className="settings-message" role="status">{intakeMessage}</p> : null}
+          {(state.resourceIntake ?? []).length ? <div className="resource-intake-list">{(state.resourceIntake ?? []).map((item) => <div key={item.id}><span className={item.status}>{item.status === "pending" ? "待辨識" : "已處理"}</span><a href={item.url} target="_blank" rel="noreferrer">{item.url}</a>{item.note ? <small>{item.note}</small> : null}{item.status === "processed" && item.processedAt ? <small className="resource-intake-expiry">將於 {new Date(Date.parse(item.processedAt) + 2 * 86_400_000).toLocaleString("zh-TW")} 自動清除</small> : null}<button className="icon-button danger" onClick={() => deleteResourceIntake(item.id)} aria-label={`刪除待辨識網址 ${item.url}`}><Trash2 size={15} /></button></div>)}</div> : null}
+        </div>
+      </details>
       <div className="toolbar paper-card resource-toolbar">
         <label className="search-field"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜尋簽證、住宿、醫療或交通" /></label>
         <label className="compact-select resource-category-select">
@@ -1242,14 +1387,36 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
   );
 }
 
-function SettingsPage({ state, setState, cloud }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; cloud: ExchangeCloudController }) {
-  const fileInput = useRef<HTMLInputElement>(null);
+function SettingsPage({ state, setState, cloud, onOpenGuide }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; cloud: ExchangeCloudController; onOpenGuide: () => void }) {
+  const backupFileInput = useRef<HTMLInputElement>(null);
+  const avatarFileInput = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState("");
+  const [appearanceMessage, setAppearanceMessage] = useState("");
+  const [sidebarNoteDraft, setSidebarNoteDraft] = useState(state.personalization?.sidebarNote ?? "慢慢準備，也正在靠近。");
+  const [sidebarNoteIsComposing, setSidebarNoteIsComposing] = useState(false);
+  const sidebarNoteComposing = useRef(false);
+
+  useEffect(() => {
+    if (!sidebarNoteComposing.current) setSidebarNoteDraft(state.personalization?.sidebarNote ?? "慢慢準備，也正在靠近。");
+  }, [state.personalization?.sidebarNote]);
 
   function updateBudgetItem(id: string, patch: Partial<BudgetItem>) {
     setState((current) => ({
       ...current,
       budget: current.budget.map((item) => item.id === id ? { ...item, ...patch } : item),
+    }));
+  }
+
+  function saveSidebarNote(value: string) {
+    const sidebarNote = limitSidebarNote(value);
+    setSidebarNoteDraft(sidebarNote);
+    setState((current) => ({
+      ...current,
+      personalization: {
+        sidebarNote,
+        avatarDataUrl: current.personalization?.avatarDataUrl ?? "",
+        headingLanguage: current.personalization?.headingLanguage ?? "zh-TW",
+      },
     }));
   }
 
@@ -1268,6 +1435,27 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
     }
   }
 
+  async function updateAvatar(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const avatarDataUrl = await createAvatarDataUrl(file);
+      setState((current) => ({
+        ...current,
+        personalization: {
+          sidebarNote: current.personalization?.sidebarNote ?? "慢慢準備，也正在靠近。",
+          avatarDataUrl,
+          headingLanguage: current.personalization?.headingLanguage ?? "zh-TW",
+        },
+      }));
+      setAppearanceMessage("大頭貼已更新，並會跟著私人手帳備份與同步。");
+    } catch {
+      setAppearanceMessage("無法使用這張圖片。請選擇 8MB 以下的 JPG、PNG 或 WebP。");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
   function restoreDefault() {
     if (!window.confirm("這會清除目前變更並恢復通用交換模板，確定繼續嗎？")) return;
     setState(resetState());
@@ -1275,12 +1463,26 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack settings-page">
       <header className="page-header settings-header"><div><p className="eyebrow">Keep it yours</p><h1>設定與備份</h1><p>目前資料只在這台裝置；定期匯出備份，就能避免清除瀏覽器資料時遺失。</p></div></header>
+      <section className="paper-card settings-card home-guide-settings" id="home-guide"><div className="settings-card-title"><Bot size={23} /><div><p className="eyebrow">AI 使用指南</p><h2>重新打開啟用教學</h2></div></div><p>需要重裝 Skills、重新下載 Codex 連結檔，或想確認第一次整理流程時，可隨時回到指南；不會清除目前資料。</p><button className="button secondary" onClick={onOpenGuide}>打開使用指南 <ArrowRight size={17} /></button></section>
+      <section className="paper-card settings-card personalization-card">
+        <div className="settings-card-title"><Pencil size={23} /><div><p className="eyebrow">Make it yours</p><h2>手帳外觀</h2></div></div>
+        <div className="personalization-layout">
+          <div className="avatar-editor">
+            <span className="avatar avatar-preview"><AvatarContent state={state} fallback={state.journey.ownerName.slice(0, 1).toUpperCase()} /></span>
+            <div><strong>個人大頭貼</strong><p>會顯示在右上角與帳戶資料；圖片只屬於私人手帳。</p><div className="avatar-actions"><button className="button secondary" type="button" onClick={() => avatarFileInput.current?.click()}><Upload size={17} />選擇照片</button>{state.personalization?.avatarDataUrl ? <button className="button text-button" type="button" onClick={() => setState((current) => ({ ...current, personalization: { sidebarNote: current.personalization?.sidebarNote ?? "慢慢準備，也正在靠近。", avatarDataUrl: "", headingLanguage: current.personalization?.headingLanguage ?? "zh-TW" } }))}>移除照片</button> : null}</div></div>
+            <input className="sr-only" ref={avatarFileInput} type="file" accept="image/png,image/jpeg,image/webp" onChange={updateAvatar} />
+          </div>
+          <label className="field sidebar-note-editor"><span>側邊手帳短句</span><textarea rows={3} value={sidebarNoteDraft} onCompositionStart={() => { sidebarNoteComposing.current = true; setSidebarNoteIsComposing(true); }} onCompositionEnd={(event) => { sidebarNoteComposing.current = false; setSidebarNoteIsComposing(false); saveSidebarNote(event.currentTarget.value); }} onChange={(event) => { const value = event.target.value; if (sidebarNoteComposing.current) setSidebarNoteDraft(value); else saveSidebarNote(value); }} placeholder="寫一句提醒自己的話" /><small>最多 27 個字；注音選字完成後才會套用限制，不會中斷組字。</small><span className={`sidebar-note-count ${notebookCharacterCount(sidebarNoteDraft) > SIDEBAR_NOTE_LIMIT ? "over" : ""}`} aria-live="polite">{sidebarNoteIsComposing && notebookCharacterCount(sidebarNoteDraft) > SIDEBAR_NOTE_LIMIT ? `選字完成後會保留前 ${SIDEBAR_NOTE_LIMIT} 個字 · ` : ""}{notebookCharacterCount(sidebarNoteDraft)}/{SIDEBAR_NOTE_LIMIT}</span></label>
+          <label className="field heading-language-editor"><span>手帳標題語言</span><select value={state.personalization?.headingLanguage ?? "zh-TW"} onChange={(event) => setState((current) => ({ ...current, personalization: { sidebarNote: current.personalization?.sidebarNote ?? "慢慢準備，也正在靠近。", avatarDataUrl: current.personalization?.avatarDataUrl ?? "", headingLanguage: event.target.value === "en" ? "en" : "zh-TW" } }))}><option value="zh-TW">中文（預設）</option><option value="en">English</option></select><small>一次只顯示一種成對標題；表單與規定說明仍保留中文，Chapter、Day、票號等結構標記不受影響。</small></label>
+        </div>
+        {appearanceMessage ? <p className="settings-message" role="status">{appearanceMessage}</p> : null}
+      </section>
       <section className="paper-card settings-card account-card">
         <div className="settings-card-title"><UserRound size={23} /><div><p className="eyebrow">Free account & sync</p><h2>帳戶與手機同步</h2></div></div>
         {!cloud.configured ? <div className="cloud-offline-state"><strong>免費雲端尚未建立</strong><p>現在仍是完整的本機版。所有功能測試完成後才會一次建立並上版，不會在開發中反覆消耗部署額度。</p></div> : cloud.permanentAccount ? <>
-          <div className="account-summary"><span className="avatar">{cloud.session?.user.email?.slice(0, 1).toUpperCase() || "A"}</span><div><strong>{String(cloud.session?.user.user_metadata.account_id ?? cloud.session?.user.email ?? "已登入帳戶")}</strong><small>{cloud.privateSyncEnabled ? "私人手帳同步中" : "尚未同步私人手帳"}</small></div></div>
+          <div className="account-summary"><span className="avatar"><AvatarContent state={state} fallback={cloud.session?.user.email?.slice(0, 1).toUpperCase() || "A"} /></span><div><strong>{String(cloud.session?.user.user_metadata.account_id ?? cloud.session?.user.email ?? "已登入帳戶")}</strong><small>{cloud.privateSyncEnabled ? "私人手帳同步中" : "尚未同步私人手帳"}</small></div></div>
           <div className="backup-actions">{cloud.privateSyncEnabled ? <button className="button secondary" onClick={cloud.disablePrivateSync}>停止同步</button> : <><button className="button primary" disabled={cloud.busy} onClick={() => void cloud.enablePrivateSync("upload-local")}>用這台裝置建立雲端副本</button><button className="button secondary" disabled={cloud.busy} onClick={() => void cloud.enablePrivateSync("use-cloud")}>載入帳戶既有手帳</button></>}<button className="button text-button" onClick={() => void cloud.signOut()}>登出</button></div>
         </> : <p>請先從登入頁建立帳號或登入，才會載入私人手帳。</p>}
         <p className="settings-message" role="status">{cloud.notice}</p>
@@ -1308,8 +1510,8 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
           <p>備份包含本站的任務、行李、預算與設定，不包含父資料夾中的任何私人文件。</p>
           <div className="backup-actions">
             <button className="button primary" onClick={() => downloadJson(state)}><Download size={18} />下載 JSON 備份</button>
-            <button className="button secondary" onClick={() => fileInput.current?.click()}><Upload size={18} />還原備份</button>
-            <input className="sr-only" ref={fileInput} type="file" accept="application/json" onChange={importBackup} />
+            <button className="button secondary" onClick={() => backupFileInput.current?.click()}><Upload size={18} />還原備份</button>
+            <input className="sr-only" ref={backupFileInput} type="file" accept="application/json" onChange={importBackup} />
             <button className="button text-danger" onClick={restoreDefault}><RotateCcw size={17} />恢復預設資料</button>
           </div>
           {message ? <div className="settings-message" role="status">{message}</div> : null}
@@ -1347,7 +1549,7 @@ function SettingsPage({ state, setState, cloud }: { state: AppState; setState: R
       </section>
 
       <section className="v2-note paper-card">
-        <span className="tape" /><div><p className="eyebrow">V2 · AI first</p><h2>Codex 自動整理已接上</h2><p>AI 會先把信件、授權檔案與最新來源整理成可審核提案；網站仍保留完整手動編輯。旅行可另外分享，私人交換內容永遠不會跟著出去。</p></div><span className="coming-soon">FREE FIRST</span>
+        <span className="tape" /><div><p className="eyebrow structural-eyebrow">V2 · AI first</p><h2>Codex 自動整理已接上</h2><p>AI 會先把信件、授權檔案與最新來源整理成可審核提案；網站仍保留完整手動編輯。旅行可另外分享，私人交換內容永遠不會跟著出去。</p></div><span className="coming-soon">FREE FIRST</span>
       </section>
     </div>
   );
@@ -1357,31 +1559,88 @@ export default function ExchangeCompanion() {
   const isHydrated = useSyncExternalStore(subscribeHydration, () => true, () => false);
   const [state, setState] = useState<AppState>(() => loadState(!cloudIsConfigured()));
   const [section, setSection] = useState<NavSection>(initialSection);
+  const [journeyView, setJourneyView] = useState<JourneyView>(initialJourneyView);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [aiNotificationOpen, setAiNotificationOpen] = useState(false);
+  const [aiInboxOpenRequest, setAiInboxOpenRequest] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("inbox") === "open" ? 1 : 0);
+  const [focusTaskId, setFocusTaskId] = useState(() => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("task") ?? "" : "");
+  const [focusTripId, setFocusTripId] = useState(() => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("trip") ?? "" : "");
+  const [homeGuideOpen, setHomeGuideOpen] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("guide") === "1");
   const accountMenuRef = useRef<HTMLDivElement>(null);
+  const aiNotificationRef = useRef<HTMLDivElement>(null);
+  const aiNotificationButtonRef = useRef<HTMLButtonElement>(null);
   const cloud = useExchangeCloud(state, setState);
   const localAppPreview = localAppPreviewEnabled();
+
+  const navigateToSection: NavigateToSection = (nextSection, nextJourneyView, options = {}) => {
+    if (nextSection === "journey") setJourneyView(nextJourneyView ?? "progress");
+    setFocusTaskId(nextSection === "journey" ? options.task ?? "" : "");
+    setFocusTripId(nextSection === "travel" ? options.trip ?? "" : "");
+    setHomeGuideOpen(nextSection === "home" && options.guide === "1");
+    if (nextSection === "ai" && options.inbox === "open") setAiInboxOpenRequest((request) => request + 1);
+    setSection(nextSection);
+    setMobileMenu(false);
+    if (options.hash) {
+      const url = new URL(window.location.href);
+      url.hash = options.hash;
+      window.history.replaceState({}, "", url);
+    } else if (window.location.hash) {
+      const url = new URL(window.location.href);
+      url.hash = "";
+      window.history.replaceState({}, "", url);
+    }
+  };
+
+  const navigateHomeTarget = (target: HomeAgendaTarget) => {
+    navigateToSection(target.section, target.section === "journey" ? "progress" : undefined, target);
+  };
 
   useEffect(() => {
     if (isHydrated && (!cloud.configured || (cloud.permanentAccount && cloud.accountDataReady))) saveState(state);
   }, [cloud.accountDataReady, cloud.configured, cloud.permanentAccount, state, isHydrated]);
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "auto" });
-    const url = new URL(window.location.href);
-    if (section === "home") url.searchParams.delete("section");
-    else url.searchParams.set("section", section);
-    window.history.replaceState({}, "", url);
+    const hash = window.location.hash.slice(1);
+    if (!hash) {
+      window.scrollTo({ top: 0, behavior: "auto" });
+      return;
+    }
+    const timer = window.setTimeout(() => document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" }), 320);
+    return () => window.clearTimeout(timer);
   }, [section]);
 
   useEffect(() => {
-    if (!accountMenuOpen) return;
+    const url = new URL(window.location.href);
+    if (section === "home" && homeGuideOpen) url.searchParams.set("section", "home");
+    else if (section === "home") url.searchParams.delete("section");
+    else url.searchParams.set("section", section);
+    if (section === "journey" && journeyView === "packing") url.searchParams.set("view", "packing");
+    else url.searchParams.delete("view");
+    if (section === "journey" && focusTaskId) url.searchParams.set("task", focusTaskId);
+    else url.searchParams.delete("task");
+    if (section === "travel" && focusTripId) url.searchParams.set("trip", focusTripId);
+    else url.searchParams.delete("trip");
+    if (section === "ai" && aiInboxOpenRequest > 0) url.searchParams.set("inbox", "open");
+    else url.searchParams.delete("inbox");
+    if (section === "home" && homeGuideOpen) url.searchParams.set("guide", "1");
+    else url.searchParams.delete("guide");
+    window.history.replaceState({}, "", url);
+  }, [aiInboxOpenRequest, focusTaskId, focusTripId, homeGuideOpen, journeyView, section]);
+
+  useEffect(() => {
+    if (!accountMenuOpen && !aiNotificationOpen) return;
     const closeOnOutsidePress = (event: PointerEvent) => {
       if (!accountMenuRef.current?.contains(event.target as Node)) setAccountMenuOpen(false);
+      if (!aiNotificationRef.current?.contains(event.target as Node)) setAiNotificationOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setAccountMenuOpen(false);
+      if (event.key !== "Escape") return;
+      if (aiNotificationOpen) {
+        setAiNotificationOpen(false);
+        aiNotificationButtonRef.current?.focus();
+      }
+      setAccountMenuOpen(false);
     };
     document.addEventListener("pointerdown", closeOnOutsidePress);
     document.addEventListener("keydown", closeOnEscape);
@@ -1389,7 +1648,7 @@ export default function ExchangeCompanion() {
       document.removeEventListener("pointerdown", closeOnOutsidePress);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [accountMenuOpen]);
+  }, [accountMenuOpen, aiNotificationOpen]);
 
   if (!isHydrated) {
     return (
@@ -1401,7 +1660,7 @@ export default function ExchangeCompanion() {
     );
   }
 
-  if (cloud.configured && (!cloud.authReady || cloud.shareStatus === "loading")) {
+  if (!localAppPreview && cloud.configured && (!cloud.authReady || cloud.shareStatus === "loading")) {
     return <div className="boot-shell" role="status"><span className="brand-stamp">旅</span><strong>交換手帳</strong><p>{cloud.shareStatus === "loading" ? "正在確認旅行分享權限…" : "正在確認登入狀態…"}</p></div>;
   }
 
@@ -1413,7 +1672,7 @@ export default function ExchangeCompanion() {
     return <OnboardingWizard state={{ ...state, setupCompleted: false }} setState={setState} />;
   }
 
-  if ((!cloud.configured && !localAppPreview) || (cloud.configured && (!cloud.permanentAccount || !cloud.accountDataReady))) {
+  if (!localAppPreview && (!cloud.configured || !cloud.permanentAccount || !cloud.accountDataReady)) {
     return <AuthGate cloud={cloud} />;
   }
 
@@ -1422,28 +1681,32 @@ export default function ExchangeCompanion() {
   }
 
   const currentNav = navItems.find((item) => item.id === section)!;
-  const mobileNavItems = navItems.filter((item) => item.id !== "settings" && item.id !== "ai");
+  const mobileNavItems = navItems.filter((item) => item.id !== "settings");
   const now = new Date();
   const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const todayLabel = formatDate(todayIso);
-  const pendingProposalCount = state.aiInbox?.proposals.filter((proposal) => proposal.status === "pending").length ?? 0;
+  const pendingProposals = (state.aiInbox?.proposals ?? []).filter((proposal) => proposal.status === "pending");
+  const pendingProposalCount = pendingProposals.length;
+  const latestPendingProposals = [...pendingProposals]
+    .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
+    .slice(0, 3);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-heading-language={state.personalization?.headingLanguage ?? "zh-TW"}>
       <a className="skip-link" href="#main-content">跳到主要內容</a>
       <aside className={`sidebar ${mobileMenu ? "mobile-open" : ""}`}>
-        <button className="brand-mark" onClick={() => setSection("home")}>
+        <button className="brand-mark" onClick={() => navigateToSection("home")}>
           <span className="brand-stamp">旅</span>
           <div><strong>交換手帳</strong><small>Exchange Companion</small></div>
         </button>
         <nav aria-label="主要導覽">
           {navItems.map((item) => {
-            return <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => { setSection(item.id); setMobileMenu(false); }}><Image className="nav-doodle-icon" src={item.doodleIcon} alt="" width={38} height={38} /><span>{item.label}</span></button>;
+            return <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => navigateToSection(item.id)}><Image className="nav-doodle-icon" src={item.doodleIcon} alt="" width={38} height={38} /><span>{item.label}</span>{item.id === "ai" && pendingProposalCount ? <span className="nav-notification-badge" aria-label={`${pendingProposalCount} 個待確認提案`}>{pendingProposalCount}</span> : null}</button>;
           })}
         </nav>
         <div className="sidebar-note">
           <span className="tape" />
-          <p className="hand-note">“慢慢準備，<br />也正在靠近。”</p>
+          <p className="hand-note">“{state.personalization?.sidebarNote || "慢慢準備，也正在靠近。"}”</p>
           <small>{state.journey.homeCity} → {state.journey.hostCity}</small>
         </div>
         <div className="sidebar-footer"><span>{cloud.privateSyncEnabled ? "FREE CLOUD · PRIVATE" : "LOCAL · PRIVATE"}</span><span>V2.1</span></div>
@@ -1454,26 +1717,36 @@ export default function ExchangeCompanion() {
           <button className="menu-button" onClick={() => setMobileMenu((value) => !value)} aria-label="開啟導覽"><Menu /></button>
           <div className="mobile-brand"><span className="brand-stamp">旅</span><strong>{exchangeProfile.appName}</strong></div>
           <div className="topbar-trail"><span>MY EXCHANGE</span><ArrowRight size={14} /><strong>{currentNav.label}</strong></div>
-          <div className="topbar-right"><span className="today-label">{todayLabel}</span><button className={`topbar-ai-button ${section === "ai" ? "active" : ""}`} onClick={() => { setSection("ai"); setAccountMenuOpen(false); }} aria-label={`AI 幫我整理${pendingProposalCount ? `，${pendingProposalCount} 個待確認提案` : ""}`}><Bot size={18} />{pendingProposalCount ? <span>{pendingProposalCount}</span> : null}</button><div className="account-menu-wrap" ref={accountMenuRef}><button className="avatar avatar-button" onClick={() => setAccountMenuOpen((open) => !open)} aria-expanded={accountMenuOpen} aria-haspopup="menu" aria-controls="account-popover" aria-label="開啟帳戶選單">{cloud.session?.user.email?.slice(0, 1).toUpperCase() || state.journey.ownerName.slice(0, 1).toUpperCase() || "A"}</button>{accountMenuOpen ? <div id="account-popover" className="account-popover paper-card" role="menu"><button role="menuitem" onClick={() => { setSection("settings"); setAccountMenuOpen(false); }}><UserRound size={16}/>個人設定</button><button role="menuitem" onClick={() => { setSection("settings"); setAccountMenuOpen(false); window.setTimeout(() => document.getElementById("backup-settings")?.scrollIntoView({behavior:"smooth"}), 80); }}><Download size={16}/>備份與還原</button><button role="menuitem" onClick={() => { setSection("settings"); setAccountMenuOpen(false); window.setTimeout(() => document.getElementById("budget-settings")?.scrollIntoView({behavior:"smooth"}), 80); }}><WalletCards size={16}/>預算</button><button className="danger" role="menuitem" onClick={() => void cloud.signOut()}><LogOut size={16}/>登出</button></div> : null}</div></div>
+          <div className="topbar-right">
+            <span className="today-label">{todayLabel}</span>
+            {pendingProposalCount ? <div className="ai-notification-wrap" ref={aiNotificationRef}>
+              <button ref={aiNotificationButtonRef} className="ai-notification-ticket" onClick={() => { setAiNotificationOpen((open) => !open); setAccountMenuOpen(false); }} aria-label={`AI 更新，${pendingProposalCount} 個待確認提案`} aria-expanded={aiNotificationOpen} aria-haspopup="dialog" aria-controls="ai-update-popover"><Bot size={17} /><span>AI 更新</span><strong>{pendingProposalCount}</strong></button>
+              {aiNotificationOpen ? <div id="ai-update-popover" className="ai-update-popover paper-card" role="dialog" aria-label="待確認的 AI 更新">
+                <div className="ai-update-heading"><div><span>NEW NOTES</span><h2>{pendingProposalCount} 筆更新待確認</h2></div><button className="icon-button" type="button" onClick={() => { setAiNotificationOpen(false); aiNotificationButtonRef.current?.focus(); }} aria-label="關閉 AI 更新"><X size={17} /></button></div>
+                <div className="ai-update-list">{latestPendingProposals.map((proposal) => <article key={proposal.id}><div><span>{proposalEntityLabel[proposal.entity]}</span><em>{proposalConfidenceLabel[proposal.confidence]}</em></div><strong>{proposal.title}</strong><p>{proposal.summary}</p></article>)}</div>
+                <button className="button primary ai-update-all" type="button" onClick={() => { setAiNotificationOpen(false); setAiInboxOpenRequest((request) => request + 1); navigateToSection("ai"); window.setTimeout(() => document.getElementById("ai-proposal-inbox")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); }}>查看全部更新 <ArrowRight size={16} /></button>
+              </div> : null}
+            </div> : null}
+            <div className="account-menu-wrap" ref={accountMenuRef}><button className="avatar avatar-button" onClick={() => { setAccountMenuOpen((open) => !open); setAiNotificationOpen(false); }} aria-expanded={accountMenuOpen} aria-haspopup="menu" aria-controls="account-popover" aria-label="開啟帳戶選單"><AvatarContent state={state} fallback={cloud.session?.user.email?.slice(0, 1).toUpperCase() || state.journey.ownerName.slice(0, 1).toUpperCase() || "A"} /></button>{accountMenuOpen ? <div id="account-popover" className="account-popover paper-card" role="menu"><button role="menuitem" onClick={() => { navigateToSection("settings"); setAccountMenuOpen(false); }}><UserRound size={16}/>個人設定</button><button role="menuitem" onClick={() => { navigateToSection("settings"); setAccountMenuOpen(false); window.setTimeout(() => document.getElementById("backup-settings")?.scrollIntoView({behavior:"smooth"}), 80); }}><Download size={16}/>備份與還原</button><button role="menuitem" onClick={() => { navigateToSection("settings"); setAccountMenuOpen(false); window.setTimeout(() => document.getElementById("budget-settings")?.scrollIntoView({behavior:"smooth"}), 80); }}><WalletCards size={16}/>預算</button><button className="danger" role="menuitem" onClick={() => void cloud.signOut()}><LogOut size={16}/>登出</button></div> : null}</div>
+          </div>
         </header>
 
         <main id="main-content">
           <AnimatePresence mode="wait">
             <motion.div key={section} initial={{ opacity: 0, y: 7 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}>
-              {section === "home" ? <Dashboard state={state} setSection={setSection} todayIso={todayIso} /> : null}
-              {section === "journey" ? <JourneyPage state={state} setState={setState} /> : null}
-              {section === "travel" ? <Suspense fallback={<SectionFallback />}><TravelPlanner state={state} setState={setState} cloud={cloud} /></Suspense> : null}
-              {section === "packing" ? <PackingPage state={state} setState={setState} /> : null}
+              {section === "home" ? <Dashboard state={state} setState={setState} cloud={cloud} navigate={navigateToSection} navigateTarget={navigateHomeTarget} todayIso={todayIso} forceGuide={homeGuideOpen} onCloseGuide={() => setHomeGuideOpen(false)} /> : null}
+              {section === "journey" ? <JourneyPage state={state} setState={setState} view={journeyView} onViewChange={setJourneyView} focusTaskId={focusTaskId} /> : null}
+              {section === "travel" ? <Suspense fallback={<SectionFallback />}><TravelPlanner state={state} setState={setState} cloud={cloud} focusTripId={focusTripId} /></Suspense> : null}
               {section === "resources" ? <ResourcesPage state={state} setState={setState} /> : null}
-              {section === "ai" ? <Suspense fallback={<SectionFallback />}><AiConcierge state={state} setState={setState} cloud={cloud} /></Suspense> : null}
-              {section === "settings" ? <SettingsPage state={state} setState={setState} cloud={cloud} /> : null}
+              {section === "ai" ? <Suspense fallback={<SectionFallback />}><AiConcierge key={aiInboxOpenRequest} state={state} setState={setState} cloud={cloud} openInboxRequest={aiInboxOpenRequest} /></Suspense> : null}
+              {section === "settings" ? <SettingsPage state={state} setState={setState} cloud={cloud} onOpenGuide={() => navigateToSection("home", undefined, { guide: "1" })} /> : null}
             </motion.div>
           </AnimatePresence>
         </main>
       </div>
 
       <nav className="mobile-bottom-nav" aria-label="手機導覽">
-        {mobileNavItems.map((item) => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => { setSection(item.id); setAccountMenuOpen(false); }}><Image className="nav-doodle-icon" src={item.doodleIcon} alt="" width={34} height={34} /><span>{item.shortLabel}</span></button>)}
+        {mobileNavItems.map((item) => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => { navigateToSection(item.id); setAccountMenuOpen(false); setAiNotificationOpen(false); }}><span className="mobile-nav-icon-wrap"><Image className="nav-doodle-icon" src={item.doodleIcon} alt="" width={34} height={34} />{item.id === "ai" && pendingProposalCount ? <strong className="mobile-nav-badge" aria-label={`${pendingProposalCount} 個待確認提案`}>{pendingProposalCount}</strong> : null}</span><span>{item.shortLabel}</span></button>)}
       </nav>
       {mobileMenu ? <button className="mobile-overlay" onClick={() => setMobileMenu(false)} aria-label="關閉導覽" /> : null}
     </div>

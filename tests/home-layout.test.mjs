@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const dashboard = await readFile(new URL("../app/components/HomeDashboard.tsx", import.meta.url), "utf8");
+const activation = await readFile(new URL("../app/components/HomeActivationGuide.tsx", import.meta.url), "utf8");
+const starter = await readFile(new URL("../app/lib/concierge-starter.ts", import.meta.url), "utf8");
+const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+const onboarding = await readFile(new URL("../app/components/OnboardingWizard.tsx", import.meta.url), "utf8");
+
+test("daily home keeps the two-week agenda, bulletin, journey, and budget in one control center", () => {
+  for (const marker of ["兩週行程軸", "交換佈告欄", "交換旅程", "基礎預算", "查看整月"]) assert.ok(dashboard.includes(marker));
+  assert.match(styles, /grid-template-areas:\s*"bulletin" "agenda"/);
+});
+
+test("activation copy separates public skill installation from the private connection file", () => {
+  assert.ok(activation.includes("exchange-concierge-connection.json"));
+  assert.ok(starter.includes("$skill-installer"));
+  assert.ok(starter.includes(".agents/skills/exchange-concierge"));
+  assert.ok(starter.includes(".agents/skills/exchange-email-intake"));
+  assert.doesNotMatch(starter, /eyJ[a-zA-Z0-9_-]{12,}/);
+  assert.doesNotMatch(starter, /[A-Z0-9._%+-]+@(gmail|outlook|yahoo)\.[A-Z]{2,}/i);
+});
+
+test("onboarding shifts return tasks from the exchange end date", () => {
+  assert.match(onboarding, /task\.phase === "return" \? endOffset : offset/);
+});

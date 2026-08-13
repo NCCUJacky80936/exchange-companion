@@ -7,6 +7,13 @@ export interface BaggageEvaluation {
   strictCheckedLimitKg?: number;
 }
 
+export interface AssignedBagWeightBreakdown {
+  checkedKg: number;
+  carryOnKg: number;
+  personalKg: number;
+  totalKg: number;
+}
+
 export function bagWeightMap(bags: Bag[], packingItems: PackingItem[]): Map<string, number> {
   return new Map(bags.map((bag) => [
     bag.id,
@@ -20,6 +27,15 @@ function activeBagWeights(kind: Bag["kind"], bags: Bag[], weights: Map<string, n
   return bags
     .filter((bag) => bag.kind === kind)
     .map((bag) => weights.get(bag.id) ?? 0);
+}
+
+export function assignedBagWeightBreakdown(bags: Bag[], packingItems: PackingItem[]): AssignedBagWeightBreakdown {
+  const weights = bagWeightMap(bags, packingItems);
+  const sumKind = (kind: Bag["kind"]) => activeBagWeights(kind, bags, weights).reduce((sum, weight) => sum + weight, 0);
+  const checkedKg = sumKind("checked");
+  const carryOnKg = sumKind("carry-on");
+  const personalKg = sumKind("personal");
+  return { checkedKg, carryOnKg, personalKg, totalKg: checkedKg + carryOnKg + personalKg };
 }
 
 function checkPieceRule(label: string, kindLabel: string, weights: number[], count: number, perPieceKg: number): string[] {

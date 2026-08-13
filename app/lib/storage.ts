@@ -1,16 +1,19 @@
 import { defaultState } from "./default-data";
 import { exchangeProfile } from "./profile";
 import { pruneExpiredAiHistory } from "./ai-import";
+import { pruneProcessedResourceIntake, stampProcessedResourceIntake } from "./resource-intake";
+import { limitSidebarNote } from "./personalization";
 import type { AppState, BudgetItem, FlightAllowance, JourneyPhase, JourneyTask, Priority, ResourceItem, TaskStatus, TaskTemplateKind } from "./types";
 
 const LEGACY_STORAGE_KEY = "exchange-companion:v1";
-const CURRENT_DATA_REVISION = 6;
+const CURRENT_DATA_REVISION = 7;
 const TASK_PHASES = new Set<JourneyPhase>(["admission", "visa", "pre-departure", "arrival-72h", "arrival-2w", "semester", "return"]);
 const TASK_STATUSES = new Set<TaskStatus>(["not-started", "in-progress", "waiting", "done", "not-applicable"]);
 const TASK_PRIORITIES = new Set<Priority>(["high", "medium", "low"]);
 const TASK_TEMPLATES = new Set<TaskTemplateKind>(["general", "flight", "course", "visa", "housing", "payment", "school-admin"]);
 const BUDGET_CATEGORIES = new Set<BudgetItem["category"]>(["housing", "food", "transport", "arrival", "other"]);
 const BUDGET_BASES = new Set<BudgetItem["basis"]>(["unset", "estimate", "confirmed"]);
+const HOME_TUTORIAL_VERSION = 1;
 
 function journeyStorageKey(): string {
   const journey = defaultState.journey;
@@ -85,7 +88,36 @@ export function normalizeImportedState(state: AppState): AppState {
   const travelPlans = Array.isArray(state.travelPlans) ? state.travelPlans : [];
   const resources = Array.isArray(state.resources) ? state.resources : [];
   const budget = Array.isArray(state.budget) ? state.budget : fallback.budget;
-  return pruneExpiredAiHistory({
+  const sidebarNote = typeof state.personalization?.sidebarNote === "string"
+    ? limitSidebarNote(state.personalization.sidebarNote.trim())
+    : fallback.personalization?.sidebarNote ?? "慢慢準備，也正在靠近。";
+  const avatarDataUrl = typeof state.personalization?.avatarDataUrl === "string"
+    && /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(state.personalization.avatarDataUrl)
+    && state.personalization.avatarDataUrl.length <= 450_000
+    ? state.personalization.avatarDataUrl
+    : "";
+  const headingLanguage = state.personalization?.headingLanguage === "en" ? "en" : "zh-TW";
+  const hasHomeExperience = Boolean(state.homeExperience);
+  const importedAt = state.aiInbox?.lastImportedAt;
+  const homeExperience = hasHomeExperience ? {
+    mode: state.homeExperience?.mode === "activation" ? "activation" as const : "dashboard" as const,
+    workflow: state.homeExperience?.workflow === "ai" || state.homeExperience?.workflow === "manual"
+      ? state.homeExperience.workflow
+      : "undecided" as const,
+    tutorialVersion: Number.isInteger(state.homeExperience?.tutorialVersion)
+      ? Math.max(1, state.homeExperience!.tutorialVersion)
+      : HOME_TUTORIAL_VERSION,
+    starterPromptCopiedAt: state.homeExperience?.starterPromptCopiedAt,
+    activatedAt: state.homeExperience?.activatedAt,
+  } : {
+    // A missing field means this is a pre-home-redesign notebook. Keep existing
+    // users on the dashboard instead of unexpectedly restarting onboarding.
+    mode: "dashboard" as const,
+    workflow: importedAt ? "ai" as const : "manual" as const,
+    tutorialVersion: HOME_TUTORIAL_VERSION,
+    activatedAt: importedAt,
+  };
+  return pruneProcessedResourceIntake(pruneExpiredAiHistory({
     ...state,
     dataRevision: CURRENT_DATA_REVISION,
     setupCompleted: typeof state.setupCompleted === "boolean"
@@ -100,6 +132,8 @@ export function normalizeImportedState(state: AppState): AppState {
     bags: normalizedBags,
     travelPlans: travelPlans.map((plan) => ({
       ...plan,
+      stays: Array.isArray(plan.stays) ? plan.stays : [],
+      references: Array.isArray(plan.references) ? plan.references : [],
       travelNotes: plan.travelNotes ?? [],
       packingItems: plan.packingItems ?? [],
       days: plan.days.map((day) => ({
@@ -148,7 +182,7 @@ export function normalizeImportedState(state: AppState): AppState {
       sourceLabel: resource.sourceLabel ?? "舊版手動資料",
       searchTags: resourceSearchTags(resource),
     })),
-    resourceIntake: Array.isArray(state.resourceIntake) ? state.resourceIntake : [],
+    resourceIntake: Array.isArray(state.resourceIntake) ? state.resourceIntake.map((item) => stampProcessedResourceIntake(item)) : [],
     budget: budget.map((item, index) => {
       const legacy = item as Partial<BudgetItem>;
       const fallbackItem = fallback.budget.find((candidate) => candidate.id === legacy.id) ?? fallback.budget[index];
@@ -167,13 +201,19 @@ export function normalizeImportedState(state: AppState): AppState {
         verifiedAt: typeof legacy.verifiedAt === "string" ? legacy.verifiedAt : "",
       };
     }),
+    personalization: {
+      sidebarNote: sidebarNote || "慢慢準備，也正在靠近。",
+      avatarDataUrl,
+      headingLanguage,
+    },
+    homeExperience,
     aiInbox: state.aiInbox ? {
       ...state.aiInbox,
       journeyScope: state.aiInbox.journeyScope?.startsWith(`exchange:${state.journey.id}:`)
         ? `exchange:${state.journey.id}`
         : state.aiInbox.journeyScope,
     } : { sources: [], proposals: [] },
-  });
+  }));
 }
 
 export function loadState(useLocalStorage = true): AppState {

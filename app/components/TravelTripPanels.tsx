@@ -99,7 +99,7 @@ function NoteForm({ note, onSave, onCancel }: { note?: TravelNote; onSave: (note
   );
 }
 
-export function TravelNotesPanel({ plan, onUpdate }: { plan: TravelPlan; onUpdate: (plan: TravelPlan) => void }) {
+export function TravelNotesPanel({ plan, onUpdate, readOnly = false }: { plan: TravelPlan; onUpdate: (plan: TravelPlan) => void; readOnly?: boolean }) {
   const [editingId, setEditingId] = useState("");
   const [adding, setAdding] = useState(false);
 
@@ -113,13 +113,13 @@ export function TravelNotesPanel({ plan, onUpdate }: { plan: TravelPlan; onUpdat
   const notes = [...(plan.travelNotes ?? [])].sort((a, b) => Number(b.important) - Number(a.important));
   return (
     <div className="trip-extra-panel">
-      <div className="trip-extra-intro"><div><p className="eyebrow">Things worth remembering</p><h3>注意事項與備案</h3><p>像 Italy Trip 一樣，把交通、訂位、安全與緊急處置留在同一趟旅行裡。</p></div><button className="button primary" onClick={() => { setAdding(true); setEditingId(""); }}><Plus size={16} />新增提醒</button></div>
-      {adding ? <NoteForm onSave={save} onCancel={() => setAdding(false)} /> : null}
-      {notes.length ? <div className="trip-note-grid">{notes.map((note) => editingId === note.id ? <NoteForm key={note.id} note={note} onSave={save} onCancel={() => setEditingId("")} /> : (
+      <div className="trip-extra-intro"><div><p className="eyebrow">Things worth remembering</p><h3>注意事項與備案</h3><p>像 Italy Trip 一樣，把交通、訂位、安全與緊急處置留在同一趟旅行裡。</p></div>{readOnly ? null : <button className="button primary" onClick={() => { setAdding(true); setEditingId(""); }}><Plus size={16} />新增提醒</button>}</div>
+      {!readOnly && adding ? <NoteForm onSave={save} onCancel={() => setAdding(false)} /> : null}
+      {notes.length ? <div className="trip-note-grid">{notes.map((note) => !readOnly && editingId === note.id ? <NoteForm key={note.id} note={note} onSave={save} onCancel={() => setEditingId("")} /> : (
         <article className={`trip-note-card ${note.important ? "important" : ""}`} key={note.id}>
           <div className="trip-note-top"><span className={`trip-note-category ${noteMeta[note.category].className}`}>{noteMeta[note.category].label}</span>{note.important ? <span className="important-label"><ShieldAlert size={13} />重要</span> : null}</div>
           <h4>{note.title}</h4><p>{note.details}</p>
-          <div className="trip-note-actions"><button className="icon-button" onClick={() => { setEditingId(note.id); setAdding(false); }} aria-label={`編輯 ${note.title}`}><Pencil size={14} /></button><button className="icon-button danger" onClick={() => onUpdate({ ...plan, travelNotes: notes.filter((item) => item.id !== note.id) })} aria-label={`刪除 ${note.title}`}><Trash2 size={14} /></button></div>
+          {readOnly ? null : <div className="trip-note-actions"><button className="icon-button" onClick={() => { setEditingId(note.id); setAdding(false); }} aria-label={`編輯 ${note.title}`}><Pencil size={14} /></button><button className="icon-button danger" onClick={() => onUpdate({ ...plan, travelNotes: notes.filter((item) => item.id !== note.id) })} aria-label={`刪除 ${note.title}`}><Trash2 size={14} /></button></div>}
         </article>
       ))}</div> : <div className="trip-extra-empty"><Image src="/images/doodle-icons/documents-safe.png" alt="" width={72} height={72} /><strong>還沒有旅行提醒</strong><span>想到需要預約、避開或特別小心的事，就先記在這裡。</span></div>}
     </div>
@@ -151,7 +151,7 @@ function PackingForm({ item, onSave, onCancel }: { item?: TravelPackingItem; onS
   );
 }
 
-export function TravelPackingPanel({ plan, onUpdate }: { plan: TravelPlan; onUpdate: (plan: TravelPlan) => void }) {
+export function TravelPackingPanel({ plan, onUpdate, readOnly = false }: { plan: TravelPlan; onUpdate: (plan: TravelPlan) => void; readOnly?: boolean }) {
   const [editingId, setEditingId] = useState("");
   const [adding, setAdding] = useState(false);
   const items = useMemo(() => plan.packingItems ?? [], [plan.packingItems]);
@@ -170,14 +170,14 @@ export function TravelPackingPanel({ plan, onUpdate }: { plan: TravelPlan; onUpd
 
   return (
     <div className="trip-extra-panel">
-      <div className="trip-extra-intro"><div><p className="eyebrow">Pack for this trip only</p><h3>這趟旅行的小行李</h3><p>這份清單只屬於這趟旅行，不會改動交換旅程的主要行李工作台。</p></div><button className="button primary" onClick={() => { setAdding(true); setEditingId(""); }}><Plus size={16} />新增物品</button></div>
+      <div className="trip-extra-intro"><div><p className="eyebrow">Pack for this trip only</p><h3>這趟旅行的小行李</h3><p>這份清單只屬於這趟旅行，不會改動交換旅程的主要行李工作台。</p></div>{readOnly ? null : <button className="button primary" onClick={() => { setAdding(true); setEditingId(""); }}><Plus size={16} />新增物品</button>}</div>
       <div className="trip-pack-progress"><div><span style={{ width: `${items.length ? (packedCount / items.length) * 100 : 0}%` }} /></div><strong>{packedCount} / {items.length}</strong><small>已裝進旅行包</small></div>
-      {adding ? <PackingForm onSave={save} onCancel={() => setAdding(false)} /> : null}
+      {!readOnly && adding ? <PackingForm onSave={save} onCancel={() => setAdding(false)} /> : null}
       {items.length ? <div className="trip-pack-groups">{groups.map((group) => <section key={group}><h4>{group}<span>{items.filter((item) => item.category === group).length}</span></h4>{items.filter((item) => item.category === group).map((item) => editingId === item.id ? <PackingForm key={item.id} item={item} onSave={save} onCancel={() => setEditingId("")} /> : (
         <div className={`trip-pack-row ${item.packed ? "packed" : ""}`} key={item.id}>
-          <button className={`drawn-check ${item.packed ? "checked" : ""}`} onClick={() => toggle(item)} aria-label={`${item.packed ? "取消" : "標記"}裝入 ${item.name}`}>{item.packed ? <Check size={16} strokeWidth={3} /> : null}</button>
+          <button className={`drawn-check ${item.packed ? "checked" : ""}`} onClick={() => toggle(item)} aria-label={`${item.packed ? "取消" : "標記"}裝入 ${item.name}`} disabled={readOnly}>{item.packed ? <Check size={16} strokeWidth={3} /> : null}</button>
           <div><strong>{item.name}</strong>{item.notes ? <small>{item.notes}</small> : null}</div><span>× {item.quantity}</span>
-          <button className="icon-button" onClick={() => { setEditingId(item.id); setAdding(false); }} aria-label={`編輯 ${item.name}`}><Pencil size={14} /></button><button className="icon-button danger" onClick={() => onUpdate({ ...plan, packingItems: items.filter((current) => current.id !== item.id) })} aria-label={`刪除 ${item.name}`}><Trash2 size={14} /></button>
+          {readOnly ? null : <><button className="icon-button" onClick={() => { setEditingId(item.id); setAdding(false); }} aria-label={`編輯 ${item.name}`}><Pencil size={14} /></button><button className="icon-button danger" onClick={() => onUpdate({ ...plan, packingItems: items.filter((current) => current.id !== item.id) })} aria-label={`刪除 ${item.name}`}><Trash2 size={14} /></button></>}
         </div>
       ))}</section>)}</div> : <div className="trip-extra-empty"><Image src="/images/doodle-icons/packing-complete-balanced.png" alt="" width={72} height={72} /><strong>旅行包還是空的</strong><span>這裡適合放週末小旅行的證件、衣物、藥品和充電用品。</span></div>}
     </div>

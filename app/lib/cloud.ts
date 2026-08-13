@@ -1,7 +1,8 @@
 "use client";
 
 import { createClient, type RealtimeChannel, type Session, type SupabaseClient } from "@supabase/supabase-js";
-import type { AiImportBundle, AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TravelPlan, TravelShareAccess, TravelShareLink } from "./types";
+import type { AiImportBundle, AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
+import { cloudPlanIdFor, publicTravelPayload } from "./travel-cloud";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
@@ -176,26 +177,34 @@ export async function acknowledgeConciergeProposalRuns(runIds: string[]): Promis
   await invokeConcierge({ action: "ack", runIds });
 }
 
-function cloudPayload(plan: TravelPlan): TravelPlan {
-  const payload = { ...plan };
-  delete payload.cloud;
-  return payload as TravelPlan;
-}
-
 export async function publishTravelPlan(plan: TravelPlan): Promise<TravelPlan> {
   const client = getCloudClient();
   const session = await ensureCloudSession();
-  if (!client || !session) throw new Error("cloud_not_configured");
-  const { data, error } = await client.from("travel_plans").upsert({
-    id: plan.id,
+  if (!client || !isPermanentSession(session)) throw new Error("permanent_account_required");
+  const cloudPlanId = await cloudPlanIdFor(plan, session.user.id);
+  const record = {
+    id: cloudPlanId,
     owner_id: session.user.id,
-    payload: cloudPayload(plan),
-  }, { onConflict: "id" }).select("owner_id, updated_at").single();
+    payload: publicTravelPayload(plan),
+  };
+  let mutation = await client.from("travel_plans").insert(record);
+  if (mutation.error?.code === "23505") {
+    mutation = await client.from("travel_plans")
+      .update({ payload: record.payload })
+      .eq("id", cloudPlanId)
+      .eq("owner_id", session.user.id);
+  }
+  if (mutation.error) throw mutation.error;
+  const { data, error } = await client.from("travel_plans")
+    .select("owner_id, updated_at")
+    .eq("id", cloudPlanId)
+    .single();
   if (error) throw error;
   return {
     ...plan,
     cloud: {
       published: true,
+      cloudPlanId,
       ownerId: data.owner_id,
       permission: data.owner_id === session.user.id ? "owner" : "editor",
       lastSyncedAt: data.updated_at,
@@ -206,7 +215,8 @@ export async function publishTravelPlan(plan: TravelPlan): Promise<TravelPlan> {
 export async function updatePublishedTravelPlan(plan: TravelPlan): Promise<void> {
   const client = getCloudClient();
   if (!client || !plan.cloud?.published || plan.cloud.permission === "viewer") return;
-  const { error } = await client.from("travel_plans").update({ payload: cloudPayload(plan) }).eq("id", plan.id);
+  const cloudPlanId = plan.cloud.cloudPlanId ?? plan.id;
+  const { error } = await client.from("travel_plans").update({ payload: publicTravelPayload(plan) }).eq("id", cloudPlanId);
   if (error) throw error;
 }
 
@@ -220,66 +230,125 @@ async function sha256Bytea(value: string): Promise<string> {
   return `\\x${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
-export async function createTravelShareLink(options: {
-  plan: TravelPlan;
-  permission: "viewer" | "editor";
-  accessMode: TravelShareAccess;
-  approvedEmail?: string;
-  expiresAt?: string;
-}): Promise<TravelShareLink> {
-  const client = getCloudClient();
-  const session = await ensureCloudSession();
-  if (!client || !session) throw new Error("cloud_not_configured");
-
-  if (options.accessMode === "approved_google") {
-    const accountId = options.approvedEmail?.trim().toLowerCase();
-    if (!accountId) throw new Error("approved_account_required");
-    const invitedEmail = accountIdToEmail(accountId);
-    const { data: existingMember, error: lookupError } = await client.from("travel_members")
-      .select("id")
-      .eq("plan_id", options.plan.id)
-      .ilike("invited_email", invitedEmail)
-      .maybeSingle();
-    if (lookupError) throw lookupError;
-    const memberMutation = existingMember
-      ? client.from("travel_members").update({ permission: options.permission }).eq("id", existingMember.id)
-      : client.from("travel_members").insert({
-        plan_id: options.plan.id,
-        invited_email: invitedEmail,
-        permission: options.permission,
-        added_by: session.user.id,
-      });
-    const { error: memberError } = await memberMutation;
-    if (memberError) throw memberError;
-  }
-
-  const token = randomShareToken();
-  const { data, error } = await client.from("travel_share_links").insert({
-    plan_id: options.plan.id,
-    token_hash: await sha256Bytea(token),
-    permission: options.permission,
-    access_mode: options.accessMode,
-    expires_at: options.expiresAt || null,
-    created_by: session.user.id,
-  }).select("id, permission, access_mode, expires_at").single();
-  if (error) throw error;
-
+function shareUrlFor(linkId: string): string {
   const shareUrl = new URL(window.location.href.split("?")[0]);
-  shareUrl.searchParams.set("share", token);
-  return {
-    id: data.id,
-    url: shareUrl.toString(),
-    permission: data.permission,
-    accessMode: data.access_mode,
-    expiresAt: data.expires_at ?? undefined,
-  };
+  shareUrl.searchParams.set("share", linkId);
+  return shareUrl.toString();
 }
 
-export async function revokeTravelShareLink(id: string): Promise<void> {
+function memberAccountLabel(invitedEmail: string): string {
+  const legacySuffix = "@users.exchange-companion.local";
+  return invitedEmail.endsWith(legacySuffix) ? invitedEmail.slice(0, -legacySuffix.length) : invitedEmail;
+}
+
+function memberAccountToEmail(account: string): string {
+  const normalized = account.trim().toLowerCase();
+  if (!normalized) throw new Error("approved_account_required");
+  if (!normalized.includes("@")) return accountIdToEmail(normalized);
+  if (!/^\S+@\S+\.\S+$/.test(normalized)) throw new Error("invalid_email");
+  return normalized;
+}
+
+async function ensurePrimaryTravelLink(plan: TravelPlan): Promise<TravelLinkSettings> {
+  const client = getCloudClient();
+  const session = await ensureCloudSession();
+  if (!client || !isPermanentSession(session)) throw new Error("permanent_account_required");
+  const cloudPlanId = plan.cloud?.cloudPlanId ?? plan.id;
+  const selectPrimary = () => client.from("travel_share_links")
+    .select("id, permission, expires_at, revoked_at")
+    .eq("plan_id", cloudPlanId)
+    .eq("is_primary", true)
+    .maybeSingle();
+  let { data, error } = await selectPrimary();
+  if (error) throw error;
+  if (!data) {
+    const token = randomShareToken();
+    const created = await client.from("travel_share_links").insert({
+      plan_id: cloudPlanId,
+      token_hash: await sha256Bytea(token),
+      permission: "viewer",
+      access_mode: "anyone",
+      expires_at: null,
+      revoked_at: new Date().toISOString(),
+      is_primary: true,
+      created_by: session.user.id,
+    }).select("id, permission, expires_at, revoked_at").single();
+    if (created.error?.code === "23505") {
+      ({ data, error } = await selectPrimary());
+      if (error || !data) throw error ?? new Error("primary_link_missing");
+    } else {
+      if (created.error) throw created.error;
+      data = created.data;
+    }
+  }
+  return { id: data.id, url: shareUrlFor(data.id), permission: data.permission, enabled: data.revoked_at === null, expiresAt: data.expires_at ?? undefined };
+}
+
+async function listTravelMembers(plan: TravelPlan): Promise<TravelMemberAccess[]> {
   const client = getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
-  const { error } = await client.from("travel_share_links").update({ revoked_at: new Date().toISOString() }).eq("id", id);
+  const cloudPlanId = plan.cloud?.cloudPlanId ?? plan.id;
+  const { data, error } = await client.from("travel_members")
+    .select("id, invited_email, permission")
+    .eq("plan_id", cloudPlanId)
+    .order("created_at", { ascending: true });
   if (error) throw error;
+  return (data ?? []).filter((member) => member.invited_email).map((member) => ({ id: member.id, account: memberAccountLabel(member.invited_email!), permission: member.permission }));
+}
+
+export async function loadTravelSharingSettings(plan: TravelPlan): Promise<TravelSharingSettings> {
+  const [link, members] = await Promise.all([ensurePrimaryTravelLink(plan), listTravelMembers(plan)]);
+  return { link, members };
+}
+
+export async function updateTravelLinkSettings(plan: TravelPlan, settings: { enabled: boolean; permission: "viewer" | "editor"; expiresAt?: string }): Promise<TravelLinkSettings> {
+  const client = getCloudClient();
+  if (!client) throw new Error("cloud_not_configured");
+  const current = await ensurePrimaryTravelLink(plan);
+  const { data, error } = await client.from("travel_share_links").update({
+    permission: settings.permission,
+    expires_at: settings.expiresAt || null,
+    revoked_at: settings.enabled ? null : new Date().toISOString(),
+  }).eq("id", current.id).select("id, permission, expires_at, revoked_at").single();
+  if (error) throw error;
+  return { id: data.id, url: shareUrlFor(data.id), permission: data.permission, enabled: data.revoked_at === null, expiresAt: data.expires_at ?? undefined };
+}
+
+export async function upsertTravelMember(plan: TravelPlan, account: string, permission: "viewer" | "editor"): Promise<TravelMemberAccess[]> {
+  const client = getCloudClient();
+  const session = await ensureCloudSession();
+  if (!client || !isPermanentSession(session)) throw new Error("permanent_account_required");
+  await ensurePrimaryTravelLink(plan);
+  const cloudPlanId = plan.cloud?.cloudPlanId ?? plan.id;
+  const invitedEmail = memberAccountToEmail(account);
+  const { data: existing, error: lookupError } = await client.from("travel_members")
+    .select("id")
+    .eq("plan_id", cloudPlanId)
+    .ilike("invited_email", invitedEmail)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+  const mutation = existing
+    ? client.from("travel_members").update({ permission }).eq("id", existing.id)
+    : client.from("travel_members").insert({ plan_id: cloudPlanId, invited_email: invitedEmail, permission, added_by: session.user.id });
+  const { error } = await mutation;
+  if (error) throw error;
+  return listTravelMembers(plan);
+}
+
+export async function updateTravelMemberPermission(plan: TravelPlan, memberId: string, permission: "viewer" | "editor"): Promise<TravelMemberAccess[]> {
+  const client = getCloudClient();
+  if (!client) throw new Error("cloud_not_configured");
+  const { error } = await client.from("travel_members").update({ permission }).eq("id", memberId);
+  if (error) throw error;
+  return listTravelMembers(plan);
+}
+
+export async function removeTravelMember(plan: TravelPlan, memberId: string): Promise<TravelMemberAccess[]> {
+  const client = getCloudClient();
+  if (!client) throw new Error("cloud_not_configured");
+  const { error } = await client.from("travel_members").delete().eq("id", memberId);
+  if (error) throw error;
+  return listTravelMembers(plan);
 }
 
 export async function redeemTravelShare(token: string): Promise<TravelPlan> {
@@ -290,12 +359,13 @@ export async function redeemTravelShare(token: string): Promise<TravelPlan> {
   if (redemptionError) throw redemptionError;
   const result = redemption?.[0];
   if (!result) throw new Error("invalid_share");
-  const { data, error } = await client.from("travel_plans").select("payload, owner_id, updated_at").eq("id", result.plan_id).single();
+  const { data, error } = await client.from("travel_plans").select("id, payload, owner_id, updated_at").eq("id", result.plan_id).single();
   if (error) throw error;
   return {
     ...(data.payload as TravelPlan),
     cloud: {
       published: true,
+      cloudPlanId: data.id,
       ownerId: data.owner_id,
       permission: result.permission,
       lastSyncedAt: data.updated_at,
@@ -311,7 +381,7 @@ export function subscribeToTravelPlan(planId: string, onChange: (plan: TravelPla
       const row = event.new as { payload: TravelPlan; owner_id: string; updated_at: string };
       onChange({
         ...row.payload,
-        cloud: { published: true, ownerId: row.owner_id, lastSyncedAt: row.updated_at },
+        cloud: { published: true, cloudPlanId: planId, ownerId: row.owner_id, lastSyncedAt: row.updated_at },
       });
     })
     .subscribe();

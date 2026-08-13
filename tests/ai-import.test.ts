@@ -19,6 +19,7 @@ import { defaultState } from "../app/lib/default-data";
 import { evaluateBaggageAllowances } from "../app/lib/baggage";
 import { createExchangeConciergeHandoff } from "../app/lib/concierge-handoff";
 import { normalizeImportedState, resourceSearchTags } from "../app/lib/storage";
+import { pruneProcessedResourceIntake } from "../app/lib/resource-intake";
 import type { AiImportBundle, AiProposal, AppState } from "../app/lib/types";
 
 function validResourceBundle(): AiImportBundle {
@@ -88,6 +89,8 @@ test("exports a self-describing handoff with first-use setup locked for routine 
   assert.equal(handoff.setupSnapshot.lockedForRoutineReconciliation, true);
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "base-budget")?.proposalEntity, "budget-item");
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("days[].activities[].mapsUrl"), true);
+  assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("stays[]"), true);
+  assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("references[]"), true);
   assert.equal(handoff.state, state);
 });
 
@@ -269,6 +272,35 @@ test("removes stale proposal history and its unused evidence", () => {
   assert.deepEqual(pruned.aiInbox?.sources.map((source) => source.id), ["source-current"]);
 });
 
+test("timestamps a processed URL when applied and removes it after 48 hours", () => {
+  const state = cleanState();
+  state.resourceIntake = [{ id: "resource-intake-1", url: "https://example.org/guide", note: "", status: "pending", createdAt: "2027-01-01T12:00:00Z" }];
+  state.aiInbox = {
+    sources: [{ id: "source-url-run-1", label: "Authorized URL", kind: "research", url: "https://example.org/guide", capturedAt: "2027-01-02" }],
+    proposals: [{
+      id: "proposal-intake-run-1",
+      title: "完成網址辨識",
+      summary: "已完成跨欄位比對。",
+      entity: "resource-intake",
+      action: "update",
+      targetId: "resource-intake-1",
+      value: { status: "processed" },
+      confidence: "high",
+      privacy: "private",
+      evidenceIds: ["source-url-run-1"],
+      status: "pending",
+    }],
+  };
+  const applied = applyAiProposal(state, "proposal-intake-run-1");
+  const processedAt = applied.resourceIntake?.[0].processedAt;
+  assert.ok(processedAt && Number.isFinite(Date.parse(processedAt)));
+  assert.equal(pruneProcessedResourceIntake(applied, Date.parse(processedAt) + 2 * 86_400_000 - 1).resourceIntake?.length, 1);
+  assert.equal(pruneProcessedResourceIntake(applied, Date.parse(processedAt) + 2 * 86_400_000).resourceIntake?.length, 0);
+  const restored = undoAiProposal(applied, "proposal-intake-run-1");
+  assert.equal(restored.resourceIntake?.[0].status, "pending");
+  assert.equal(restored.resourceIntake?.[0].processedAt, undefined);
+});
+
 test("recognizes an officially documented personal item without inventing a weight", () => {
   const state = cleanState();
   state.resources = [{
@@ -357,6 +389,25 @@ test("rejects malformed updates and timestamps without a UTC offset", () => {
   const offsetless = validResourceBundle();
   offsetless.generatedAt = "2027-01-15T12:00:00";
   assert.equal(validateAiImportBundle(offsetless), false);
+});
+
+test("accepts reviewed hotel bases and trip references but rejects hidden nested data", () => {
+  const bundle = validResourceBundle();
+  bundle.proposals[0] = {
+    ...bundle.proposals[0],
+    entity: "travel-plan",
+    action: "update",
+    targetId: "travel-bangkok",
+    value: {
+      stays: [{ id: "stay-bangkok", name: "Bangkok Hotel", checkIn: "2026-09-26", checkOut: "2026-09-29", area: "Sukhumvit", address: "", mapsUrl: "https://maps.example/hotel", sourceUrl: "https://hotel.example", imageUrl: "https://hotel.example/photo.jpg", imageAlt: "Hotel", summary: "Convenient travel base.", highlights: ["Near transit"], notes: "" }],
+      references: [{ id: "reference-map", label: "Shared map", kind: "map-list", url: "https://maps.example/list", description: "Trip planning list." }],
+    },
+  };
+  assert.equal(validateAiImportBundle(bundle), true);
+
+  const hidden = structuredClone(bundle) as unknown as { proposals: Array<{ value: { stays: Array<Record<string, unknown>> } }> };
+  hidden.proposals[0].value.stays[0].bookingReference = "private";
+  assert.equal(validateAiImportBundle(hidden), false);
 });
 
 test("rejects invisible outer or nested fields and reversed ranges", () => {

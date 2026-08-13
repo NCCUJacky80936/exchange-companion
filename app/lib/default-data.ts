@@ -19,8 +19,13 @@ export const phaseMeta: Record<JourneyPhase, { label: string; number: string; co
 
 export const defaultState: AppState = {
   version: 1,
-  dataRevision: 4,
+  dataRevision: 7,
   setupCompleted: false,
+  homeExperience: {
+    mode: "activation",
+    workflow: "undecided",
+    tutorialVersion: 1,
+  },
   journey: {
     id: "my-exchange-journey",
     kind: "exchange",
@@ -303,6 +308,11 @@ export const defaultState: AppState = {
     { id: "arrival", name: "落地一次性支出（待填）", category: "arrival", amount: 0, currency: exchangeProfile.primaryCurrency, cadence: "once", basis: "unset", paid: false, notes: "", sourceLabel: "", verifiedAt: "" },
   ],
   emergencyContact: "",
+  personalization: {
+    sidebarNote: "慢慢準備，也正在靠近。",
+    avatarDataUrl: "",
+    headingLanguage: "zh-TW",
+  },
   travelPlans: [],
   studyEvents: [],
   aiInbox: { sources: [], proposals: [] },

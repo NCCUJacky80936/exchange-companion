@@ -27,11 +27,11 @@ npm run doctor
 npm run dev
 ```
 
-瀏覽 `http://localhost:3000/`。未設定雲端時是純本機模式，不需要帳號或 AI 額度；若 `.env.local` 已連接 Supabase，會先看到登入頁，登入並載入該帳號手帳後才進主畫面。
+瀏覽 `http://localhost:3000/`。未設定雲端時是純本機模式，不需要帳號或 AI 額度；若 `.env.local` 已連接 Supabase，會先看到登入頁，登入並載入該帳號手帳後才進主畫面。新手完成目的地資料後會先看到首頁啟用指南；舊手帳會直接保留在日常控制台。
 
 ## 4. 讓 Codex 補齊內容
 
-在 repository 內要求 Codex 使用 `$create-exchange-companion`。Codex 會先確認你願意授權的資料範圍。之後到網站的 AI 整理頁下載最新交接檔並複製指令，交給 `$exchange-concierge` 產生可匯入的提案。提案不會自動套用，必須回到網站審核。
+在 repository 內要求 Codex 使用 `$create-exchange-companion`。Codex 會先確認你願意授權的資料範圍。正式雲端版可依首頁指南下載一次私人 `exchange-concierge-connection.json`；之後 `$exchange-concierge` 每次先讀雲端最新手帳，再送回待審提案，不必反覆下載 JSON。純本機或連線不可用時，AI 頁仍可下載最新交接檔並匯入回傳 bundle。兩種方式都不會自動套用，必須回到網站審核。
 
 ## 5. 上版前
 

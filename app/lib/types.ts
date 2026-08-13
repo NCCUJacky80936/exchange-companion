@@ -130,6 +130,8 @@ export interface ResourceIntake {
   note: string;
   status: "pending" | "processed";
   createdAt: string;
+  /** Website-owned timestamp used to remove completed URL intake records after 48 hours. */
+  processedAt?: string;
 }
 
 export interface BudgetItem {
@@ -187,6 +189,32 @@ export interface TravelPackingItem {
   notes: string;
 }
 
+export interface TravelStay {
+  id: string;
+  name: string;
+  checkIn: string;
+  checkOut: string;
+  area: string;
+  address: string;
+  mapsUrl: string;
+  sourceUrl: string;
+  imageUrl: string;
+  imageAlt: string;
+  summary: string;
+  highlights: string[];
+  notes: string;
+}
+
+export type TravelReferenceKind = "map-list" | "spreadsheet" | "guide" | "booking" | "other";
+
+export interface TravelReference {
+  id: string;
+  label: string;
+  kind: TravelReferenceKind;
+  url: string;
+  description: string;
+}
+
 export interface TravelPlan {
   id: string;
   kind: "travel";
@@ -199,6 +227,8 @@ export interface TravelPlan {
   currency: string;
   notes: string;
   days: TravelDay[];
+  stays?: TravelStay[];
+  references?: TravelReference[];
   travelNotes: TravelNote[];
   packingItems: TravelPackingItem[];
   createdAt: string;
@@ -211,6 +241,8 @@ export type TravelShareAccess = "anyone" | "approved_google";
 
 export interface TravelCloudMeta {
   published: boolean;
+  /** Stable cloud row ID. The local TravelPlan.id remains unchanged. */
+  cloudPlanId?: string;
   ownerId?: string;
   permission?: TravelPermission;
   lastSyncedAt?: string;
@@ -222,6 +254,25 @@ export interface TravelShareLink {
   permission: Exclude<TravelPermission, "owner">;
   accessMode: TravelShareAccess;
   expiresAt?: string;
+}
+
+export interface TravelLinkSettings {
+  id: string;
+  url: string;
+  permission: Exclude<TravelPermission, "owner">;
+  enabled: boolean;
+  expiresAt?: string;
+}
+
+export interface TravelMemberAccess {
+  id: string;
+  account: string;
+  permission: Exclude<TravelPermission, "owner">;
+}
+
+export interface TravelSharingSettings {
+  link: TravelLinkSettings;
+  members: TravelMemberAccess[];
 }
 
 export type EvidenceKind = "official" | "school" | "city" | "email" | "file" | "video" | "research";
@@ -333,6 +384,20 @@ export interface Journey {
   destinations: string[];
 }
 
+export interface NotebookPersonalization {
+  sidebarNote: string;
+  avatarDataUrl: string;
+  headingLanguage: "zh-TW" | "en";
+}
+
+export interface HomeExperience {
+  mode: "activation" | "dashboard";
+  workflow: "undecided" | "ai" | "manual";
+  tutorialVersion: number;
+  starterPromptCopiedAt?: string;
+  activatedAt?: string;
+}
+
 export interface AppState {
   version: 1;
   dataRevision?: number;
@@ -349,6 +414,9 @@ export interface AppState {
   travelPlans?: TravelPlan[];
   studyEvents?: StudyEvent[];
   aiInbox?: AiInbox;
+  personalization?: NotebookPersonalization;
+  homeExperience?: HomeExperience;
 }
 
-export type NavSection = "home" | "journey" | "travel" | "packing" | "resources" | "ai" | "settings";
+export type NavSection = "home" | "journey" | "travel" | "resources" | "ai" | "settings";
+export type JourneyView = "progress" | "packing";
