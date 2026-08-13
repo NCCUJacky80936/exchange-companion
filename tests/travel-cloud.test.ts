@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cloudPlanIdFor, matchesPublicTravelPayload, publicTravelPayload } from "../app/lib/travel-cloud";
+import { cloudPlanIdFor, matchesPublicTravelPayload, publicTravelPayload, resolveTravelPermission } from "../app/lib/travel-cloud";
 import type { TravelPlan, TravelReference, TravelStay } from "../app/lib/types";
 
 function plan(overrides: Partial<TravelPlan> = {}): TravelPlan {
@@ -34,6 +34,12 @@ test("cloud IDs are stable per user and separate from local trip IDs", async () 
   assert.equal(first, retry);
   assert.notEqual(first, anotherUser);
   assert.notEqual(first, plan().id);
+});
+
+test("database ownership always outranks a share-link permission", () => {
+  assert.equal(resolveTravelPermission("user-1", "user-1", "viewer"), "owner");
+  assert.equal(resolveTravelPermission("user-1", "user-1", "editor"), "owner");
+  assert.equal(resolveTravelPermission("user-1", "user-2", "editor"), "editor");
 });
 
 test("shared payload uses an explicit travel-only whitelist", () => {

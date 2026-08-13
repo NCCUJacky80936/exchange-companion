@@ -2,7 +2,7 @@
 
 import { createClient, type RealtimeChannel, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import type { AiImportBundle, AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
-import { cloudPlanIdFor, matchesPublicTravelPayload, publicTravelPayload } from "./travel-cloud";
+import { cloudPlanIdFor, matchesPublicTravelPayload, publicTravelPayload, resolveTravelPermission } from "./travel-cloud";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
@@ -371,10 +371,34 @@ export async function redeemTravelShare(token: string): Promise<TravelPlan> {
       published: true,
       cloudPlanId: data.id,
       ownerId: data.owner_id,
-      permission: result.permission,
+      permission: resolveTravelPermission(data.owner_id, session.user.id, result.permission),
       lastSyncedAt: data.updated_at,
     },
   };
+}
+
+export async function restoreOwnedTravelPermissions(state: AppState, currentSession?: Session): Promise<AppState> {
+  const client = getCloudClient();
+  const session = currentSession ?? await ensureCloudSession();
+  if (!client || !isPermanentSession(session)) return state;
+  const cloudPlanIds = [...new Set((state.travelPlans ?? [])
+    .filter((plan) => plan.cloud?.published)
+    .map((plan) => plan.cloud?.cloudPlanId ?? plan.id))];
+  if (!cloudPlanIds.length) return state;
+  const { data, error } = await client.from("travel_plans")
+    .select("id")
+    .in("id", cloudPlanIds)
+    .eq("owner_id", session.user.id);
+  if (error) throw error;
+  const ownedPlanIds = new Set((data ?? []).map((row) => row.id));
+  let changed = false;
+  const travelPlans = (state.travelPlans ?? []).map((plan) => {
+    const cloudPlanId = plan.cloud?.cloudPlanId ?? plan.id;
+    if (!plan.cloud?.published || !ownedPlanIds.has(cloudPlanId) || plan.cloud.permission === "owner") return plan;
+    changed = true;
+    return { ...plan, cloud: { ...plan.cloud, ownerId: session.user.id, permission: "owner" as const } };
+  });
+  return changed ? { ...state, travelPlans } : state;
 }
 
 export function subscribeToTravelPlan(planId: string, onChange: (plan: TravelPlan) => void): RealtimeChannel | null {

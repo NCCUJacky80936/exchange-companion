@@ -1,4 +1,17 @@
-import type { TravelPlan } from "./types";
+import type { TravelPermission, TravelPlan } from "./types";
+
+/**
+ * Ownership is durable and always outranks a member or bearer-link grant.
+ * The database owner ID is authoritative; callers should not infer ownership
+ * from the permission returned by a share link.
+ */
+export function resolveTravelPermission(
+  ownerId: string | undefined,
+  currentUserId: string,
+  grantedPermission: TravelPermission | undefined,
+): TravelPermission | undefined {
+  return ownerId === currentUserId ? "owner" : grantedPermission;
+}
 
 /**
  * Only fields that belong to the selected leisure trip may enter a shared row.

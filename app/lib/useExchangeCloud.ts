@@ -18,6 +18,7 @@ import {
   redeemTravelShare,
   removeTravelMember,
   removeTravelSubscription,
+  restoreOwnedTravelPermissions,
   revokeConciergeConnection,
   sendMagicLink,
   signInWithPasswordAccount,
@@ -135,14 +136,16 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       const remote = await readPrivateState(currentSession);
       if (remote) {
         const normalized = normalizeImportedState(remote.state);
-        const historyWasPruned = JSON.stringify(normalized.aiInbox) !== JSON.stringify(remote.state.aiInbox);
-        const revision = historyWasPruned ? await writePrivateState(normalized, remote.revision, "system") : remote.revision;
+        const repaired = await restoreOwnedTravelPermissions(normalized, currentSession);
+        const historyWasPruned = JSON.stringify(repaired.aiInbox) !== JSON.stringify(remote.state.aiInbox);
+        const ownershipWasRestored = repaired !== normalized;
+        const revision = historyWasPruned || ownershipWasRestored ? await writePrivateState(repaired, remote.revision, "system") : remote.revision;
         revisionRef.current = revision;
         setPrivateRevision(revision);
         skipNextPrivateSave.current = true;
-        lastSavedState.current = normalized;
-        setState(normalized);
-        setNotice("已載入你的私人交換手帳。 ");
+        lastSavedState.current = repaired;
+        setState(repaired);
+        setNotice(ownershipWasRestored ? "已載入私人手帳，並恢復你擁有的旅行分享權限。 " : "已載入你的私人交換手帳。 ");
       } else {
         const fresh = resetState();
         skipNextPrivateSave.current = true;
@@ -386,12 +389,14 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       if (mode === "use-cloud") {
         const remote = await readPrivateState();
         if (!remote) throw new Error("cloud_state_missing");
-        revisionRef.current = remote.revision;
-        setPrivateRevision(remote.revision);
         skipNextPrivateSave.current = true;
         const normalized = normalizeImportedState(remote.state);
-        lastSavedState.current = normalized;
-        setState(normalized);
+        const repaired = await restoreOwnedTravelPermissions(normalized, session);
+        const revision = repaired !== normalized ? await writePrivateState(repaired, remote.revision, "system") : remote.revision;
+        revisionRef.current = revision;
+        setPrivateRevision(revision);
+        lastSavedState.current = repaired;
+        setState(repaired);
       } else {
         if (!latestState.current) throw new Error("local_state_missing");
         const expectedRevision = revisionRef.current;

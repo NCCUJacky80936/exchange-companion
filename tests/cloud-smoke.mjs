@@ -51,6 +51,11 @@ try {
   assert.equal(link.error, null);
   const stableToken = link.data.id;
 
+  const ownerRedeemed = await owner.rpc("redeem_travel_share", { share_token: stableToken });
+  assert.equal(ownerRedeemed.error, null);
+  assert.equal(ownerRedeemed.data[0].plan_id, planId);
+  assert.equal(ownerRedeemed.data[0].permission, "owner", "opening your own share link must never downgrade ownership");
+
   const redeemed = await visitor.rpc("redeem_travel_share", { share_token: stableToken });
   assert.equal(redeemed.error, null);
   assert.equal(redeemed.data[0].plan_id, planId);
