@@ -17,14 +17,22 @@ test("validates the reusable profile, skills, and privacy boundary", () => {
   assert.match(run(process.execPath, ["scripts/privacy-check.mjs"]), /隱私檢查通過/);
 });
 
-test("installed app serves the cached notebook shell before refreshing navigation", async () => {
+test("installed app fetches the current notebook before using an offline fallback", async () => {
   const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
-  const cachedLookup = worker.indexOf('const cached = await caches.match("/")');
-  const cachedReturn = worker.indexOf("return cached", cachedLookup);
-  const backgroundRefresh = worker.indexOf("event.waitUntil(refresh.catch", cachedLookup);
-  assert.ok(cachedLookup >= 0 && cachedReturn > cachedLookup);
-  assert.ok(backgroundRefresh > cachedLookup && backgroundRefresh < cachedReturn);
+  const networkFetch = worker.indexOf("event.preloadResponse || fetch(request)");
+  const fallbackLookup = worker.indexOf("caches.match(NAVIGATION_FALLBACK)");
+  assert.ok(networkFetch >= 0 && fallbackLookup > networkFetch);
+  assert.doesNotMatch(worker, /caches\.match\("\/"\)/);
+  assert.match(worker, /exchange-companion-v2-4/);
   assert.match(worker, /navigationPreload\?\.enable\(\)/);
+});
+
+test("an existing PWA refreshes once when the repaired worker takes control", async () => {
+  const register = await readFile(new URL("../app/components/PwaRegister.tsx", import.meta.url), "utf8");
+  assert.match(register, /updateViaCache:\s*"none"/);
+  assert.match(register, /controllerchange/);
+  assert.match(register, /window\.location\.reload\(\)/);
+  assert.match(register, /exchange-companion:pwa-refresh-v2-4/);
 });
 
 test("mobile navigation keeps its controls above the iPhone home indicator", async () => {

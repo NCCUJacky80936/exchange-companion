@@ -1,5 +1,6 @@
-const CACHE_NAME = "exchange-companion-v2-3";
-const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/exchange-48.png", "/icons/exchange-192.png", "/icons/exchange-512.png", "/icons/apple-touch-icon.png", "/images/doodle-icons/home-safe.png"];
+const CACHE_NAME = "exchange-companion-v2-4";
+const NAVIGATION_FALLBACK = "/__offline-notebook-shell__";
+const APP_SHELL = ["/manifest.webmanifest", "/icons/exchange-48.png", "/icons/exchange-192.png", "/icons/exchange-512.png", "/icons/apple-touch-icon.png", "/images/doodle-icons/home-safe.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
@@ -19,20 +20,16 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") {
     event.respondWith((async () => {
-      const cached = await caches.match("/");
-      const refresh = (async () => {
+      try {
         const response = await (event.preloadResponse || fetch(request));
         if (response?.ok) {
           const copy = response.clone();
-          await caches.open(CACHE_NAME).then((cache) => cache.put("/", copy));
+          await caches.open(CACHE_NAME).then((cache) => cache.put(NAVIGATION_FALLBACK, copy));
         }
         return response;
-      })();
-      if (cached) {
-        event.waitUntil(refresh.catch(() => undefined));
-        return cached;
+      } catch {
+        return (await caches.match(NAVIGATION_FALLBACK)) || Response.error();
       }
-      return (await refresh) || Response.error();
     })());
     return;
   }
