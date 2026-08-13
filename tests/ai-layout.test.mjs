@@ -17,8 +17,9 @@ test("proposal inbox appears before connection and JSON cards", () => {
 test("AI page automatically polls the connected proposal inbox", () => {
   assert.match(ai, /setInterval\(\(\) => void refresh\(\), 60_000\)/);
   assert.match(ai, /visibilitychange/);
-  assert.match(ai, /網站會每分鐘及回到分頁時自動收取新提案/);
-  assert.match(ai, /Codex 主動巡檢/);
+  assert.match(ai, /每週巡檢會整理信件與新文件/);
+  assert.match(ai, /你在 Codex 新增狀態時則立即推送/);
+  assert.match(ai, /對話中新狀態立即產生待審提案/);
 });
 
 test("URL intake is collapsed by default and explains its retention", () => {

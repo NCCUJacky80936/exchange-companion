@@ -15,12 +15,12 @@
 
 ## 主動巡檢與送達
 
-1. 網站的私人 Agent 連線是送達通道；Codex automation 是觸發器，兩者缺一不可。
-2. 同一專案只建立一個主動巡檢。每次被喚醒後，先檢查 `work/exchange-concierge-connection.json`，再 pull 最新 handoff。
-3. 掃描範圍只包含使用者已授權的 Germany-exchange workspace、網站 pending intake，以及另行明確授權的信箱／行事曆；不可因為自動化而擴大私人資料權限。
+1. 網站的私人 Agent 連線是送達通道；Codex automation 與當前對話中的新狀態是兩種觸發器。
+2. 同一專案只建立一個每週主動巡檢。每次被喚醒後，依授權的 email-capture workflow 擷取信件並檢查 workspace 新增的截圖／文件，再確認 `work/exchange-concierge-connection.json` 並 pull 最新 handoff。
+3. 掃描範圍只包含使用者已授權的 Germany-exchange workspace、既有三個 Germany-exchange Gmail 帳號的 tracked senders、網站 pending intake，以及另行明確授權的行事曆；不可因為自動化而擴大私人資料權限。
 4. 使用 gitignored 的 `work/exchange-concierge-monitor-state.json` 保存最近一次成功巡檢時間與已處理來源摘要。只在 bundle 驗證且成功 push 後前移 checkpoint。
 5. 新證據必須完成全 surface reconciliation、兩個 validator 與 cloud push；沒有新證據就不產生空提案。連線遺失、撤銷、過期、revision conflict 或驗證失敗都必須通知使用者。
-6. 網站 AI 頁開啟時每分鐘與重新回到分頁時自動抓取新提案；提案仍維持 pending，必須由使用者決定是否套用。
+6. 使用者在 Codex 對話中直接確認新狀態時，同一輪立即執行 reconciliation 與 push，不等待每週巡檢。網站 AI 頁開啟時每分鐘與重新回到分頁時自動抓取新提案；提案仍維持 pending，必須由使用者決定是否套用。
 11. 不論雲端或 JSON 回傳，使用者都在網站逐項確認或批次套用目前可安全套用的提案。
 12. 使用 image generation 產生原創目的地 Hero、社群預覽和情境插圖。
 13. 驗證桌機、平板、手機、鍵盤、焦點、reduced motion、建置與隱私。

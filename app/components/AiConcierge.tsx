@@ -232,13 +232,13 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
       <section className={`ai-workflow-grid ${activeConnections.length ? "has-connection" : ""}`}>
         {activeConnections.length ? <article className="paper-card ai-connected-card">
           <div className="ai-card-heading"><Link2 size={22}/><div><p className="eyebrow">Connected agent</p><h2>已連結 Exchange Concierge</h2></div></div>
-          <p>{activeConnections[0].lastUsedAt ? `最近使用：${new Date(activeConnections[0].lastUsedAt).toLocaleString("zh-TW")}` : "連結已建立，尚未第一次使用。"} 網站會每分鐘及回到分頁時自動收取新提案；Codex 主動巡檢負責叫醒 Agent。</p>
+          <p>{activeConnections[0].lastUsedAt ? `最近使用：${new Date(activeConnections[0].lastUsedAt).toLocaleString("zh-TW")}` : "連結已建立，尚未第一次使用。"} 每週巡檢會整理信件與新文件；你在 Codex 新增狀態時則立即推送。網站會自動收取提案。</p>
           <div className="ai-connected-actions"><button className="button secondary" disabled={cloud.busy} onClick={() => void refreshCloudInbox()}><RefreshCw size={16}/>更新收件匣</button><button className="button text-button danger" disabled={cloud.busy} onClick={() => void cloud.revokeConciergeConnection(activeConnections[0].id)}><X size={16}/>撤銷連結</button></div>
         </article> : <article className="paper-card ai-start-card">
           <span className="tape" />
           <div className="ai-card-heading"><Sparkles size={25} /><div><p className="eyebrow">Free AI workflow</p><h2>從 Codex 開始整理</h2></div></div>
-          <p>第一次只需下載一次私人連結檔交給 Codex。連結負責安全送達；啟用 Codex 主動巡檢後，Agent 會定期讀取新狀態並把待審提案推回網站，不需要反覆下載 JSON。</p>
-          <ol className="ai-steps"><li><strong>1</strong><span>首次連結 Codex（一次即可，隨時可撤銷）</span></li><li><strong>2</strong><span>在 Codex 啟用這趟交換的主動巡檢</span></li><li><strong>3</strong><span>Agent 依授權資料整理並推送待審提案</span></li><li><strong>4</strong><span>網站自動收件，你再逐項確認是否套用</span></li></ol>
+          <p>第一次只需下載一次私人連結檔交給 Codex。每週巡檢會整理已授權信件與新放入資料夾的截圖或文件；你在 Codex 對話中新增狀態時則立即推送。</p>
+          <ol className="ai-steps"><li><strong>1</strong><span>首次連結 Codex（一次即可，隨時可撤銷）</span></li><li><strong>2</strong><span>每週主動抓信件與新增文件</span></li><li><strong>3</strong><span>對話中新狀態立即產生待審提案</span></li><li><strong>4</strong><span>網站自動收件，你再決定是否套用</span></li></ol>
           <div className="ai-primary-actions"><button className="button primary" disabled={!cloud.permanentAccount || cloud.privateRevision < 1 || cloud.busy} onClick={() => void pairConcierge()}><Link2 size={17} />首次連結 Codex</button><button className="button secondary" disabled={!cloud.permanentAccount || cloud.busy} onClick={() => void refreshCloudInbox()}><RefreshCw size={17} />更新提案收件匣</button></div>
           <details className="ai-offline-fallback"><summary>離線備援：下載／匯入 JSON</summary><p>只有無法連線雲端或需要攜帶完整資料到另一個環境時才使用。</p><button className="button text-button" onClick={() => void prepareHandoff()}><CloudDownload size={17} />{copied ? "交接檔與指令已準備" : "下載最新交接 JSON"}</button></details>
         </article>}

@@ -11,7 +11,7 @@ Turn authorized exchange evidence into proposed changes for Exchange Companion. 
 
 - Treat a direct user statement about exchange progress, an authorized project-file update, an authorized message, or a pending website intake as an event that requires reconciliation. Reading or updating the source record is not completion.
 - During every invoked run, continue through pull, all-surface comparison, validation, and cloud push. Do not leave a validated bundle only on disk when a usable private connection exists.
-- Proactive behavior requires one Codex automation to wake the Agent and inspect the authorized Germany-exchange workspace. Use a local checkpoint under gitignored `work/` to compare successful runs; never commit the checkpoint or private connection.
+- Proactive behavior uses one weekly Codex automation to wake the Agent, invoke the authorized email-intake workflow, and inspect new Germany-exchange workspace screenshots or documents. A direct status confirmation in an active Codex conversation is an immediate event: reconcile and push it in the same run rather than waiting for the weekly check. Use a local checkpoint under gitignored `work/` to compare successful runs; never commit the checkpoint or private connection.
 - When there is no new evidence, make no proposal and avoid noisy success messages. When new pending proposals are pushed, report their count. When the connection is missing, expired, revoked, or a revision conflict persists, notify the user instead of silently falling back and pretending the inbox is current.
 - The website review inbox remains the safety gate: proactive delivery never means automatically applying a proposal.
 
