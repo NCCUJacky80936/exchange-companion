@@ -1663,7 +1663,7 @@ h3 {
 
 @media (max-width: 820px) {
   :root { --sidebar-width: 244px; }
-  body { padding-bottom: 72px; }
+  body { padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
   .sidebar { z-index: 80; transform: translateX(-104%); transition: transform 220ms ease; }
   .sidebar.mobile-open { transform: translateX(0); }
   .app-main { margin-left: 0; }
@@ -1680,8 +1680,8 @@ h3 {
   .account-menu-wrap .avatar { display: grid; width: 36px; height: 36px; }
   .account-menu-wrap .account-popover { top: 54px; right: 12px; width: min(230px, calc(100vw - 24px)); }
   main { min-height: calc(100vh - 60px); padding: 22px 18px 45px; }
-  .mobile-bottom-nav { position: fixed; right: 0; bottom: 0; left: 0; z-index: 50; display: grid; height: calc(66px + env(safe-area-inset-bottom)); grid-template-columns: repeat(5, 1fr); border-top: 1.5px solid var(--ink); background: rgba(255, 254, 248, 0.97); padding-bottom: env(safe-area-inset-bottom); }
-  .mobile-bottom-nav button { display: grid; cursor: pointer; place-items: center; align-content: center; gap: 2px; border: 0; background: transparent; color: var(--muted); font-size: 10px; }
+  .mobile-bottom-nav { position: fixed; right: 0; bottom: 0; left: 0; z-index: 50; display: grid; height: calc(78px + env(safe-area-inset-bottom)); grid-template-columns: repeat(5, 1fr); border-top: 1.5px solid var(--ink); background: rgba(255, 254, 248, 0.97); padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .mobile-bottom-nav button { display: grid; min-height: 64px; cursor: pointer; place-items: center; align-content: center; gap: 2px; border: 0; background: transparent; color: var(--muted); font-size: 10px; }
   .mobile-bottom-nav button.active { background: var(--yellow-soft); color: var(--ink); font-weight: 700; }
   .mobile-bottom-nav .nav-doodle-icon { width: 32px; height: 32px; }
   .mobile-nav-icon-wrap { position: relative; display: grid; place-items: center; }

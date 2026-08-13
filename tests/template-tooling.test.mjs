@@ -27,6 +27,13 @@ test("installed app serves the cached notebook shell before refreshing navigatio
   assert.match(worker, /navigationPreload\?\.enable\(\)/);
 });
 
+test("mobile navigation keeps its controls above the iPhone home indicator", async () => {
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(styles, /height: calc\(78px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(styles, /padding-bottom: calc\(12px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(styles, /body \{ padding-bottom: calc\(88px \+ env\(safe-area-inset-bottom\)\); \}/);
+});
+
 test("ships only experience-level packing inspiration URLs", async () => {
   const inspiration = JSON.parse(await readFile(new URL("../config/packing-inspiration.json", import.meta.url), "utf8"));
   assert.equal(inspiration.experienceOnly, true);
