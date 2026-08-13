@@ -31,7 +31,7 @@ import {
 } from "./cloud";
 import { findAiBundleCollisions, importAiBundle, matchesAiJourneyScope, validateAiImportBundle } from "./ai-import";
 import { normalizeImportedState, resetState } from "./storage";
-import { publicTravelPayload } from "./travel-cloud";
+import { matchesPublicTravelPayload, publicTravelPayload } from "./travel-cloud";
 import type { AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
 
 const PRIVATE_SYNC_KEY = "exchange-companion:private-cloud-sync";
@@ -203,13 +203,17 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   useEffect(() => {
     if (!configured || !session) return;
     const channels = sharedPlanIds.map((planId) => subscribeToTravelPlan(planId, (incoming) => {
-      setState((current) => ({
-        ...current,
-        travelPlans: (current.travelPlans ?? []).map((item) => item.id === incoming.id ? {
-          ...incoming,
-          cloud: { ...incoming.cloud!, permission: item.cloud?.permission ?? incoming.cloud?.permission },
-        } : item),
-      }));
+      setState((current) => {
+        const existing = (current.travelPlans ?? []).find((item) => item.id === incoming.id);
+        if (existing && matchesPublicTravelPayload(incoming, existing)) return current;
+        return {
+          ...current,
+          travelPlans: (current.travelPlans ?? []).map((item) => item.id === incoming.id ? {
+            ...incoming,
+            cloud: { ...incoming.cloud!, permission: item.cloud?.permission ?? incoming.cloud?.permission },
+          } : item),
+        };
+      });
     }));
     return () => { channels.forEach((channel) => void removeTravelSubscription(channel)); };
   }, [configured, session, setState, sharedPlanIds]);
