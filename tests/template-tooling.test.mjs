@@ -233,6 +233,124 @@ test("initializes a fresh import shell from the exact handoff instead of stale o
   assert.deepEqual(initialized.proposals, []);
 });
 
+test("prepares compact targeted context and checkpoints a validated no-op run", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "exchange-concierge-run-"));
+  const handoffPath = join(directory, "handoff.json");
+  const contextPath = join(directory, "context.json");
+  const runStatePath = join(directory, "run-state.json");
+  const checkpointPath = join(directory, "checkpoint.json");
+  const bundlePath = join(directory, "bundle.json");
+  const coveragePath = join(directory, "coverage.json");
+  const summaryPath = join(directory, "summary.json");
+  const scope = "exchange:journey-hdm";
+  const surfaces = [
+    ["journey", "journey"],
+    ["tasks", "task"],
+    ["resources", "resource"],
+    ["resource-intake", "resource-intake"],
+    ["packing", "packing-item"],
+    ["bags", "bag"],
+    ["flight-allowances", "flight-allowance"],
+    ["base-budget", "budget-item"],
+    ["study-events", "study-event"],
+    ["travel-plans", "travel-plan"],
+  ].map(([id, proposalEntity]) => ({ id, proposalEntity }));
+  const state = {
+    journey: { id: "journey-hdm", title: "Germany exchange", hostSchool: "HdM", hostCity: "Stuttgart", destinations: ["Germany"], startDate: "2026-10-01", endDate: "2027-08-31" },
+    tasks: [{ id: "international-driving-permit", title: "Apply for international driving permit", status: "not-started", phase: "before-departure", priority: "medium", dueDate: "2026-09-20" }],
+    resources: [],
+    resourceIntake: [],
+    packingItems: [],
+    bags: [],
+    flightAllowances: [],
+    budget: [],
+    studyEvents: [],
+    travelPlans: [],
+    aiInbox: {
+      sources: [{ id: "old-source" }],
+      proposals: [{ id: "old-applied", title: "Old applied proposal", summary: `APPLIED_PRIVATE_DETAIL_${"x".repeat(40000)}`, status: "applied", entity: "task" }],
+    },
+  };
+  const handoff = {
+    schemaVersion: 1,
+    kind: "exchange-companion-handoff",
+    generatedAt: "2026-08-14T12:00:00+08:00",
+    journeyScope: scope,
+    baseRevision: 12,
+    editableSurfaces: surfaces,
+    state,
+    outputTemplate: { schemaVersion: 1, generatedAt: "2026-08-14T12:00:00+08:00", journeyScope: scope, baseRevision: 12, sources: [], proposals: [] },
+  };
+  await writeFile(handoffPath, `${JSON.stringify(handoff, null, 2)}\n`, "utf8");
+  await writeFile(checkpointPath, `${JSON.stringify({
+    schemaVersion: 1,
+    lastSuccessfulAt: "2026-08-13T09:00:00+08:00",
+    journeyScope: scope,
+    baseRevision: 11,
+    entityHashes: {},
+    fileFingerprints: { "申請相關信件/example.md": "12:34" },
+    scanRoot: "/private/authorized-exchange-root",
+  }, null, 2)}\n`, "utf8");
+
+  const prepareResult = run("python3", [
+    ".agents/skills/exchange-concierge/scripts/concierge_run.py",
+    "prepare",
+    "--no-pull",
+    "--mode", "targeted",
+    "--intent", "international driving licence",
+    "--keyword", "driving",
+    "--affected-surface", "tasks",
+    "--handoff", handoffPath,
+    "--context", contextPath,
+    "--run-state", runStatePath,
+    "--checkpoint", checkpointPath,
+    "--bundle", bundlePath,
+    "--coverage", coveragePath,
+  ]);
+  assert.match(prepareResult, /PREPARED mode=targeted/);
+  const contextText = await readFile(contextPath, "utf8");
+  const context = JSON.parse(contextText);
+  assert.equal(context.kind, "exchange-concierge-run-context");
+  assert.equal(context.mode, "targeted");
+  assert.equal(context.historyCounts.applied, 1);
+  assert.equal(context.matchedEntities.tasks[0].id, "international-driving-permit");
+  assert.doesNotMatch(contextText, /APPLIED_PRIVATE_DETAIL/);
+  assert.ok(contextText.length < JSON.stringify(handoff).length / 2);
+  const initialized = JSON.parse(await readFile(bundlePath, "utf8"));
+  assert.equal(initialized.journeyScope, scope);
+  assert.deepEqual(initialized.proposals, []);
+
+  const coverage = JSON.parse(await readFile(coveragePath, "utf8"));
+  for (const row of coverage.surfaces) {
+    row.status = "no-new-evidence";
+    row.checks = ["fixture evidence categories checked; no new evidence found"];
+    row.evidenceIds = [];
+    row.missingEvidence = [];
+  }
+  await writeFile(coveragePath, `${JSON.stringify(coverage, null, 2)}\n`, "utf8");
+
+  const finalizeResult = run("python3", [
+    ".agents/skills/exchange-concierge/scripts/concierge_run.py",
+    "finalize",
+    "--record-success",
+    "--handoff", handoffPath,
+    "--run-state", runStatePath,
+    "--checkpoint", checkpointPath,
+    "--bundle", bundlePath,
+    "--coverage", coveragePath,
+    "--summary", summaryPath,
+  ]);
+  assert.match(finalizeResult, /FINALIZED delivery=no-proposals/);
+  assert.match(finalizeResult, /run=no-proposals/);
+  const checkpoint = JSON.parse(await readFile(checkpointPath, "utf8"));
+  const summary = JSON.parse(await readFile(summaryPath, "utf8"));
+  assert.equal(checkpoint.baseRevision, 12);
+  assert.deepEqual(checkpoint.fileFingerprints, { "申請相關信件/example.md": "12:34" });
+  assert.equal(checkpoint.scanRoot, "/private/authorized-exchange-root");
+  assert.equal(summary.proposalCount, 0);
+  assert.equal(summary.pushed, false);
+});
+
 test("rejects unsafe concierge updates, naive timestamps, and inbox collisions", async () => {
   const directory = await mkdtemp(join(tmpdir(), "exchange-companion-invalid-import-"));
   const validator = ".agents/skills/exchange-concierge/scripts/validate_import_bundle.py";

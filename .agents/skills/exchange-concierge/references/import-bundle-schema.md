@@ -21,7 +21,7 @@ exchange:<journey.id>
 
 The website rejects a structurally valid bundle for a different journey. School, city, dates, and destinations are editable facts and therefore are deliberately not part of the identity. When a current handoff contains `baseRevision`, copy it exactly. Cloud submission and website apply reject stale revisions so later manual edits cannot be overwritten.
 
-For a website handoff, do not type or infer this string. First initialize the output from the handoff's `outputTemplate` with `scripts/initialize_import_bundle.py`, then preserve its `journeyScope` exactly. Never reuse root fields from `outputs/`, `tests/fixtures/`, documentation examples, or an earlier session. Validate with that same handoff as the required second argument before delivery.
+For a website handoff, do not type or infer this string. The standard `concierge_run.py prepare` command initializes the output from the handoff's `outputTemplate`; when using the low-level offline fallback, run `scripts/initialize_import_bundle.py` yourself. Preserve `journeyScope` exactly, never reuse root fields from `outputs/`, fixtures, examples, or an earlier session, and validate against that same handoff before delivery.
 
 Each source requires `id`, `label`, `kind`, and `capturedAt`. Allowed `kind` values are `official`, `school`, `city`, `email`, `file`, `video`, and `research`. `evidenceType` is optional and is normally `general`; use `ticket` only for an exact e-ticket file or email attachment that the current user authorized. `url` and `note` are optional. Never use a private local path as a public URL.
 

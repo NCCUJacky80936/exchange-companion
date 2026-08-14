@@ -53,7 +53,7 @@ REQUIRED_ADD_FIELDS = {
 ALLOWED_FIELDS = {
     "journey": {"title", "ownerName", "homeCity", "hostCity", "hostSchool", "program", "startDate", "endDate", "orientationDate", "destinations"},
     "task": {"id", "title", "description", "phase", "status", "priority", "dueDate", "predecessorIds", "notes", "sourceLabel", "sourceUrl", "verifiedAt", "templateKind", "scheduledAt", "timeZone", "location", "contactName", "contactInfo", "referenceNumber", "cost", "currency", "checklist", "records", "result"},
-    "resource": {"id", "title", "description", "details", "category", "type", "url", "verifiedAt", "region", "origin", "privacy", "sourceLabel"},
+    "resource": {"id", "title", "description", "details", "category", "type", "url", "verifiedAt", "region", "origin", "privacy", "sourceLabel", "searchTags"},
     "resource-intake": {"id", "url", "note", "status", "createdAt"},
     "packing-item": {"id", "name", "category", "decision", "bagId", "quantity", "weightKg", "packed", "warning"},
     "bag": {"id", "name", "kind", "limitKg", "limitSource"},

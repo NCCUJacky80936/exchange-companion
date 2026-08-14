@@ -74,7 +74,7 @@ def audit_ids(bundle: dict) -> str:
                 fail(f"bundle.{key} entries need string ids")
             ids.append(item["id"])
     if not ids:
-        fail("bundle needs at least one run-versioned source and proposal")
+        return "no-proposals"
     suffixes = []
     for item_id in ids:
         match = RUN_SUFFIX.search(item_id)
@@ -133,6 +133,11 @@ def audit(handoff_path: Path, bundle_path: Path, manifest_path: Path) -> None:
     source_ids = {item.get("id") for item in bundle.get("sources", []) if isinstance(item, dict)}
     surface_by_entity = {item["proposalEntity"]: item["id"] for item in surfaces}
     entities = {item.get("entity") for item in bundle.get("proposals", []) if isinstance(item, dict) and isinstance(item.get("entity"), str)}
+    if not bundle.get("proposals"):
+        if bundle.get("sources"):
+            fail("a no-proposal run must not retain unused sources")
+        if any(isinstance(row, dict) and row.get("status") != "no-new-evidence" for row in rows):
+            fail("a no-proposal run requires every surface to be no-new-evidence")
     for item in surfaces:
         row = coverage[item["id"]]
         if row.get("status") not in STATUS:
