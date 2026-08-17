@@ -16,6 +16,7 @@ test("daily home keeps the interactive month calendar, bulletin, journey, and bu
   assert.match(dashboard, /role="dialog"/);
   assert.match(dashboard, /onMouseEnter=\{\(\) => dayItems\.length && setActiveDate\(date\)\}/);
   assert.match(styles, /grid-template-areas:\s*"bulletin" "agenda"/);
+  assert.match(styles, /\.home-bulletin-board\s*\{[^}]*overflow:\s*clip/);
 });
 
 test("activation copy separates public skill installation from the private connection file", () => {

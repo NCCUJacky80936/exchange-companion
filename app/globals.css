@@ -2074,7 +2074,10 @@ img[src*="/images/doodle-icons-v2/"],
 .home-status-progress-bar i { background: var(--mint, var(--sage)); }
 .home-core-card.journey { background: color-mix(in srgb, var(--blue) 38%, var(--paper)); }
 .home-core-card.budget { background: color-mix(in srgb, var(--yellow) 42%, var(--paper)); }
-.home-bulletin-board { background: color-mix(in srgb, var(--pink) 24%, var(--paper)); }
+.home-bulletin-board {
+  overflow: clip;
+  background: color-mix(in srgb, var(--pink) 24%, var(--paper));
+}
 
 /* Inline month calendar replaces the four-week list without moving its slot. */
 .home-daily-grid {
