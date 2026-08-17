@@ -1,25 +1,15 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
-import { Caveat, Noto_Sans_TC, LXGW_WenKai_TC } from "next/font/google";
-import "./globals.css";
+import { Noto_Sans_TC } from "next/font/google";
+// Keep the local preview from reusing a stale service-worker/browser CSS cache
+// after visual skin iterations. Update this token when the global visual layer
+// changes materially.
+import "./globals.css?visual=miyama-color-motion-20260817b";
 import PwaRegister from "./components/PwaRegister";
 import { exchangeProfile } from "./lib/profile";
 
 const notoSans = Noto_Sans_TC({
   variable: "--font-body",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const handChinese = LXGW_WenKai_TC({
-  variable: "--font-hand-zh",
-  weight: "400",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const caveat = Caveat({
-  variable: "--font-hand-en",
   subsets: ["latin"],
   display: "swap",
 });
@@ -69,7 +59,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#FFF8E7",
+  themeColor: "#F7F3EF",
 };
 
 export default function RootLayout({
@@ -79,7 +69,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang={exchangeProfile.language}>
-      <body className={`${notoSans.variable} ${handChinese.variable} ${caveat.variable}`}>
+      <body className={notoSans.variable}>
         {children}
         <PwaRegister />
       </body>

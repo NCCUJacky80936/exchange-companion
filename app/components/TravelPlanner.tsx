@@ -19,7 +19,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import Image from "next/image";
 import { type Dispatch, type FormEvent, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import type { ExchangeCloudController } from "../lib/useExchangeCloud";
@@ -191,11 +191,11 @@ function ShareTravelModal({ plan, cloud, onPlanPublished, onClose }: { plan: Tra
 }
 
 const activityMeta: Record<TravelActivityKind, { label: string; icon: string; color: string }> = {
-  place: { label: "景點", icon: "/images/doodle-icons/resources-safe.png", color: "terracotta" },
-  food: { label: "餐廳", icon: "/images/doodle-icons/daily-life-safe.png", color: "yellow" },
-  transport: { label: "交通", icon: "/images/doodle-icons/return-safe.png", color: "blue" },
-  stay: { label: "住宿", icon: "/images/doodle-icons/arrival-safe.png", color: "sage" },
-  note: { label: "備忘", icon: "/images/doodle-icons/documents-safe.png", color: "gray" },
+  place: { label: "景點", icon: "/images/doodle-icons-v2/journey-route.png", color: "terracotta" },
+  food: { label: "餐廳", icon: "/images/doodle-icons-v2/home-notebook.png", color: "yellow" },
+  transport: { label: "交通", icon: "/images/doodle-icons-v2/travel-suitcase.png", color: "blue" },
+  stay: { label: "住宿", icon: "/images/doodle-icons-v2/home-notebook.png", color: "sage" },
+  note: { label: "備忘", icon: "/images/doodle-icons-v2/resources-book.png", color: "gray" },
 };
 
 const studyEventMeta: Record<StudyEventKind, { label: string; className: string }> = {
@@ -427,12 +427,13 @@ function StudyCalendar({ events, onAdd, onDelete }: { events: StudyEvent[]; onAd
 }
 
 export default function TravelPlanner({ state, setState, cloud, focusTripId = "" }: { state: AppState; setState: Dispatch<SetStateAction<AppState>>; cloud: ExchangeCloudController; focusTripId?: string }) {
+  const reduceMotion = useReducedMotion();
   const plans = useMemo(() => state.travelPlans ?? [], [state.travelPlans]);
   const today = localDateKey();
   const sortedPlans = useMemo(() => sortTravelPlansForDisplay(plans, today), [plans, today]);
   const studyEvents = useMemo(() => state.studyEvents ?? [], [state.studyEvents]);
   const [selectedTripId, setSelectedTripId] = useState(sortedPlans[0]?.id ?? "");
-  const [expandedTripId, setExpandedTripId] = useState(sortedPlans[0]?.id ?? "");
+  const [expandedTripId, setExpandedTripId] = useState("");
   const [selectedDate, setSelectedDate] = useState(sortedPlans[0]?.days[0]?.date ?? "");
   const [editingPlan, setEditingPlan] = useState<TravelPlan | null | "new">(null);
   const [editingActivityId, setEditingActivityId] = useState("");
@@ -442,6 +443,7 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
   const [sharing, setSharing] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState("");
   const [tripActionsOpen, setTripActionsOpen] = useState(false);
+  const [spotlightTripId, setSpotlightTripId] = useState("");
   const tripActionsRef = useRef<HTMLDivElement>(null);
 
   const selectedPlan = sortedPlans.find((plan) => plan.id === selectedTripId) ?? sortedPlans[0] ?? null;
@@ -465,13 +467,24 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
   useEffect(() => {
     if (!focusTripId || !sortedPlans.some((plan) => plan.id === focusTripId)) return;
     const plan = sortedPlans.find((item) => item.id === focusTripId)!;
-    const timer = window.setTimeout(() => {
+    const openTimer = window.setTimeout(() => {
       setSelectedTripId(plan.id);
       setExpandedTripId(plan.id);
       setSelectedDate(plan.days[0]?.date ?? "");
+      setSpotlightTripId(plan.id);
     }, 0);
-    return () => window.clearTimeout(timer);
-  }, [focusTripId, sortedPlans]);
+    const scrollTimer = window.setTimeout(() => {
+      const target = document.getElementById(`trip-conflict-${plan.id}`) ?? document.getElementById(`trip-${plan.id}`);
+      target?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      if (target) window.scrollBy({ top: -88, behavior: reduceMotion ? "auto" : "smooth" });
+    }, reduceMotion ? 80 : 430);
+    const clearTimer = window.setTimeout(() => setSpotlightTripId((value) => value === plan.id ? "" : value), 2200);
+    return () => {
+      window.clearTimeout(openTimer);
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [focusTripId, reduceMotion, sortedPlans]);
 
   useEffect(() => {
     if (!tripActionsOpen) return;
@@ -498,7 +511,7 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
     }));
     setSelectedTripId(plan.id);
     setTripActionsOpen(false);
-    setExpandedTripId(plan.id);
+    setExpandedTripId("");
     setSelectedDate(plan.days[0]?.date ?? "");
     setTripView("itinerary");
     setEditingPlan(null);
@@ -535,9 +548,23 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
     const nextPlan = sortTravelPlansForDisplay(remaining, today)[0];
     setState((current) => ({ ...current, travelPlans: remaining }));
     setSelectedTripId(nextPlan?.id ?? "");
-    setExpandedTripId(nextPlan?.id ?? "");
+    setExpandedTripId("");
     setSelectedDate(nextPlan?.days[0]?.date ?? "");
     setDeleteConfirmId("");
+  }
+
+  function toggleTrip(plan: TravelPlan) {
+    const opening = expandedTripId !== plan.id;
+    setSelectedTripId(plan.id);
+    setTripActionsOpen(false);
+    setSelectedDate(plan.days[0]?.date ?? "");
+    setTripView("itinerary");
+    setExpandedTripId(opening ? plan.id : "");
+    window.setTimeout(() => {
+      const target = document.getElementById(`trip-${plan.id}`);
+      target?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      if (target) window.scrollBy({ top: -88, behavior: reduceMotion ? "auto" : "smooth" });
+    }, reduceMotion ? 0 : opening ? 330 : 180);
   }
 
   async function copySummary() {
@@ -561,13 +588,13 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
     <div className="page-stack travel-page">
       <header className="page-header travel-header">
         <div><p className="eyebrow">Trips around the exchange year</p><h1>旅行規劃</h1><p>先把想去的地方全部丟進來，再慢慢排成每天的路線；系統會先替你守住上課、考試與交換期限。</p></div>
-        {sharedView ? null : <button className="button primary travel-add-button" onClick={() => setEditingPlan("new")} aria-label="新增旅行"><Plus size={18} /><span>新增旅行</span></button>}
+        {sharedView ? null : <button className="button primary travel-add-button" onClick={() => setEditingPlan("new")} aria-label="新增旅行"><Plus size={19} /></button>}
       </header>
 
       {plans.length === 0 ? (
         <div className="travel-empty-layout travel-empty-layout-single">
           <motion.section className="travel-empty paper-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="empty-route-art"><Image src="/images/doodle-icons/return-safe.png" alt="飛機繞著地球的手繪旅行圖示" width={180} height={180} /></div>
+            <div className="empty-route-art"><Image src="/images/doodle-icons-v2/travel-suitcase.png" alt="手繪旅行行李圖示" width={180} height={180} /></div>
             <p className="eyebrow">An empty page is a good start</p>
             <h2>還沒有旅行，先留一張空白車票</h2>
             <p>只要先決定「想去哪」和「哪幾天」，住宿、交通、景點與預算都可以之後再補。</p>
@@ -586,20 +613,21 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
                 const temporalStatus = travelTemporalStatus(plan, today);
                 const expanded = selectedPlan.id === plan.id && expandedTripId === plan.id;
                 return (
-                  <article key={plan.id} className={`trip-accordion-item ${temporalStatus} ${expanded ? "expanded" : "collapsed"}`}>
-                  <button className={`trip-ticket ${expanded ? "active" : ""}`} aria-expanded={expanded} aria-controls={`trip-panel-${plan.id}`} onClick={() => {
-                    setSelectedTripId(plan.id);
-                    setTripActionsOpen(false);
-                    setSelectedDate(plan.days[0]?.date ?? "");
-                    setTripView("itinerary");
-                    setExpandedTripId((current) => current === plan.id ? "" : plan.id);
-                  }}>
+                  <motion.article layout="position" id={`trip-${plan.id}`} key={plan.id} className={`trip-accordion-item ${temporalStatus} ${expanded ? "expanded" : "collapsed"} ${spotlightTripId === plan.id ? "trip-attention" : ""}`}>
+                  <motion.button
+                    className={`trip-ticket ${expanded ? "active" : ""}`}
+                    aria-expanded={expanded}
+                    aria-controls={`trip-panel-${plan.id}`}
+                    whileTap={reduceMotion ? undefined : { y: 2, scale: 0.995 }}
+                    transition={{ type: "spring", stiffness: 520, damping: 32 }}
+                    onClick={() => toggleTrip(plan)}
+                  >
                     <span className="trip-ticket-index">0{index + 1}</span>
                     <div><strong>{plan.title}</strong><small>{formatDateRange(plan.startDate, plan.endDate)}</small><em>{plan.destinations.join(" · ")}</em></div>
                     <span className="trip-ticket-end"><span className="trip-time-label">{temporalStatus === "past" ? "已結束" : temporalStatus === "ongoing" ? "旅途中" : "即將出發"}</span>{planConflicts.length ? <span className="trip-conflict-count"><AlertTriangle size={13} />{planConflicts.length}</span> : <span className="trip-safe"><Check size={13} /></span>}<span className="trip-accordion-chevron"><ChevronDown size={19} /></span></span>
-                  </button>
+                  </motion.button>
                   <AnimatePresence initial={false}>
-                  {expanded ? <motion.div id={`trip-panel-${plan.id}`} className="trip-accordion-panel" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.24, ease: "easeOut" }}>
+                  {expanded ? <motion.div id={`trip-panel-${plan.id}`} className="trip-accordion-panel" initial={reduceMotion ? false : { height: 0, opacity: 0, y: -8 }} animate={{ height: "auto", opacity: 1, y: 0 }} exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0, y: -5 }} transition={reduceMotion ? { duration: 0 } : { height: { duration: 0.32, ease: [0.22, 1, 0.36, 1] }, opacity: { duration: 0.2 }, y: { type: "spring", stiffness: 430, damping: 34 } }}>
                   <div className="travel-main">
             <section className="travel-overview paper-card">
               <div className="travel-overview-top"><span className="trip-stamp">TRIP<br />{new Date(selectedPlan.startDate).getFullYear()}</span><div><p className="eyebrow">{travelDuration(selectedPlan)} days · {selectedPlan.travelers || "traveler not set"}</p><h2>{selectedPlan.title}</h2><p>{formatDateRange(selectedPlan.startDate, selectedPlan.endDate)}{selectedPlan.cloud?.published ? ` · ${selectedPlan.cloud.permission === "viewer" ? "唯讀共編" : selectedPlan.cloud.permission === "editor" ? "共同編輯" : "雲端旅行"}` : ""}</p></div><div className="travel-overview-actions"><div className="travel-action-menu" ref={tripActionsRef}><button className={`icon-button ${tripActionsOpen ? "active" : ""}`} onClick={() => setTripActionsOpen((open) => !open)} aria-expanded={tripActionsOpen} aria-haspopup="menu" aria-controls={`travel-actions-${selectedPlan.id}`} aria-label="更多旅行操作"><MoreHorizontal size={18} /></button>{tripActionsOpen ? <div id={`travel-actions-${selectedPlan.id}`} className="travel-action-popover paper-card" role="menu"><button role="menuitem" onClick={() => { void copySummary(); setTripActionsOpen(false); }}><Copy size={15} />{copied ? "已複製摘要" : "複製摘要"}</button><button role="menuitem" onClick={() => { downloadTravel(selectedPlan); setTripActionsOpen(false); }}><Download size={15} />匯出旅行</button><button role="menuitem" onClick={() => { setSharing(true); setTripActionsOpen(false); }}><Share2 size={15} />分享與共編</button></div> : null}</div>{editable ? <><button className="icon-button" onClick={() => setEditingPlan(selectedPlan)} aria-label="編輯旅行"><Pencil size={16} /></button><button className="icon-button danger" onClick={() => setDeleteConfirmId(selectedPlan.id)} aria-label="刪除旅行"><Trash2 size={16} /></button></> : null}</div></div>
@@ -608,22 +636,28 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
               <div className="travel-metrics"><div><span>預算</span><strong>{selectedPlan.currency} {selectedPlan.budget.toLocaleString()}</strong></div><div><span>已排費用</span><strong>{selectedPlan.currency} {plannedCost.toLocaleString()}</strong></div><div><span>已排景點</span><strong>{selectedPlan.days.reduce((sum, day) => sum + day.activities.length, 0)}</strong></div></div>
             </section>
 
-            <section className={`conflict-panel ${conflicts.length ? "has-conflict" : "safe"}`}>
+            <motion.section
+              id={`trip-conflict-${selectedPlan.id}`}
+              className={`conflict-panel ${conflicts.length ? "has-conflict" : "safe"} ${spotlightTripId === selectedPlan.id ? "attention-target" : ""}`}
+              animate={spotlightTripId === selectedPlan.id && !reduceMotion ? { y: [0, -7, 2, 0], scale: [1, 1.018, 0.998, 1] } : { y: 0, scale: 1 }}
+              transition={{ duration: 0.68, times: [0, 0.3, 0.72, 1], ease: "easeOut" }}
+            >
               <div className="conflict-icon">{conflicts.length ? <AlertTriangle /> : <GraduationCap />}</div>
               <div><p className="eyebrow">Exchange-aware check</p><h3>{conflicts.length ? `發現 ${conflicts.length} 個可能衝突` : "沒有撞到目前已知的課程與期限"}</h3>{conflicts.length ? <div className="conflict-list">{conflicts.map((event) => <span key={event.id}><strong>{formatDate(event.startDate)}</strong>{event.title}</span>)}</div> : <p>新增上課或考試日期後，每趟旅行都會重新檢查。</p>}</div>
-            </section>
+            </motion.section>
 
             <section className="itinerary-board paper-card">
-              <div className="itinerary-heading"><div><p className="eyebrow">Trip handbook</p><h2>{tripView === "itinerary" ? "每日行程" : tripView === "notes" ? "注意事項" : "旅行行李"}</h2></div></div>
+              <div className="itinerary-heading"><div><p className="eyebrow">Trip handbook</p><h2>{tripView === "itinerary" ? "行程與地圖" : tripView === "notes" ? "注意事項" : "旅行行李"}</h2></div></div>
               <div className="trip-section-tabs" role="tablist" aria-label="旅行手冊內容">
-                <button role="tab" aria-selected={tripView === "itinerary"} className={tripView === "itinerary" ? "active" : ""} onClick={() => setTripView("itinerary")}><Image src="/images/doodle-icons/journey-safe.png" alt="" width={28} height={28} /><span>行程與地圖</span><small>{selectedPlan.days.reduce((sum, day) => sum + day.activities.length, 0)} 個地點</small></button>
-                <button role="tab" aria-selected={tripView === "notes"} className={tripView === "notes" ? "active" : ""} onClick={() => setTripView("notes")}><Image src="/images/doodle-icons/documents-safe.png" alt="" width={28} height={28} /><span>注意事項</span><small>{selectedPlan.travelNotes.length} 則提醒</small></button>
-                <button role="tab" aria-selected={tripView === "packing"} className={tripView === "packing" ? "active" : ""} onClick={() => setTripView("packing")}><Image src="/images/doodle-icons/packing-complete-balanced.png" alt="" width={28} height={28} /><span>旅行行李</span><small>{selectedPlan.packingItems.filter((item) => item.packed).length}/{selectedPlan.packingItems.length} 已裝</small></button>
+                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "itinerary"} className={tripView === "itinerary" ? "active" : ""} onClick={() => setTripView("itinerary")}><Image src="/images/doodle-icons-v2/journey-route.png" alt="" width={28} height={28} /><span>行程與地圖</span><small>{selectedPlan.days.reduce((sum, day) => sum + day.activities.length, 0)} 個地點</small></motion.button>
+                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "notes"} className={tripView === "notes" ? "active" : ""} onClick={() => setTripView("notes")}><Image src="/images/doodle-icons-v2/resources-book.png" alt="" width={28} height={28} /><span>注意事項</span><small>{selectedPlan.travelNotes.length} 則提醒</small></motion.button>
+                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "packing"} className={tripView === "packing" ? "active" : ""} onClick={() => setTripView("packing")}><Image src="/images/doodle-icons-v2/travel-suitcase.png" alt="" width={28} height={28} /><span>旅行行李</span><small>{selectedPlan.packingItems.filter((item) => item.packed).length}/{selectedPlan.packingItems.length} 已裝</small></motion.button>
               </div>
               {tripView === "itinerary" ? <>
               <TravelStaySection plan={selectedPlan} readOnly={!editable} onUpdate={(plan) => updatePlan(plan.id, () => plan)} />
+              <div className="daily-itinerary-heading"><div><p className="eyebrow">Daily itinerary</p><h3>每日行程</h3></div><span>{selectedPlan.days.length} 天</span></div>
               <div className="day-tabs" role="tablist" aria-label="旅行日期">
-                {selectedPlan.days.map((day, index) => <button key={day.id} role="tab" aria-selected={selectedDay?.id === day.id} className={selectedDay?.id === day.id ? "active" : ""} onClick={() => setSelectedDate(day.date)}><small>DAY {index + 1}</small><strong>{formatDate(day.date)}</strong><span>{day.activities.length} stops</span></button>)}
+                {selectedPlan.days.map((day, index) => <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} key={day.id} role="tab" aria-selected={selectedDay?.id === day.id} className={selectedDay?.id === day.id ? "active" : ""} onClick={() => setSelectedDate(day.date)}><small>DAY {index + 1}</small><strong>{formatDate(day.date)}</strong><span>{day.activities.length} stops</span></motion.button>)}
               </div>
               {selectedDay ? (
                 <div className="day-plan">
@@ -656,7 +690,7 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
           </div>
                   </motion.div> : null}
                   </AnimatePresence>
-                  </article>
+                  </motion.article>
                 );
               })}
             </div>

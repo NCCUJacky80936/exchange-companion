@@ -70,6 +70,7 @@ import type {
   PackingDecision,
   PackingItem,
   ResourceItem,
+  ResourceIntake,
   TaskChecklistItem,
   TaskRecordEntry,
   TaskStatus,
@@ -139,13 +140,44 @@ function GuestTravelShell({ state, setState, cloud }: { state: AppState; setStat
 function GuestEditorAccess({ cloud }: { cloud: ExchangeCloudController }) {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
+  const [compact, setCompact] = useState(false);
+  const [attentionTick, setAttentionTick] = useState(0);
+  const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setCompact(true), 30_000);
+    return () => window.clearTimeout(timer);
+  }, [attentionTick]);
+
+  const keepOpen = () => {
+    setCompact(false);
+    setAttentionTick((value) => value + 1);
+  };
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSent(false);
     void cloud.requestGuestEditorAccess(email).then(() => setSent(true)).catch(() => setSent(false));
   };
 
-  return <section className="guest-editor-access" aria-labelledby="guest-editor-title"><div><Mail size={24} /><div><strong id="guest-editor-title">你是受邀的編輯者嗎？</strong><p>輸入被邀請的 Email，我們會寄一封一次性驗證信。點開後直接回到這趟旅行，不需要建立交換手帳或密碼。</p></div></div><form onSubmit={submit}><label><span>受邀 Email</span><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" required /></label><button className="button primary" disabled={!email || cloud.busy}>{cloud.busy ? "正在寄出…" : "寄給我一次性連結"}</button></form><small role="status">{sent ? "已寄出，請到信箱點擊驗證連結。" : "未列在指定帳戶中的 Email，驗證後仍會保持唯讀。"}</small></section>;
+  return <AnimatePresence initial={false} mode="wait">
+    {compact ? <motion.button
+      key="compact"
+      type="button"
+      className="guest-editor-compact"
+      onClick={keepOpen}
+      initial={reduceMotion ? false : { opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+    ><Mail size={12} />受邀編輯者？點此驗證</motion.button> : <motion.section
+      key="expanded"
+      className="guest-editor-access"
+      aria-labelledby="guest-editor-title"
+      initial={reduceMotion ? false : { opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+    ><div><Mail size={24} /><div><strong id="guest-editor-title">你是受邀的編輯者嗎？</strong><p>輸入被邀請的 Email，我們會寄一封一次性驗證信。點開後直接回到這趟旅行，不需要建立交換手帳或密碼。</p></div></div><form onSubmit={submit}><label><span>受邀 Email</span><input type="email" autoComplete="email" value={email} onFocus={keepOpen} onPointerDown={keepOpen} onChange={(event) => { setEmail(event.target.value); keepOpen(); }} placeholder="name@example.com" required /></label><button className="button primary" disabled={!email || cloud.busy}>{cloud.busy ? "正在寄出…" : "寄給我一次性連結"}</button></form><small role="status">{sent ? "已寄出，請到信箱點擊驗證連結。" : "未列在指定帳戶中的 Email，驗證後仍會保持唯讀。"}</small></motion.section>}
+  </AnimatePresence>;
 }
 
 const statusMeta: Record<TaskStatus, { label: string; className: string }> = {
@@ -178,12 +210,12 @@ function resourceGroup(category: string): string {
 }
 
 const navItems: Array<{ id: NavSection; label: string; shortLabel: string; doodleIcon: string }> = [
-  { id: "home", label: "我的交換", shortLabel: "首頁", doodleIcon: "/images/doodle-icons/home-safe.png" },
-  { id: "journey", label: "交換旅程", shortLabel: "旅程", doodleIcon: "/images/doodle-icons/journey-safe.png" },
-  { id: "travel", label: "旅行規劃", shortLabel: "旅行", doodleIcon: "/images/doodle-icons/return-safe.png" },
-  { id: "ai", label: "AI 幫我整理", shortLabel: "AI", doodleIcon: "/images/doodle-icons/documents-safe.png" },
-  { id: "resources", label: "重要資源", shortLabel: "資源", doodleIcon: "/images/doodle-icons/resources-safe.png" },
-  { id: "settings", label: "設定與備份", shortLabel: "設定", doodleIcon: "/images/doodle-icons/passport-safe.png" },
+  { id: "home", label: "我的交換", shortLabel: "首頁", doodleIcon: "/images/doodle-icons-v2/home-notebook.png" },
+  { id: "journey", label: "交換旅程", shortLabel: "旅程", doodleIcon: "/images/doodle-icons-v2/journey-route.png" },
+  { id: "travel", label: "旅行規劃", shortLabel: "旅行", doodleIcon: "/images/doodle-icons-v2/travel-suitcase.png" },
+  { id: "ai", label: "AI 幫我整理", shortLabel: "AI", doodleIcon: "/images/doodle-icons-v2/ai-spark.png" },
+  { id: "resources", label: "重要資源", shortLabel: "資源", doodleIcon: "/images/doodle-icons-v2/resources-book.png" },
+  { id: "settings", label: "設定與備份", shortLabel: "設定", doodleIcon: "/images/doodle-icons-v2/settings-backup.png" },
 ];
 const validSections = new Set<NavSection>(navItems.map((item) => item.id));
 
@@ -222,21 +254,23 @@ const proposalEntityLabel = {
 const proposalConfidenceLabel = { high: "高可信", medium: "待確認", low: "線索" } as const;
 
 function localAppPreviewEnabled(): boolean {
-  return process.env.NODE_ENV !== "production" && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "app";
+  const previewBuild = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_EXCHANGE_PREVIEW === "1";
+  return previewBuild && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "app";
 }
 
 function localOnboardingPreviewEnabled(): boolean {
-  return process.env.NODE_ENV !== "production" && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "onboarding";
+  const previewBuild = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_EXCHANGE_PREVIEW === "1";
+  return previewBuild && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "onboarding";
 }
 
 const templateMeta: Record<TaskTemplateKind, { label: string; icon: string }> = {
-  general: { label: "一般任務", icon: "/images/doodle-icons/documents-safe.png" },
-  flight: { label: "班機", icon: "/images/doodle-icons/return-safe.png" },
-  course: { label: "選課／學業", icon: "/images/doodle-icons/resources-safe.png" },
-  visa: { label: "簽證／居留", icon: "/images/doodle-icons/passport-safe.png" },
-  housing: { label: "住宿／入住", icon: "/images/doodle-icons/arrival-safe.png" },
-  payment: { label: "付款／費用", icon: "/images/doodle-icons/documents-safe.png" },
-  "school-admin": { label: "學校／行政", icon: "/images/doodle-icons/daily-life-safe.png" },
+  general: { label: "一般任務", icon: "/images/doodle-icons-v2/ai-spark.png" },
+  flight: { label: "班機", icon: "/images/doodle-icons-v2/travel-suitcase.png" },
+  course: { label: "選課／學業", icon: "/images/doodle-icons-v2/resources-book.png" },
+  visa: { label: "簽證／居留", icon: "/images/doodle-icons-v2/resources-book.png" },
+  housing: { label: "住宿／入住", icon: "/images/doodle-icons-v2/home-notebook.png" },
+  payment: { label: "付款／費用", icon: "/images/doodle-icons-v2/ai-spark.png" },
+  "school-admin": { label: "學校／行政", icon: "/images/doodle-icons-v2/resources-book.png" },
 };
 
 const emptyTask: JourneyTask = {
@@ -440,7 +474,7 @@ function TaskModal({
             <textarea name="notes" defaultValue={task.notes} rows={2} />
           </label>
           <div className="form-section-heading compact field-full">
-            <Image src="/images/doodle-icons/documents-safe.png" alt="" width={45} height={45} />
+            <Image src="/images/doodle-icons-v2/resources-book.png" alt="" width={45} height={45} />
             <div><p className="eyebrow">Details</p><h3>聯絡與費用</h3></div>
           </div>
           <label className="field">
@@ -509,7 +543,7 @@ function TaskModal({
             <textarea name="result" defaultValue={task.result} rows={3} placeholder="完成後記下實際結果、踩雷或下次要提醒自己的事。" />
           </label>
           <div className="form-section-heading compact field-full">
-            <Image src="/images/doodle-icons/passport-safe.png" alt="" width={45} height={45} />
+            <Image src="/images/doodle-icons-v2/journey-route.png" alt="" width={45} height={45} />
             <div><p className="eyebrow">Reference</p><h3>查核來源</h3></div>
           </div>
           <label className="field">
@@ -546,6 +580,8 @@ function TaskCard({
   onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const reduceMotion = useReducedMotion();
+  const articleRef = useRef<HTMLElement>(null);
   const blockedBy = (task.predecessorIds ?? [])
     .map((id) => allTasks.find((item) => item.id === id))
     .filter((item): item is JourneyTask => Boolean(item && item.status !== "done" && item.status !== "not-applicable"));
@@ -557,8 +593,18 @@ function TaskCard({
     task.scheduledAt || task.location || task.contactName || task.referenceNumber || task.cost || checklist.length || records.length || task.result,
   );
 
+  const toggleRecord = () => {
+    const opening = !expanded;
+    setExpanded(opening);
+    window.setTimeout(() => {
+      articleRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      if (articleRef.current) window.scrollBy({ top: -88, behavior: reduceMotion ? "auto" : "smooth" });
+    }, reduceMotion ? 0 : opening ? 260 : 150);
+  };
+
   return (
     <motion.article
+      ref={articleRef}
       id={`task-${task.id}`}
       data-task-id={task.id}
       layout
@@ -605,12 +651,12 @@ function TaskCard({
         </div>
         {hasPersonalDetails ? (
           <div className="task-record-wrap">
-            <button type="button" className="task-record-toggle" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>
+            <motion.button type="button" className="task-record-toggle" onClick={toggleRecord} aria-expanded={expanded} whileTap={reduceMotion ? undefined : { y: 2 }}>
               <span>{expanded ? "收起個人紀錄" : "展開個人紀錄"}</span><ChevronDown size={15} className={expanded ? "rotated" : ""} />
-            </button>
+            </motion.button>
             <AnimatePresence initial={false}>
               {expanded ? (
-                <motion.div className="task-record-panel" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
+                <motion.div className="task-record-panel" initial={reduceMotion ? false : { opacity: 0, height: 0, y: -6 }} animate={{ opacity: 1, height: "auto", y: 0 }} exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -4 }} transition={reduceMotion ? { duration: 0 } : { duration: 0.3, ease: [0.22, 1, 0.36, 1] }}>
                   <div className="record-facts">
                     {task.scheduledAt ? <div><span>實際時間</span><strong>{task.scheduledAt.replace("T", " · ")}</strong><small>{task.timeZone ?? exchangeProfile.hostTimeZone}</small></div> : null}
                     {task.location ? <div><span>地點</span><strong>{task.location}</strong></div> : null}
@@ -774,12 +820,12 @@ function Dashboard({ state, setState, cloud, navigate, navigateTarget, todayIso,
 
       <section className="quick-modes">
         <button className="mode-card blue" onClick={() => navigate("journey", "progress")}>
-          <span className="mode-icon"><Image src="/images/doodle-icons/arrival-safe.png" alt="" width={58} height={58} /></span>
+          <span className="mode-icon"><Image src="/images/doodle-icons-v2/home-notebook.png" alt="" width={58} height={58} /></span>
           <div><p className="eyebrow">Quick mode</p><h3>抵達 72 小時</h3><p>鑰匙、入住、第一晚補給與 Orientation。</p></div>
           <ArrowRight />
         </button>
         <button className="mode-card terracotta" onClick={() => navigate("journey", "progress")}>
-          <span className="mode-icon"><Image src="/images/doodle-icons/return-safe.png" alt="" width={58} height={58} /></span>
+          <span className="mode-icon"><Image src="/images/doodle-icons-v2/travel-suitcase.png" alt="" width={58} height={58} /></span>
           <div><p className="eyebrow">Finish well</p><h3>返國收尾模式</h3><p>退租、註銷、押金、成績單一次收好。</p></div>
           <ArrowRight />
         </button>
@@ -870,12 +916,12 @@ function JourneyPage({ state, setState, view, onViewChange, focusTaskId = "" }: 
 
       <div className="journey-view-tabs" data-view={view} role="tablist" aria-label="交換旅程內容">
         <span className="journey-tab-slider" aria-hidden="true" />
-        <button type="button" role="tab" aria-selected={view === "progress"} className={view === "progress" ? "active" : ""} onClick={() => onViewChange("progress")}>
+        <motion.button whileTap={reduceMotion ? undefined : { y: 2, scale: 0.995 }} type="button" role="tab" aria-selected={view === "progress"} className={view === "progress" ? "active" : ""} onClick={() => onViewChange("progress")}>
           <span className="journey-tab-label"><Check size={17} />準備進度</span>
-        </button>
-        <button type="button" role="tab" aria-selected={view === "packing"} className={view === "packing" ? "active" : ""} onClick={() => onViewChange("packing")}>
+        </motion.button>
+        <motion.button whileTap={reduceMotion ? undefined : { y: 2, scale: 0.995 }} type="button" role="tab" aria-selected={view === "packing"} className={view === "packing" ? "active" : ""} onClick={() => onViewChange("packing")}>
           <span className="journey-tab-label"><Luggage size={17} />出發行李</span>
-        </button>
+        </motion.button>
       </div>
 
       <AnimatePresence initial={false} mode="wait">
@@ -893,11 +939,11 @@ function JourneyPage({ state, setState, view, onViewChange, focusTaskId = "" }: 
       </div>
 
       <div className="phase-tabs" role="tablist" aria-label="旅程階段">
-        <button className={phase === "all" ? "active" : ""} onClick={() => setPhase("all")}>全部 <span>{state.tasks.length}</span></button>
+        <motion.button whileTap={reduceMotion ? undefined : { y: 2, scale: 0.98 }} className={phase === "all" ? "active" : ""} onClick={() => setPhase("all")}>全部 <span>{state.tasks.length}</span></motion.button>
         {Object.entries(phaseMeta).map(([id, meta]) => (
-          <button key={id} className={phase === id ? "active" : ""} onClick={() => setPhase(id as JourneyPhase)}>
+          <motion.button whileTap={reduceMotion ? undefined : { y: 2, scale: 0.98 }} key={id} className={phase === id ? "active" : ""} onClick={() => setPhase(id as JourneyPhase)}>
             <small>{meta.number}</small>{meta.label}<span>{state.tasks.filter((task) => task.phase === id).length}</span>
-          </button>
+          </motion.button>
         ))}
       </div>
 
@@ -911,7 +957,9 @@ function JourneyPage({ state, setState, view, onViewChange, focusTaskId = "" }: 
 
       <div className="journey-sections">
         {(phase === "all" ? Object.keys(phaseMeta) as JourneyPhase[] : [phase]).map((phaseId) => {
-          const phaseTasks = filtered.filter((task) => task.phase === phaseId);
+          const phaseTasks = filtered
+            .filter((task) => task.phase === phaseId)
+            .sort((a, b) => Number(a.status === "done" || a.status === "not-applicable") - Number(b.status === "done" || b.status === "not-applicable"));
           if (phaseTasks.length === 0) return null;
           const completed = phaseTasks.filter((task) => task.status === "done").length;
           const meta = phaseMeta[phaseId];
@@ -1116,7 +1164,7 @@ function PackingPage({ state, setState, embedded = false }: { state: AppState; s
   const allowanceDisclosure = (
     <details className={`flight-allowance-disclosure paper-card ${checkedOverLimit ? "over-limit" : ""} ${baggageIsPast ? "past" : ""}`} open={!baggageEvaluation.ready && !baggageIsPast}>
       <summary>
-        <Image src="/images/doodle-icons/packing-complete-balanced.png" alt="" width={58} height={58} />
+        <Image src="/images/doodle-icons-v2/travel-suitcase.png" alt="" width={58} height={58} />
         <div className="flight-allowance-summary-copy">
           <p className="eyebrow">{baggageEvaluation.ready ? "Confirmed personal allowance" : flightAllowances.length ? "Needs ticket confirmation" : "Waiting for your ticket"}</p>
           <h2>{baggageEvaluation.ready ? "已依本人的機票核對所有行李規則" : flightAllowances.length ? "仍有航段或行李類型待確認" : "尚未從本人的機票確認行李額度"}</h2>
@@ -1256,8 +1304,12 @@ function PackingPage({ state, setState, embedded = false }: { state: AppState; s
   );
 }
 
-function ResourceModal({ resource, onClose, onSave }: { resource: ResourceItem | null; onClose: () => void; onSave: (resource: ResourceItem) => void }) {
+type ResourceIntakeResult = { ok: boolean; message: string };
+
+function ResourceModal({ resource, resourceIntake, onAddResourceUrl, onDeleteResourceIntake, onClose, onSave }: { resource: ResourceItem | null; resourceIntake: ResourceIntake[]; onAddResourceUrl: (url: string, note: string) => ResourceIntakeResult; onDeleteResourceIntake: (id: string) => void; onClose: () => void; onSave: (resource: ResourceItem) => void }) {
   const [resourceType, setResourceType] = useState<ResourceItem["type"]>(resource?.type ?? "official");
+  const [mode, setMode] = useState<"manual" | "ai">("manual");
+  const [intakeMessage, setIntakeMessage] = useState("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1279,10 +1331,27 @@ function ResourceModal({ resource, onClose, onSave }: { resource: ResourceItem |
     });
   }
 
+  function submitIntake(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const result = onAddResourceUrl(form.get("url")?.toString().trim() ?? "", form.get("note")?.toString().trim() ?? "");
+    setIntakeMessage(result.message);
+    if (result.ok) event.currentTarget.reset();
+  }
+
   return <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-    <motion.div className="modal-card paper-card" role="dialog" aria-modal="true" aria-labelledby="resource-modal-title" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}>
-      <div className="modal-heading"><div><p className="eyebrow">Verified bookmark</p><h2 id="resource-modal-title">{resource ? "編輯資源" : "新增資源"}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="關閉"><X size={20} /></button></div>
-      <form className="form-grid" onSubmit={submit}>
+    <motion.div className="modal-card paper-card resource-modal" role="dialog" aria-modal="true" aria-labelledby="resource-modal-title" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}>
+      <div className="modal-heading"><div><p className="eyebrow">Verified bookmark</p><h2 id="resource-modal-title">{resource ? "編輯資源" : mode === "ai" ? "交給 AI 辨識的網址" : "新增資源"}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="關閉"><X size={20} /></button></div>
+      {!resource ? <div className="resource-modal-mode-switch" role="tablist" aria-label="資源新增方式">
+        <button type="button" role="tab" aria-selected={mode === "manual"} className={mode === "manual" ? "active" : ""} onClick={() => { setMode("manual"); setIntakeMessage(""); }}><Pencil size={15} />手動填寫</button>
+        <button type="button" role="tab" aria-selected={mode === "ai"} className={mode === "ai" ? "active" : ""} onClick={() => { setMode("ai"); setIntakeMessage(""); }}><Sparkles size={15} />AI 辨識網址{resourceIntake.filter((item) => item.status === "pending").length ? <b>{resourceIntake.filter((item) => item.status === "pending").length}</b> : null}</button>
+      </div> : null}
+      {mode === "ai" && !resource ? <div className="resource-modal-intake-panel">
+        <div className="resource-modal-intake-note"><Sparkles size={19} /><p>網址會先私人保存在手帳，不會立刻公開或直接加入資源庫；Exchange Concierge 會提出可審核的整理結果。已處理的紀錄會在 2 天後自動清除。</p></div>
+        <form onSubmit={submitIntake}><label className="field"><span>網址</span><input name="url" type="url" required placeholder="https://…" /></label><label className="field"><span>希望 AI 注意什麼（選填）</span><input name="note" maxLength={1000} placeholder="例如：確認交換生申請期限" /></label><button className="button secondary" type="submit"><Plus size={16} />加入待辨識</button></form>
+        {intakeMessage ? <p className="settings-message" role="status">{intakeMessage}</p> : null}
+        {resourceIntake.length ? <div className="resource-intake-list">{resourceIntake.map((item) => <div key={item.id}><span className={item.status}>{item.status === "pending" ? "待辨識" : "已處理"}</span><a href={item.url} target="_blank" rel="noreferrer">{item.url}</a>{item.note ? <small>{item.note}</small> : null}{item.status === "processed" && item.processedAt ? <small className="resource-intake-expiry">將於 {new Date(Date.parse(item.processedAt) + 2 * 86_400_000).toLocaleString("zh-TW")} 自動清除</small> : null}<button className="icon-button danger" type="button" onClick={() => onDeleteResourceIntake(item.id)} aria-label={`刪除待辨識網址 ${item.url}`}><Trash2 size={15} /></button></div>)}</div> : <p className="resource-modal-intake-empty">目前沒有待辨識網址。</p>}
+      </div> : <form className="form-grid" onSubmit={submit}>
         <label className="field field-full"><span>名稱</span><input name="title" defaultValue={resource?.title} required /></label>
         <label className="field field-full"><span>摘要／最重要的重點</span><textarea name="description" rows={3} defaultValue={resource?.description} placeholder="用幾句話說明這份資料能解決什麼問題" required /></label>
         <label className="field field-full"><span>詳細說明</span><textarea name="details" rows={6} defaultValue={resource?.details} placeholder="適用對象、準備資料、操作步驟、期限與需要重新確認的地方" required /></label>
@@ -1295,7 +1364,7 @@ function ResourceModal({ resource, onClose, onSave }: { resource: ResourceItem |
         <label className="field"><span>資料來源標籤</span><input name="sourceLabel" defaultValue={resource?.sourceLabel ?? "手動新增"} required /></label>
         <label className="field"><span>隱私</span><select name="privacy" defaultValue={resource?.privacy ?? "private"} disabled={resourceType === "personal"}><option value="private">私人</option><option value="shareable">可另行選擇分享</option></select></label>
         <div className="modal-actions field-full"><button type="button" className="button secondary" onClick={onClose}>取消</button><button className="button primary" type="submit"><Check size={17} />儲存資源</button></div>
-      </form>
+      </form>}
     </motion.div>
   </motion.div>;
 }
@@ -1304,20 +1373,17 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("全部");
   const [editingResource, setEditingResource] = useState<ResourceItem | null | undefined>(undefined);
-  const [intakeMessage, setIntakeMessage] = useState("");
   const deferredQuery = useDeferredValue(query.toLowerCase());
   const categories = ["全部", ...new Set(state.resources.map((resource) => resourceGroup(resource.category)))];
   const filtered = state.resources.filter((resource) => (category === "全部" || resourceGroup(resource.category) === category) && (!deferredQuery || `${resource.title} ${resource.description} ${resource.details ?? ""} ${resource.region} ${resource.sourceLabel} ${(resource.searchTags ?? []).join(" ")}`.toLowerCase().includes(deferredQuery)));
   const typeLabel = { official: "官方", school: "學校", city: "城市", experience: "經驗分享", personal: "個人資料" };
+  const latestResourceDate = state.resources.reduce((latest, resource) => resource.verifiedAt > latest ? resource.verifiedAt : latest, "") || exchangeProfile.research.minimumVerifiedDate;
 
   useEffect(() => {
     setState((current) => pruneProcessedResourceIntake(current));
   }, [setState]);
 
-  function addResourceUrl(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const rawUrl = form.get("url")?.toString().trim() ?? "";
+  function addResourceUrl(rawUrl: string, note: string): ResourceIntakeResult {
     try {
       const url = new URL(rawUrl);
       const blockedParam = /(?:^|[_-])(?:access[_-]?token|api[_-]?key|apikey|auth|key|password|secret|signature|token)(?:$|[_-])/i;
@@ -1327,15 +1393,14 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
         resourceIntake: [...(current.resourceIntake ?? []), {
           id: `resource-intake-${Date.now()}`,
           url: url.toString(),
-          note: form.get("note")?.toString().trim() ?? "",
+          note,
           status: "pending",
           createdAt: new Date().toISOString(),
         }],
       }));
-      event.currentTarget.reset();
-      setIntakeMessage("網址已加入私人待辨識清單；下次請 Exchange Concierge 整理即可。");
+      return { ok: true, message: "網址已加入私人待辨識清單；下次請 Exchange Concierge 整理即可。" };
     } catch {
-      setIntakeMessage("這個網址無法加入。請使用一般 HTTP(S) 網址，並先移除 token、key、簽章或帳密參數。");
+      return { ok: false, message: "這個網址無法加入。請使用一般 HTTP(S) 網址，並先移除 token、key、簽章或帳密參數。" };
     }
   }
 
@@ -1360,16 +1425,7 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
 
   return (
     <div className="page-stack">
-      <header className="page-header resources-header"><div className="resources-header-copy"><p className="eyebrow">Verified bookmarks</p><h1>重要資源庫</h1><p>每份資料先整理成可快速判斷的摘要，再保留適用對象、準備事項與步驟；會變動的資訊仍附上來源與查核日期。</p></div><div className="resources-header-tools"><button className="button primary" onClick={() => setEditingResource(null)}><Plus size={17} />手動新增資源</button><div className="resource-stamp"><span>RESEARCH SINCE</span><strong>{exchangeProfile.research.minimumVerifiedDate.slice(0, 7).replace("-", ".")}</strong></div></div></header>
-      <details className="paper-card resource-intake-card">
-        <summary><div><p className="eyebrow">Send a link to AI</p><h2>交給 AI 辨識的網址</h2><p>需要時再展開加入網址；已處理的紀錄會在 2 天後自動清除。</p></div><span className="resource-intake-summary-end"><strong>{(state.resourceIntake ?? []).filter((item) => item.status === "pending").length}</strong><small>待辨識</small><ChevronDown size={20} /></span></summary>
-        <div className="resource-intake-body">
-          <p>網址會先私人保存在手帳，不會立刻公開或加入資源庫。Exchange Concierge 會先比對任務、預算、行李、航班、課程與旅行，再提出可審核的更新。</p>
-          <form onSubmit={addResourceUrl}><label className="field"><span>網址</span><input name="url" type="url" required placeholder="https://…" /></label><label className="field"><span>希望 AI 注意什麼（選填）</span><input name="note" maxLength={1000} placeholder="例如：確認交換生申請期限" /></label><button className="button secondary" type="submit"><Plus size={16} />加入待辨識</button></form>
-          {intakeMessage ? <p className="settings-message" role="status">{intakeMessage}</p> : null}
-          {(state.resourceIntake ?? []).length ? <div className="resource-intake-list">{(state.resourceIntake ?? []).map((item) => <div key={item.id}><span className={item.status}>{item.status === "pending" ? "待辨識" : "已處理"}</span><a href={item.url} target="_blank" rel="noreferrer">{item.url}</a>{item.note ? <small>{item.note}</small> : null}{item.status === "processed" && item.processedAt ? <small className="resource-intake-expiry">將於 {new Date(Date.parse(item.processedAt) + 2 * 86_400_000).toLocaleString("zh-TW")} 自動清除</small> : null}<button className="icon-button danger" onClick={() => deleteResourceIntake(item.id)} aria-label={`刪除待辨識網址 ${item.url}`}><Trash2 size={15} /></button></div>)}</div> : null}
-        </div>
-      </details>
+      <header className="page-header resources-header"><div className="resources-header-copy"><p className="eyebrow">Verified bookmarks</p><div className="resources-title-line"><h1>重要資源庫</h1><span className="resource-update-mark"><small>UPDATE</small><strong>{latestResourceDate.replaceAll("-", ".")}</strong></span><div className="resources-header-tools"><button className="button primary resource-add-button" aria-label="新增資源" onClick={() => setEditingResource(null)}><Plus size={19} /></button></div></div></div></header>
       <div className="toolbar paper-card resource-toolbar">
         <label className="search-field"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜尋簽證、住宿、醫療或交通" /></label>
         <label className="compact-select resource-category-select">
@@ -1396,7 +1452,7 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
         ))}
       </section>
       <aside className="experience-rule paper-card"><Info size={24} /><div><h2>規定和經驗，不混在一起</h2><p>官方、學校與城市來源用來確認程序；個人經驗只協助補充生活情境與容易遺漏的準備。價格、期限和法律要求一律回到原始官方頁面重新確認。</p></div></aside>
-      <AnimatePresence>{editingResource !== undefined ? <ResourceModal resource={editingResource} onClose={() => setEditingResource(undefined)} onSave={saveResource} /> : null}</AnimatePresence>
+      <AnimatePresence>{editingResource !== undefined ? <ResourceModal resource={editingResource} resourceIntake={state.resourceIntake ?? []} onAddResourceUrl={addResourceUrl} onDeleteResourceIntake={deleteResourceIntake} onClose={() => setEditingResource(undefined)} onSave={saveResource} /> : null}</AnimatePresence>
     </div>
   );
 }
@@ -1586,6 +1642,20 @@ export default function ExchangeCompanion() {
   const aiNotificationButtonRef = useRef<HTMLButtonElement>(null);
   const cloud = useExchangeCloud(state, setState);
   const localAppPreview = localAppPreviewEnabled();
+
+  useEffect(() => {
+    const alignExpandedDetails = (event: Event) => {
+      const details = event.target;
+      if (!(details instanceof HTMLDetailsElement) || !details.open || !event.isTrusted) return;
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.setTimeout(() => {
+        details.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+        window.scrollBy({ top: -88, behavior: reduceMotion ? "auto" : "smooth" });
+      }, reduceMotion ? 0 : 240);
+    };
+    document.addEventListener("toggle", alignExpandedDetails, true);
+    return () => document.removeEventListener("toggle", alignExpandedDetails, true);
+  }, []);
 
   const navigateToSection: NavigateToSection = (nextSection, nextJourneyView, options = {}) => {
     if (nextSection === "journey") setJourneyView(nextJourneyView ?? "progress");

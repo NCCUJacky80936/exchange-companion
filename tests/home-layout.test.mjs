@@ -10,8 +10,11 @@ const onboarding = await readFile(new URL("../app/components/OnboardingWizard.ts
 const manifest = await readFile(new URL("../app/manifest.ts", import.meta.url), "utf8");
 const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
 
-test("daily home keeps the two-week agenda, bulletin, journey, and budget in one control center", () => {
-  for (const marker of ["兩週行程軸", "交換佈告欄", "交換旅程", "基礎預算", "查看整月"]) assert.ok(dashboard.includes(marker));
+test("daily home keeps the interactive month calendar, bulletin, journey, and budget in one control center", () => {
+  for (const marker of ["HomeMonthCalendar", "home-calendar-dots", "交換佈告欄", "交換旅程", "基礎預算"]) assert.ok(dashboard.includes(marker));
+  assert.match(dashboard, /section: "journey", task: nextTask\?\.id/);
+  assert.match(dashboard, /role="dialog"/);
+  assert.match(dashboard, /onMouseEnter=\{\(\) => dayItems\.length && setActiveDate\(date\)\}/);
   assert.match(styles, /grid-template-areas:\s*"bulletin" "agenda"/);
 });
 

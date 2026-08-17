@@ -1,7 +1,6 @@
 "use client";
 
 import { Check, CloudDownload, Copy, ExternalLink, FileCheck2, Inbox, Link2, LockKeyhole, RefreshCw, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
-import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react";
 import { applyAiProposal, canApplyAiProposal, canUndoAiProposal, clearDismissedAiProposals, dismissAiProposal, findAiBundleCollisions, importAiBundle, journeyScopeForState, matchesAiJourneyScope, rebaseAiProposal, sensitiveBundleWarnings, undoAiProposal, validateAiImportBundle } from "../lib/ai-import";
 import { createExchangeConciergeHandoff } from "../lib/concierge-handoff";
@@ -47,6 +46,7 @@ function displayValue(value: unknown): string {
 
 export default function AiConcierge({ state, setState, cloud, openInboxRequest = 0 }: { state: AppState; setState: Dispatch<SetStateAction<AppState>>; cloud: ExchangeCloudController; openInboxRequest?: number }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const inboxDetailsRef = useRef<HTMLDetailsElement>(null);
   const refreshedAccount = useRef("");
   const refreshInboxRef = useRef(cloud.refreshConciergeInbox);
   const [message, setMessage] = useState("");
@@ -64,6 +64,24 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
   useEffect(() => {
     refreshInboxRef.current = cloud.refreshConciergeInbox;
   }, [cloud.refreshConciergeInbox]);
+
+  useEffect(() => {
+    if (!openInboxRequest) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const focusTimer = window.setTimeout(() => {
+      const target = inboxDetailsRef.current;
+      target?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      if (target) {
+        window.scrollBy({ top: -88, behavior: reduceMotion ? "auto" : "smooth" });
+        target.classList.add("attention-target");
+      }
+    }, reduceMotion ? 0 : 360);
+    const clearTimer = window.setTimeout(() => inboxDetailsRef.current?.classList.remove("attention-target"), 2200);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [openInboxRequest]);
 
   useEffect(() => {
     if (!cloud.permanentAccount || !cloud.accountDataReady) return;
@@ -210,10 +228,9 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
     <div className="page-stack ai-page">
       <header className="page-header ai-header">
         <div><p className="eyebrow">AI exchange concierge</p><h1>讓 AI 幫我整理</h1><p>Codex 先讀取你授權的資料與最新來源，網站再讓你逐項確認。手動編輯永遠保留，而且會成為下一次整理的依據。</p></div>
-        <Image src="/images/doodle-icons/documents-safe.png" alt="手繪文件與行政資料圖示" width={112} height={112} />
       </header>
 
-      <details id="ai-proposal-inbox" className="proposal-section paper-card ai-inbox-details" open={inboxOpen} onToggle={(event) => setInboxOpen(event.currentTarget.open)}>
+      <details ref={inboxDetailsRef} id="ai-proposal-inbox" className="proposal-section paper-card ai-inbox-details" open={inboxOpen} onToggle={(event) => setInboxOpen(event.currentTarget.open)}>
         <summary><div><p className="eyebrow">Suggested updates</p><h2>AI 提案收件匣</h2><small>待確認超過 5 天會清除；套用後 7 天未復原也會移除紀錄。</small></div><span className="count-badge">{pending.length}</span></summary>
         <div className="proposal-inbox-body"><div className="section-heading"><div><h2>待確認提案</h2>{pending.length ? <div className="proposal-coverage">{Object.entries(pendingByEntity).map(([entity, count]) => <span key={entity}>{entityLabel[entity as keyof typeof entityLabel]} {count}</span>)}</div> : null}</div><div className="proposal-heading-actions">{dismissedCount ? <button className="button text-button" onClick={() => { cloud.markNextSaveActor("proposal"); setState(clearDismissedAiProposals); }}>清除 {dismissedCount} 個已忽略提案</button> : null}{pending.some((proposal) => canApplyAiProposal(state, proposal, cloud.privateRevision || undefined).valid) ? <button className="button primary batch-apply" onClick={applyAllPending}><Check size={16} />套用全部可用提案</button> : null}</div></div>
         {pending.length ? <div className="proposal-list">{pending.map((proposal) => {

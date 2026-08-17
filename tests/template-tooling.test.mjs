@@ -23,7 +23,7 @@ test("installed app fetches the current notebook before using an offline fallbac
   const fallbackLookup = worker.indexOf("caches.match(NAVIGATION_FALLBACK)");
   assert.ok(networkFetch >= 0 && fallbackLookup > networkFetch);
   assert.doesNotMatch(worker, /caches\.match\("\/"\)/);
-  assert.match(worker, /exchange-companion-v2-4/);
+  assert.match(worker, /exchange-companion-v2-8/);
   assert.match(worker, /navigationPreload\?\.enable\(\)/);
 });
 

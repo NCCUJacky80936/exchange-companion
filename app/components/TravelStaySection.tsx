@@ -147,7 +147,7 @@ export function TravelStaySection({ plan, onUpdate, readOnly = false }: { plan: 
               <div className="stay-photo">
                 {/* Arbitrary official/user-authorized destination images cannot use a build-time host allowlist. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                {stay.imageUrl ? <img src={stay.imageUrl} alt={stay.imageAlt || `${stay.name} 飯店照片`} loading="lazy" referrerPolicy="no-referrer" /> : <Image src="/images/doodle-icons/arrival-safe.png" alt="" width={150} height={150} />}
+                {stay.imageUrl ? <img src={stay.imageUrl} alt={stay.imageAlt || `${stay.name} 飯店照片`} loading="lazy" referrerPolicy="no-referrer" /> : <Image src="/images/doodle-icons-v2/home-notebook.png" alt="" width={150} height={150} />}
                 <span>{index + 1} / {stays.length}</span>
               </div>
               <div className="stay-detail-copy"><p className="eyebrow structural-eyebrow">{stay.area || "Accommodation"}</p><h4>{stay.name}</h4><p>{stay.summary}</p>{stay.highlights.length ? <ul>{stay.highlights.map((item) => <li key={item}>{item}</li>)}</ul> : null}{stay.address ? <small>{stay.address}</small> : null}<div className="stay-detail-links">{stay.mapsUrl ? <a href={stay.mapsUrl} target="_blank" rel="noreferrer"><MapPinned size={14} />Google Maps<ExternalLink size={11} /></a> : null}{stay.sourceUrl ? <a href={stay.sourceUrl} target="_blank" rel="noreferrer">官方資訊<ExternalLink size={11} /></a> : null}</div>{stay.notes ? <p className="stay-private-note">{stay.notes}</p> : null}</div>
@@ -155,7 +155,7 @@ export function TravelStaySection({ plan, onUpdate, readOnly = false }: { plan: 
             </div>
           </article>
         );
-      })}</div> : <div className="travel-stay-empty"><Image src="/images/doodle-icons/arrival-safe.png" alt="" width={70} height={70} /><div><strong>住宿還沒放進這趟旅行</strong><span>先記飯店與入住日期，排每天路線時才不會一直折返。</span></div></div>}
+      })}</div> : <div className="travel-stay-empty"><Image src="/images/doodle-icons-v2/home-notebook.png" alt="" width={70} height={70} /><div><strong>住宿還沒放進這趟旅行</strong><span>先記飯店與入住日期，排每天路線時才不會一直折返。</span></div></div>}
 
       <div className="travel-reference-desk">
         <div className="travel-reference-heading"><div><p className="eyebrow">Reference desk</p><h4>旅行參考資料</h4><p>收藏清單與共同表格放在住宿後、每日行程前；規劃時不用離開這趟旅行四處找連結。</p></div>{readOnly ? null : <button className="mini-add-button" onClick={() => { setAddingReference(true); setEditingReferenceId(""); }}><Plus size={15} />新增參考</button>}</div>

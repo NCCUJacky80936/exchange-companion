@@ -14,6 +14,8 @@ test("invited travel editors use a passwordless trip-only flow", () => {
   assert.match(controller, /requestGuestEditorAccess/);
   assert.match(companion, /你是受邀的編輯者嗎？/);
   assert.match(companion, /不需要建立交換手帳或密碼/);
+  assert.match(companion, /setTimeout\(\(\) => setCompact\(true\), 30_000\)/);
+  assert.match(companion, /className="guest-editor-compact"/);
 });
 
 test("a verified member stays in the shared travel shell", () => {

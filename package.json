@@ -17,7 +17,7 @@
     "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
     "build:production": "npm run build && node scripts/verify-cloud-build.mjs",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
-    "test": "npm run build && node --test tests/*.test.mjs && tsx --test tests/*.test.ts",
+    "test": "npm run build && node --test tests/*.test.mjs && node --import tsx --test tests/*.test.ts",
     "test:cloud": "node tests/cloud-smoke.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "check": "npm run validate:profile && npm run validate:skills && npm run privacy:check && npm run lint && npm test"

@@ -1,55 +1,61 @@
-# Resource page design QA
+# Exchange Companion visual and interaction QA
 
-- Source visual truth: `output/design-qa/source-reference.png`
-- Primary implementation capture: `output/design-qa/resources-after-1440.png`
-- Narrow implementation capture: `output/design-qa/resources-after-narrow.png`
-- Expanded resource capture: `output/design-qa/resources-card-details-1440.png`
-- Combined comparison: `output/design-qa/resources-comparison.png`
-- State: local-only resource page; no cloud account; resource summary/detail interaction verified with a temporary record and removed afterward.
+- Source visual truth: Codex attachment `image-1.jpg`
+- Desktop home: `output/design-qa/08-home-desktop-after.png`
+- Desktop travel, collapsed / expanded: `output/design-qa/09-travel-collapsed-desktop-after.png`, `output/design-qa/10-travel-expanded-desktop-after.png`
+- Desktop journey: `output/design-qa/11-journey-desktop-after.png`
+- Tablet home: `output/design-qa/12-home-tablet-after.png`
+- Mobile home: `output/design-qa/13-home-mobile-after.png`
+- Mobile travel, collapsed / expanded: `output/design-qa/14-travel-collapsed-mobile-after.png`, `output/design-qa/15-travel-expanded-mobile-after.png`
+- Comparison input: the source visual and desktop implementation were inspected together in one visual comparison pass.
+- State: production build with an isolated local preview account and one temporary Prague trip. No production records were changed.
 
 ## Capture normalization
 
-- Source pixels: `2556 × 1648`; retina-style desktop capture.
-- Primary implementation pixels: `1425 × 891`; browser CSS viewport measured `1440 × 900` with no horizontal overflow.
-- Narrow implementation CSS viewport: `883 × 863`, with no horizontal overflow.
-- Combined comparison normalized each image to `900px` width and padded to the same `620px` height. The source crop omits its sidebar while the implementation retains it, so the comparison judges the resource content frame rather than sidebar proportions.
+- Desktop viewport: `1440 × 900`; captured content width `1425px` after the browser scrollbar. Home screenshot is `1425 × 1209`.
+- Tablet viewport: `768 × 1024`; captured content width `753px`. Home screenshot is `753 × 1647`.
+- Mobile viewport: `390 × 844`; captured content width `375px`. Home screenshot is `375 × 1568`.
+- All three responsive checks measured document `scrollWidth === clientWidth`; no page-level horizontal overflow was found.
+- The temporary viewport overrides were reset after the captures.
 
-## Full-view comparison evidence
+## Visual fidelity
 
-- The original screenshot placed **手動新增資源** inside the copy column, below the description, leaving it visually detached from both the title and the research stamp.
-- The revised desktop view places the button and research stamp in one right-side action group. Their centers and spacing share one visual row and the description remains unobstructed.
-- At the narrower captured layout, the copy becomes its own row and the button/stamp action group spans the header below it, aligned to the content edges.
+- Palette: the implementation uses the reference's warm cream surface, near-black type, and vivid soft yellow, pink, mint, and blue. Color is assigned by function rather than applied uniformly: blue for the current route / navigation, yellow for calendar and primary attention, pink for alerts and focus arrival, and mint for safe / supporting states.
+- Typography: primary text stays dark enough to lead the composition; secondary copy remains quieter without falling below the visual weight of the illustrations.
+- Illustrations: the hero and six navigation / empty-state illustrations are transparent PNG assets made from simple filled objects. They have no card frame, icon container border, or decorative outline around the illustration slot.
+- Layout: all existing navigation positions, information hierarchy, card boundaries, and functional groupings remain in place. The requested calendar replaces only the prior four-week agenda surface.
+- Line hierarchy: structural containers use solid borders; helper, editable, and secondary detail regions use dashed separators.
 
-## Focused region evidence
+## Interaction verification
 
-- Header: button bounds at the desktop check were `x 1047.9, y 205.8, 150 × 44.3`; the action group remained within the header and no longer interrupted the description.
-- Resource card: a temporary manual resource displayed a persistent summary block, an expandable detail control, preserved line breaks, source metadata, and a source link. Opening details succeeded, and the temporary resource was removed after capture.
-- Packing page: `0` YouTube links and `0` inspiration panels were visible; the existing `11` ordinary packing rows remained.
-- Console: the final resource-page browser check returned no errors or warnings.
-
-## Required fidelity surfaces
-
-- Fonts and typography: existing WenKai/Caveat/Noto hierarchy is preserved. New summary labels use the existing compact UI weight and detailed copy uses the readable body face.
-- Spacing and layout rhythm: the header action is now part of an explicit tools group; wide and narrow layouts keep consistent content edges and no horizontal overflow.
-- Colors and visual tokens: the original cream paper, ink, blue accent, terracotta offset shadow, and sage/yellow source states are unchanged.
-- Image quality and assets: no illustrations or doodle assets were replaced, stretched, or cropped by this change.
-- Copy and content: the header now promises summary plus applicability/steps. Resource cards separate summary from optional detail, while experience-video promotion is absent from the UI.
+- The home milestone navigated to the exact task URL and the target task displayed the `attention-arrive` plus `attention-ring` animation.
+- A new trip remained collapsed after creation. Opening it revealed the complete handbook; closing / opening retained the vertical accordion structure at desktop and mobile widths.
+- The completed first journey task moved below the two incomplete tasks in the same phase.
+- The month calendar rendered trip dots on September 4 and 6 and exposed an interactive date control for the trip range.
+- Journey, trip-section, and day tabs retained visible pressed feedback. Reduced-motion styles disable the arrival animation when requested by the OS.
+- The guest editor prompt contains a 30-second timer and a compact re-open control.
 
 ## Comparison history
 
-### Pass 1 — blocked
+### Pass 1 — findings
 
-- `[P2]` Header action was visually detached from the page action area and overlapped the reading flow at narrower desktop widths.
-- Fix: moved the button into `resources-header-tools` alongside the research stamp and added a dedicated stacked layout below `1120px`.
+- `[P1]` Previous imagery was too detailed and visually weak beside the type.
+- `[P1]` The four-week agenda did not match the requested monthly planning model.
+- `[P2]` Travel opened a trip by default and completed journey tasks retained equal priority.
+- `[P2]` Home notices landed at a section rather than the exact task or trip conflict.
 
-### Pass 2 — passed
+### Pass 2 — fixes
 
-- Desktop and narrow captures show the button aligned within the header action group, the description unobstructed, and zero horizontal overflow.
-- Summary/detail interaction and hidden-video behavior passed the focused checks.
-- No remaining P0, P1, or P2 findings.
+- Replaced all visible illustrative roles with borderless, flat-object PNGs and raised palette saturation while preserving the existing frame system.
+- Added an equal-rhythm monthly calendar with event dots and hover / tap detail behavior.
+- Defaulted every trip to collapsed, added scroll-aware accordion motion, and pushed completed journey items down.
+- Added exact task / trip targets with spring arrival and highlighted outlines.
 
-## Follow-up polish
+### Pass 3 — passed
 
-- P3: once real AI-researched resources are imported, review summary length distribution and consider clamping unusually long summaries to keep paired cards visually balanced.
+- Desktop, tablet, and mobile measurements showed no document overflow.
+- Collapsed / expanded travel states, completed-task ordering, precise home navigation, and calendar dates were verified in the rendered application.
+- `npm run check` passed all 90 tests; the public-cloud production build verifier also passed.
+- No remaining P0, P1, or P2 visual or interaction findings.
 
 final result: passed

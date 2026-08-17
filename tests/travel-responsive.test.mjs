@@ -41,6 +41,8 @@ test("hotel bases and references precede itinerary days while the conflict calen
 });
 
 test("travel entries use a vertical accordion and reference actions stay at the top right", () => {
+  assert.match(planner, /const \[expandedTripId, setExpandedTripId\] = useState\(""\)/);
+  assert.match(planner, /target\?\.scrollIntoView\(\{ behavior: reduceMotion \? "auto" : "smooth", block: "start" \}\)/);
   assert.match(planner, /aria-expanded=\{expanded\}/);
   assert.match(planner, /trip-accordion-panel/);
   assert.match(css, /\.trip-card-list\s*\{[^}]*display:\s*grid/);

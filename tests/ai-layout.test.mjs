@@ -22,11 +22,13 @@ test("AI page automatically polls the connected proposal inbox", () => {
   assert.match(ai, /對話中新狀態立即產生待審提案/);
 });
 
-test("URL intake is collapsed by default and explains its retention", () => {
-  assert.match(resources, /<details className="paper-card resource-intake-card">/);
-  assert.doesNotMatch(resources, /<details className="paper-card resource-intake-card" open/);
+test("manual resource entry and AI URL intake share one modal", () => {
+  assert.doesNotMatch(resources, /<details className="paper-card resource-intake-card">/);
+  assert.match(resources, /className="resource-modal-mode-switch"/);
+  assert.match(resources, /手動填寫/);
+  assert.match(resources, /AI 辨識網址/);
   assert.match(resources, /已處理的紀錄會在 2 天後自動清除/);
-  assert.match(css, /\.resource-intake-card\[open\]/);
+  assert.match(css, /\.resource-modal-mode-switch/);
 });
 
 test("AI updates use a pending-only notification ticket with a three-item preview", () => {
