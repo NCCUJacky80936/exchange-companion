@@ -36,8 +36,9 @@ test("the hotel section uses straightforward accommodation labels", () => {
 });
 
 test("hotel bases and references precede itinerary days while the conflict calendar is last", () => {
-  assert.ok(planner.indexOf("<TravelStaySection") < planner.indexOf('<div className="day-tabs"'));
-  assert.ok(planner.lastIndexOf('className="travel-calendar-bottom"') > planner.lastIndexOf('className="travel-workspace"'));
+  assert.ok(planner.indexOf("<TravelStaySection") < planner.indexOf('<div className={`day-tabs'));
+  assert.ok(planner.lastIndexOf('className="travel-calendar-bottom academic-planner-stack"') > planner.lastIndexOf('className="travel-workspace'));
+  assert.ok(planner.indexOf('title="課表"') < planner.indexOf('title="學業與交換不可撞期"'));
 });
 
 test("travel entries use a vertical accordion and reference actions stay at the top right", () => {
@@ -74,7 +75,8 @@ test("travel creation forms open in modal dialogs instead of extending the accor
   assert.doesNotMatch(staySection, /addingReference \? <ReferenceForm/);
   assert.match(planner, /className="add-activity-trigger"/);
   assert.match(planner, />加入這一天</);
-  assert.match(planner, /addingActivity && selectedDay \? <ActivityModal/);
+  assert.match(planner, /\(addingActivity \|\| editingActivityId\) && selectedDay \? <ActivityModal/);
+  assert.match(planner, /activity=\{selectedDay\.activities\.find/);
   assert.doesNotMatch(planner, /add-activity-panel/);
   assert.match(css, /\.travel-entry-modal/);
 });

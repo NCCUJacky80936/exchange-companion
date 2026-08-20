@@ -2,13 +2,13 @@
 
 import { AlertTriangle, ArrowRight, Bot, ChevronLeft, ChevronRight, Clock3, MapPin, ShieldCheck, WalletCards } from "lucide-react";
 import Image from "next/image";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { phaseMeta } from "../lib/default-data";
 import { buildHomeAgenda, buildHomeBulletins, summarizeHomeBudget, type HomeAgendaItem, type HomeAgendaTarget } from "../lib/home-dashboard";
 import type { AppState } from "../lib/types";
 import type { ExchangeCloudController } from "../lib/useExchangeCloud";
 import HomeActivationGuide from "./HomeActivationGuide";
+import FloatingSurface from "./ui/FloatingSurface";
 
 const sourceLabel: Record<HomeAgendaItem["source"], string> = { task: "任務", study: "行事曆", travel: "旅行", journey: "交換節點" };
 
@@ -24,8 +24,8 @@ function shiftMonth(month: string, amount: number): string {
 }
 
 function HomeMonthCalendar({ state, today, onNavigate }: { state: AppState; today: string; onNavigate: (target: HomeAgendaTarget) => void }) {
-  const reduceMotion = useReducedMotion();
   const rootRef = useRef<HTMLElement>(null);
+  const activeAnchorRef = useRef<HTMLElement | null>(null);
   const [month, setMonth] = useState(today.slice(0, 7));
   const [activeDate, setActiveDate] = useState("");
   const monthStart = `${month}-01`;
@@ -40,10 +40,13 @@ function HomeMonthCalendar({ state, today, onNavigate }: { state: AppState; toda
   }, [items]);
   const leading = first.getUTCDay();
   const cellCount = Math.max(35, Math.ceil((leading + monthDays) / 7) * 7);
+  const activeItems = activeDate ? byDate.get(activeDate) ?? [] : [];
+  const activeDay = activeDate ? Number(activeDate.slice(-2)) : 0;
 
   useEffect(() => {
     const closeOnOutsidePress = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setActiveDate("");
+      const target = event.target as HTMLElement;
+      if (!rootRef.current?.contains(target) && !target.closest(".home-calendar-popover")) setActiveDate("");
     };
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setActiveDate(""); };
     document.addEventListener("pointerdown", closeOnOutsidePress);
@@ -79,30 +82,19 @@ function HomeMonthCalendar({ state, today, onNavigate }: { state: AppState; toda
         return <div
           className={`home-month-day ${date === today ? "today" : ""} ${active ? "active" : ""} row-${row} column-${column}`}
           key={date}
-          onMouseEnter={() => dayItems.length && setActiveDate(date)}
-          onMouseLeave={() => setActiveDate((value) => value === date ? "" : value)}
+          onMouseEnter={(event) => { if (!dayItems.length) return; activeAnchorRef.current = event.currentTarget.querySelector("button"); setActiveDate(date); }}
         >
-          <button className="home-calendar-date" aria-expanded={active} disabled={!dayItems.length} onClick={() => setActiveDate((value) => value === date ? "" : date)}>
+          <button className="home-calendar-date" aria-expanded={active} disabled={!dayItems.length} onClick={(event) => { activeAnchorRef.current = event.currentTarget; setActiveDate(date); }}>
             <strong>{day}</strong>
             {dayItems.length ? <span className="home-calendar-dots" aria-label={`${dayItems.length} 個行程`}>{dayItems.slice(0, 4).map((item) => <i key={item.id} className={`source-${item.source}`} />)}{dayItems.length > 4 ? <small>+{dayItems.length - 4}</small> : null}</span> : null}
           </button>
-          <AnimatePresence>
-            {active && dayItems.length ? <motion.div
-              className="home-calendar-popover paper-card"
-              role="dialog"
-              aria-label={`${first.getUTCMonth() + 1} 月 ${day} 日行程`}
-              initial={reduceMotion ? false : { opacity: 0, y: 7, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4, scale: 0.98 }}
-              transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 30 }}
-            >
-              <strong>{first.getUTCMonth() + 1} 月 {day} 日</strong>
-              {dayItems.map((item) => <button key={item.id} className={`source-${item.source}`} onClick={() => onNavigate(item.target)}><i /><span><b>{item.title}</b><small>{item.time ? `${item.time} · ` : ""}{item.detail}</small></span><ChevronRight /></button>)}
-            </motion.div> : null}
-          </AnimatePresence>
         </div>;
       })}
     </div>
+    <FloatingSurface open={Boolean(activeDate && activeItems.length)} anchorRef={activeAnchorRef} onClose={() => setActiveDate("")} prefer="top" label={`${first.getUTCMonth() + 1} 月 ${activeDay} 日行程`} className="home-calendar-popover">
+      <strong>{first.getUTCMonth() + 1} 月 {activeDay} 日</strong>
+      {activeItems.map((item) => <button key={item.id} className={`source-${item.source}`} onClick={() => { setActiveDate(""); onNavigate(item.target); }}><i /><span><b>{item.title}</b><small>{item.time ? `${item.time} · ` : ""}{item.detail}</small></span><ChevronRight /></button>)}
+    </FloatingSurface>
   </section>;
 }
 
@@ -146,7 +138,10 @@ export default function HomeDashboard({ state, setState, cloud, todayIso, forceG
 
       <aside className={`home-bulletin-board paper-card ${bulletins.length ? "has-items" : "safe"}`}>
         <div className="section-heading"><div><p className="eyebrow">風險與提醒</p><h2>交換佈告欄</h2></div><span className="home-bulletin-count">{bulletins.length}</span></div>
-        {bulletins.length ? <div className="home-bulletin-list">{bulletins.map((item) => <button key={item.id} className={`home-bulletin-item ${item.tone}`} disabled={!item.target} onClick={() => item.target && onNavigate(item.target)}>{item.tone === "danger" ? <AlertTriangle /> : item.tone === "safe" ? <ShieldCheck /> : item.priority === 3 ? <Bot /> : <Clock3 />}<span><strong>{item.title}</strong><small>{item.summary}</small></span>{item.target ? <ChevronRight size={16} /> : null}</button>)}</div> : <div className="home-safe-state"><ShieldCheck /><div><strong>目前沒有需要立刻處理的風險</strong><span>新增期限、課表或旅行後，佈告欄會持續幫你檢查。</span></div></div>}
+        <div className="home-bulletin-list">
+          {bulletins.length ? bulletins.map((item) => <button key={item.id} className={`home-bulletin-item ${item.tone}`} disabled={!item.target} onClick={() => item.target && onNavigate(item.target)}>{item.tone === "danger" ? <AlertTriangle /> : item.tone === "safe" ? <ShieldCheck /> : item.priority === 3 ? <Bot /> : <Clock3 />}<span><strong>{item.title}</strong><small>{item.summary}</small></span>{item.target ? <ChevronRight size={16} /> : null}</button>) : <div className="home-safe-state"><ShieldCheck /><div><strong>目前沒有需要立刻處理的風險</strong><span>新增期限、課表或旅行後，佈告欄會持續幫你檢查。</span></div></div>}
+          {Array.from({ length: Math.max(0, 3 - Math.max(1, bulletins.length)) }).map((_, index) => <div className="home-bulletin-empty" key={`empty-${index}`} aria-hidden="true"><span>這裡目前沒有更多通知</span></div>)}
+        </div>
       </aside>
     </div>
 

@@ -1,12 +1,14 @@
 "use client";
 
-import { Check, CloudDownload, Copy, ExternalLink, FileCheck2, Inbox, Link2, LockKeyhole, RefreshCw, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
+import { Check, CloudDownload, Copy, ExternalLink, FileCheck2, Inbox, Link2, LockKeyhole, Pencil, RefreshCw, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react";
 import { applyAiProposal, canApplyAiProposal, canUndoAiProposal, clearDismissedAiProposals, dismissAiProposal, findAiBundleCollisions, importAiBundle, journeyScopeForState, matchesAiJourneyScope, rebaseAiProposal, sensitiveBundleWarnings, undoAiProposal, validateAiImportBundle } from "../lib/ai-import";
 import { createExchangeConciergeHandoff } from "../lib/concierge-handoff";
 import { buildFirstConciergePrompt } from "../lib/concierge-starter";
 import type { ExchangeCloudController } from "../lib/useExchangeCloud";
 import type { AiProposal, AppState } from "../lib/types";
+import MotionDialog from "./ui/MotionDialog";
 
 const entityLabel = {
   journey: "交換基本資料",
@@ -44,15 +46,38 @@ function displayValue(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+function ProposalEditDialog({ proposal, onClose, onAccept }: { proposal: AiProposal; onClose: () => void; onAccept: (update: Pick<AiProposal, "title" | "summary" | "value">) => void }) {
+  const [error, setError] = useState("");
+  function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      const value = JSON.parse(form.get("value")?.toString() || "{}") as unknown;
+      if (!value || Array.isArray(value) || typeof value !== "object") throw new Error("invalid");
+      onAccept({ title: form.get("title")?.toString().trim() || proposal.title, summary: form.get("summary")?.toString().trim() || proposal.summary, value: value as Record<string, unknown> });
+    } catch {
+      setError("欄位內容必須是有效的 JSON 物件，請修正後再套用。");
+    }
+  }
+  return <MotionDialog id="proposal-edit-dialog-title" eyebrow="Human review" title="修改後接受 AI 提案" onClose={onClose} className="proposal-edit-dialog">
+    <form className="form-grid" onSubmit={submit}>
+      <label className="field field-full"><span>提案標題</span><input name="title" defaultValue={proposal.title} required /></label>
+      <label className="field field-full"><span>摘要</span><textarea name="summary" rows={3} defaultValue={proposal.summary} required /></label>
+      <label className="field field-full"><span>要套用的欄位</span><textarea className="proposal-json-editor" name="value" rows={10} defaultValue={JSON.stringify(proposal.value, null, 2)} spellCheck={false} required /><small>保留 JSON 格式；你可以修改值，但不要刪掉必要欄位。</small></label>
+      {error ? <p className="form-error field-full" role="alert">{error}</p> : null}
+      <div className="modal-actions field-full"><button className="button secondary" type="button" onClick={onClose}>取消</button><button className="button primary" type="submit"><Check size={16} />儲存並套用</button></div>
+    </form>
+  </MotionDialog>;
+}
+
 export default function AiConcierge({ state, setState, cloud, openInboxRequest = 0 }: { state: AppState; setState: Dispatch<SetStateAction<AppState>>; cloud: ExchangeCloudController; openInboxRequest?: number }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const inboxDetailsRef = useRef<HTMLDetailsElement>(null);
-  const refreshedAccount = useRef("");
-  const refreshInboxRef = useRef(cloud.refreshConciergeInbox);
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [copiedConnectionPrompt, setCopiedConnectionPrompt] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(openInboxRequest > 0);
+  const [editingProposal, setEditingProposal] = useState<AiProposal | null>(null);
   const inbox = state.aiInbox ?? { sources: [], proposals: [] };
   const sourceMap = useMemo(() => new Map(inbox.sources.map((source) => [source.id, source])), [inbox.sources]);
   const pending = inbox.proposals.filter((proposal) => proposal.status === "pending");
@@ -60,10 +85,6 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
   const dismissedCount = inbox.proposals.filter((proposal) => proposal.status === "dismissed").length;
   const activeConnections = cloud.conciergeConnections.filter((item) => !item.revokedAt);
   const pendingByEntity = useMemo(() => pending.reduce<Record<string, number>>((counts, proposal) => ({ ...counts, [proposal.entity]: (counts[proposal.entity] ?? 0) + 1 }), {}), [pending]);
-
-  useEffect(() => {
-    refreshInboxRef.current = cloud.refreshConciergeInbox;
-  }, [cloud.refreshConciergeInbox]);
 
   useEffect(() => {
     if (!openInboxRequest) return;
@@ -82,41 +103,6 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
       window.clearTimeout(clearTimer);
     };
   }, [openInboxRequest]);
-
-  useEffect(() => {
-    if (!cloud.permanentAccount || !cloud.accountDataReady) return;
-    const accountId = cloud.session?.user.id ?? "";
-    if (!accountId || refreshedAccount.current === accountId) return;
-    refreshedAccount.current = accountId;
-    void cloud.refreshConciergeConnections();
-    void cloud.refreshConciergeInbox().then((count) => {
-      if (count) setMessage(`已從雲端收件匣帶回 ${count} 個待確認提案；尚未自動套用。`);
-    });
-  }, [cloud]);
-
-  useEffect(() => {
-    if (!cloud.permanentAccount || !cloud.accountDataReady || !activeConnections.length) return;
-    let stopped = false;
-    const refresh = async () => {
-      if (document.visibilityState !== "visible") return;
-      try {
-        const count = await refreshInboxRef.current();
-        if (!stopped && count) setMessage(`Agent 已主動送回 ${count} 個待確認提案；尚未自動套用。`);
-      } catch {
-        if (!stopped) setMessage("Agent 提案自動收件暫時失敗；本機手帳沒有變更，重新連線後會再嘗試。");
-      }
-    };
-    const onVisible = () => { if (document.visibilityState === "visible") void refresh(); };
-    const timer = window.setInterval(() => void refresh(), 60_000);
-    window.addEventListener("focus", onVisible);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onVisible);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [activeConnections.length, cloud.accountDataReady, cloud.permanentAccount]);
 
   async function importBundle(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -249,7 +235,7 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
                 setState((currentState) => rebaseAiProposal(currentState, proposal.id, cloud.privateRevision));
                 setMessage("已用目前手帳重新核對這筆提案；確認差異後即可套用。");
               }}><RefreshCw size={14} />以目前手帳重新核對</button> : null}</div> : null}
-              <div className="proposal-actions"><button className="button secondary" onClick={() => { cloud.markNextSaveActor("proposal"); setState((current) => dismissAiProposal(current, proposal.id)); }}><X size={16} />忽略</button><button className="button primary" disabled={!applicability.valid} onClick={() => { cloud.markNextSaveActor("proposal"); setState((current) => applyAiProposal(current, proposal.id, cloud.privateRevision || undefined)); }}><Check size={16} />套用到手帳</button></div>
+              <div className="proposal-actions"><button className="button secondary" onClick={() => { cloud.markNextSaveActor("proposal"); setState((current) => dismissAiProposal(current, proposal.id)); }}><X size={16} />忽略</button><button className="button secondary" disabled={!applicability.valid} onClick={() => setEditingProposal(proposal)}><Pencil size={16} />修改後接受</button><button className="button primary" disabled={!applicability.valid} onClick={() => { cloud.markNextSaveActor("proposal"); setState((current) => applyAiProposal(current, proposal.id, cloud.privateRevision || undefined)); }}><Check size={16} />直接套用</button></div>
             </article>
           );
         })}</div> : <div className="paper-card proposal-empty"><RotateCcw size={27} /><h3>目前沒有等待確認的更新</h3><p>手動修改可以照常使用。下次讓 Codex 整理時，它會以你現在的紀錄為準。</p></div>}
@@ -284,6 +270,23 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
           {message ? <p className="settings-message" role="status">{message}</p> : null}
         </article>
       </section>
+
+      <AnimatePresence>{editingProposal ? <ProposalEditDialog proposal={editingProposal} onClose={() => setEditingProposal(null)} onAccept={(update) => {
+        const editedProposal = { ...editingProposal, ...update, userEditedAt: new Date().toISOString() };
+        const previewState = { ...state, aiInbox: state.aiInbox ? { ...state.aiInbox, proposals: state.aiInbox.proposals.map((proposal) => proposal.id === editedProposal.id ? editedProposal : proposal) } : state.aiInbox };
+        const applicability = canApplyAiProposal(previewState, editedProposal, cloud.privateRevision || undefined);
+        if (!applicability.valid) {
+          setMessage(`修改內容尚不能套用：${applicability.reason || "請保留必要欄位並再試一次。"}`);
+          return;
+        }
+        cloud.markNextSaveActor("proposal");
+        setState((current) => {
+          const next = { ...current, aiInbox: current.aiInbox ? { ...current.aiInbox, proposals: current.aiInbox.proposals.map((proposal) => proposal.id === editedProposal.id ? editedProposal : proposal) } : current.aiInbox };
+          return applyAiProposal(next, editedProposal.id, cloud.privateRevision || undefined);
+        });
+        setEditingProposal(null);
+        setMessage("已保留你的修改並套用；原始來源與可復原紀錄仍在。");
+      }} /> : null}</AnimatePresence>
 
     </div>
   );

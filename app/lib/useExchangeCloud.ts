@@ -11,6 +11,7 @@ import {
   getCloudClient,
   isPermanentSession,
   listConciergeConnections,
+  listMemberTravelPlans,
   loadTravelSharingSettings,
   publishTravelPlan,
   pullConciergeProposalRuns,
@@ -100,6 +101,8 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   const skipNextPrivateSave = useRef(false);
   const saveInFlight = useRef(false);
   const publishedPayloads = useRef(new Map<string, string>());
+  const lastAutomaticInboxRefresh = useRef(0);
+  const automaticInboxAccount = useRef("");
   const sharedPlanIds = useMemo(() => (state.travelPlans ?? [])
     .filter((plan) => plan.cloud?.published)
     .map((plan) => plan.cloud?.cloudPlanId ?? plan.id), [state.travelPlans]);
@@ -191,17 +194,20 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     redeemedToken.current = token;
     setShareStatus("loading");
     setBusy(true);
-    void redeemTravelShare(token).then((plan) => {
+    void redeemTravelShare(token).then(async (plan) => {
+      const accessiblePlans = await listMemberTravelPlans(plan);
       setState((current) => ({
         ...current,
-        travelPlans: [...(current.travelPlans ?? []).filter((item) => item.id !== plan.id), plan],
+        travelPlans: plan.cloud?.permission === "owner"
+          ? [...(current.travelPlans ?? []).filter((item) => !accessiblePlans.some((accessible) => accessible.id === item.id)), ...accessiblePlans]
+          : accessiblePlans,
       }));
       setSharedPlanId(plan.id);
       setShareStatus("active");
       const cleanUrl = new URL(window.location.href);
       cleanUrl.searchParams.delete("share");
       window.history.replaceState({}, "", cleanUrl);
-      setNotice(plan.cloud?.permission === "viewer" ? "已開啟唯讀旅行。" : "已加入可共同編輯的旅行。 ");
+      setNotice(accessiblePlans.length > 1 ? `已載入這個帳號受邀的 ${accessiblePlans.length} 趟旅行。` : plan.cloud?.permission === "viewer" ? "已開啟唯讀旅行。" : "已加入可共同編輯的旅行。 ");
     }).catch((error: { message?: string }) => {
       redeemedToken.current = "";
       const loginRequired = error.message?.includes("account_approval_required");
@@ -334,6 +340,31 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     }
     return importedCount;
   }, [session, setState]);
+
+  useEffect(() => {
+    if (!accountDataReady || !isPermanentSession(session)) return;
+    let stopped = false;
+    const accountId = session.user.id;
+    const refresh = async (force = false) => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (!force && now - lastAutomaticInboxRefresh.current < 15_000) return;
+      lastAutomaticInboxRefresh.current = now;
+      try {
+        const count = await refreshInbox();
+        if (!stopped && count) setNotice(`已自動帶回 ${count} 個待確認提案；尚未套用。`);
+      } catch {
+        if (!stopped) setNotice("提案自動收件暫時失敗；本機手帳沒有變更，回到網站時會再嘗試。 ");
+      }
+    };
+    const firstForAccount = automaticInboxAccount.current !== accountId;
+    automaticInboxAccount.current = accountId;
+    if (firstForAccount) void refresh(true);
+    const onVisible = () => { if (document.visibilityState === "visible") void refresh(); };
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { stopped = true; window.removeEventListener("focus", onVisible); document.removeEventListener("visibilitychange", onVisible); };
+  }, [accountDataReady, refreshInbox, session]);
 
   return useMemo(() => ({
     configured,

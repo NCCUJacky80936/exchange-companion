@@ -106,6 +106,7 @@ export interface PackingItem {
   weightKg: number;
   packed: boolean;
   warning?: string;
+  notes?: string;
 }
 
 export interface ResourceItem {
@@ -178,6 +179,8 @@ export interface TravelNote {
   details: string;
   category: TravelNoteCategory;
   important: boolean;
+  date?: string;
+  priority?: "low" | "medium" | "high";
 }
 
 export interface TravelPackingItem {
@@ -312,6 +315,8 @@ export interface AiProposal {
   appliedAt?: string;
   /** Website-only retention timestamp; Agents do not author this field. */
   createdAt?: string;
+  /** Website-only marker showing that a person changed the proposed copy or fields before accepting. */
+  userEditedAt?: string;
 }
 
 export interface AiImportBundle {
@@ -364,6 +369,11 @@ export interface StudyEvent {
   startDate: string;
   endDate?: string;
   startTime?: string;
+  endTime?: string;
+  location?: string;
+  classroom?: string;
+  teacher?: string;
+  semester?: string;
   repeatWeekly?: boolean;
   mandatory: boolean;
   notes: string;

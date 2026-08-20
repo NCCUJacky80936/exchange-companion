@@ -395,6 +395,38 @@ export async function redeemTravelShare(token: string): Promise<TravelPlan> {
   };
 }
 
+export async function listMemberTravelPlans(seedPlan: TravelPlan): Promise<TravelPlan[]> {
+  const client = getCloudClient();
+  const session = await ensureCloudSession();
+  if (!client || !isPermanentSession(session)) return [seedPlan];
+  const { data: memberships, error: membershipError } = await client.from("travel_members")
+    .select("plan_id, permission");
+  if (membershipError) throw membershipError;
+  const permissionByPlan = new Map<string, "viewer" | "editor">();
+  for (const membership of memberships ?? []) {
+    const current = permissionByPlan.get(membership.plan_id);
+    if (!current || membership.permission === "editor") permissionByPlan.set(membership.plan_id, membership.permission);
+  }
+  const planIds = [...permissionByPlan.keys()];
+  if (!planIds.length) return [seedPlan];
+  const { data: plans, error: plansError } = await client.from("travel_plans")
+    .select("id, payload, owner_id, updated_at")
+    .in("id", planIds);
+  if (plansError) throw plansError;
+  const accessible = (plans ?? []).map((row) => ({
+    ...(row.payload as TravelPlan),
+    cloud: {
+      published: true,
+      cloudPlanId: row.id,
+      ownerId: row.owner_id,
+      permission: resolveTravelPermission(row.owner_id, session.user.id, permissionByPlan.get(row.id)),
+      lastSyncedAt: row.updated_at,
+    },
+  }));
+  if (!accessible.some((plan) => plan.id === seedPlan.id)) accessible.push(seedPlan);
+  return accessible;
+}
+
 export async function restoreOwnedTravelPermissions(state: AppState, currentSession?: Session): Promise<AppState> {
   const client = getCloudClient();
   const session = currentSession ?? await ensureCloudSession();

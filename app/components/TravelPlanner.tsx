@@ -37,6 +37,7 @@ import { exchangeCurrencies, exchangeProfile } from "../lib/profile";
 import { localDateKey, sortTravelPlansForDisplay, travelTemporalStatus } from "../lib/travel-sort";
 import { DayMapPanel, mapsUrlForActivity, TravelNotesPanel, TravelPackingPanel } from "./TravelTripPanels";
 import { TravelStaySection } from "./TravelStaySection";
+import MotionDialog from "./ui/MotionDialog";
 
 type TripView = "itinerary" | "notes" | "packing";
 
@@ -357,7 +358,7 @@ function ActivityForm({ activity, onSave, onCancel }: { activity?: TravelActivit
   );
 }
 
-function ActivityModal({ day, onSave, onClose }: { day: TravelDay; onSave: (activity: TravelActivity) => void; onClose: () => void }) {
+function ActivityModal({ day, activity, onSave, onClose }: { day: TravelDay; activity?: TravelActivity; onSave: (activity: TravelActivity) => void; onClose: () => void }) {
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => event.key === "Escape" && onClose();
     window.addEventListener("keydown", closeOnEscape);
@@ -367,63 +368,67 @@ function ActivityModal({ day, onSave, onClose }: { day: TravelDay; onSave: (acti
   return (
     <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <motion.div className="modal-card travel-entry-modal activity-entry-modal paper-card" role="dialog" aria-modal="true" aria-labelledby="activity-modal-title" initial={{ opacity: 0, y: 18, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.99 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}>
-        <div className="modal-heading"><div><p className="eyebrow">Add a stop · {day.title}</p><h2 id="activity-modal-title">加入 {formatDate(day.date, true)}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="關閉"><X size={20} /></button></div>
+        <div className="modal-heading"><div><p className="eyebrow">{activity ? "Edit a stop" : "Add a stop"} · {day.title}</p><h2 id="activity-modal-title">{activity ? "編輯行程" : `加入 ${formatDate(day.date, true)}`}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="關閉"><X size={20} /></button></div>
         <p className="travel-entry-modal-hint">先記下時間、地點和 Google Maps；儲存後會依時間自動排進這一天。</p>
-        <ActivityForm onSave={onSave} onCancel={onClose} />
+        <ActivityForm activity={activity} onSave={onSave} onCancel={onClose} />
       </motion.div>
     </motion.div>
   );
 }
 
-function StudyCalendar({ events, onAdd, onDelete }: { events: StudyEvent[]; onAdd: (event: StudyEvent) => void; onDelete: (id: string) => void }) {
-  const [adding, setAdding] = useState(false);
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    onAdd({
-      id: `study-${Date.now()}`,
+function StudyEventDialog({ event, course, onSave, onClose }: { event?: StudyEvent; course: boolean; onSave: (event: StudyEvent) => void; onClose: () => void }) {
+  function submit(formEvent: FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    const form = new FormData(formEvent.currentTarget);
+    onSave({
+      id: event?.id ?? `study-${Date.now()}`,
       title: form.get("title")?.toString().trim() ?? "",
-      kind: form.get("kind") as StudyEventKind,
+      kind: course ? "class" : form.get("kind") as StudyEventKind,
       startDate: form.get("startDate")?.toString() ?? "",
       endDate: form.get("endDate")?.toString() || undefined,
       startTime: form.get("startTime")?.toString() || undefined,
-      repeatWeekly: form.get("repeatWeekly") === "on",
+      endTime: form.get("endTime")?.toString() || undefined,
+      repeatWeekly: course || form.get("repeatWeekly") === "on",
       mandatory: form.get("mandatory") === "on",
-      notes: "手動加入的不可撞期行程。",
+      location: form.get("location")?.toString().trim() || undefined,
+      classroom: form.get("classroom")?.toString().trim() || undefined,
+      teacher: form.get("teacher")?.toString().trim() || undefined,
+      semester: form.get("semester")?.toString().trim() || undefined,
+      notes: form.get("notes")?.toString().trim() || (course ? "手動加入的課程。" : "手動加入的不可撞期行程。"),
     });
-    event.currentTarget.reset();
-    setAdding(false);
   }
+  return <MotionDialog id="study-event-dialog-title" eyebrow={course ? "Course schedule" : "Do not overlap"} title={event ? (course ? "編輯課程" : "編輯不可撞期事項") : (course ? "新增課程" : "新增不可撞期事項")} onClose={onClose} className="study-event-dialog">
+    <form className="form-grid study-event-modal-form" onSubmit={submit}>
+      <label className="field field-full"><span>{course ? "課程名稱" : "事項名稱"}</span><input name="title" defaultValue={event?.title} placeholder={course ? "例如：Integrated Product Design" : "課程、考試或重要期限"} required /></label>
+      {!course ? <label className="field"><span>類型</span><select name="kind" defaultValue={event?.kind ?? "deadline"}>{Object.entries(studyEventMeta).filter(([id]) => id !== "class").map(([id, meta]) => <option value={id} key={id}>{meta.label}</option>)}</select></label> : null}
+      <label className="field"><span>{course ? "Semester / Term" : "學期／期間（選填）"}</span><input name="semester" defaultValue={event?.semester} placeholder="WiSe 2026/27" /></label>
+      <label className="field"><span>開始日期</span><input type="date" name="startDate" defaultValue={event?.startDate} required /></label>
+      <label className="field"><span>結束日期</span><input type="date" name="endDate" defaultValue={event?.endDate} /></label>
+      <label className="field"><span>開始時間</span><input type="time" name="startTime" defaultValue={event?.startTime} /></label>
+      <label className="field"><span>結束時間</span><input type="time" name="endTime" defaultValue={event?.endTime} /></label>
+      {course ? <><label className="field"><span>地點</span><input name="location" defaultValue={event?.location} placeholder="HdM Nobelstraße" /></label><label className="field"><span>教室</span><input name="classroom" defaultValue={event?.classroom} /></label><label className="field"><span>教師</span><input name="teacher" defaultValue={event?.teacher} /></label></> : null}
+      <label className="field field-full"><span>備註</span><textarea name="notes" rows={3} defaultValue={event?.notes} /></label>
+      <label className="field confirmation-field"><input type="checkbox" name="mandatory" defaultChecked={event?.mandatory ?? true} /><span>一定不能撞期</span></label>
+      {!course ? <label className="field confirmation-field"><input type="checkbox" name="repeatWeekly" defaultChecked={event?.repeatWeekly} /><span>每週重複</span></label> : null}
+      <div className="modal-actions field-full"><button type="button" className="button secondary" onClick={onClose}>取消</button><button className="button primary" type="submit"><Check size={16} />儲存</button></div>
+    </form>
+  </MotionDialog>;
+}
 
-  return (
-    <section className="study-calendar paper-card">
-      <div className="study-calendar-heading"><div><p className="eyebrow">Do not overlap</p><h3>學業與交換不可撞期</h3></div><button className="mini-add-button" onClick={() => setAdding((value) => !value)}>{adding ? <X size={15} /> : <Plus size={15} />}{adding ? "取消" : "新增"}</button></div>
-      <div className="study-event-list">
-        {[...events].sort((a, b) => a.startDate.localeCompare(b.startDate)).map((event) => (
-          <div className="study-event" key={event.id}>
-            <span className={`study-kind ${studyEventMeta[event.kind].className}`}>{studyEventMeta[event.kind].label}</span>
-            <div><strong>{event.title}</strong><small>{formatDate(event.startDate, true)}{event.repeatWeekly ? ` 起每週${event.endDate ? `，至 ${formatDate(event.endDate, true)}` : ""}` : event.endDate ? ` — ${formatDate(event.endDate, true)}` : ""}{event.startTime ? ` · ${event.startTime}` : ""}</small></div>
-            <button className="icon-button danger" onClick={() => onDelete(event.id)} aria-label={`刪除 ${event.title}`}><Trash2 size={14} /></button>
-          </div>
-        ))}
-      </div>
-      <AnimatePresence>
-        {adding ? (
-          <motion.form className="study-event-form" onSubmit={submit} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-            <input name="title" placeholder="課程、考試或重要期限" aria-label="不可撞期事項名稱" required />
-            <select name="kind" defaultValue="class" aria-label="不可撞期事項類型">{Object.entries(studyEventMeta).map(([id, meta]) => <option value={id} key={id}>{meta.label}</option>)}</select>
-            <input type="date" name="startDate" aria-label="不可撞期事項日期" required />
-            <input type="date" name="endDate" aria-label="不可撞期事項結束日期" />
-            <input type="time" name="startTime" aria-label="不可撞期事項時間" />
-            <label><input type="checkbox" name="repeatWeekly" />每週重複</label>
-            <label><input type="checkbox" name="mandatory" defaultChecked />一定不能撞期</label>
-            <button className="button primary" type="submit">加入</button>
-          </motion.form>
-        ) : null}
-      </AnimatePresence>
-    </section>
-  );
+function AcademicSection({ title, eyebrow, emptyTitle, emptyCopy, course, events, onSave, onDelete }: { title: string; eyebrow: string; emptyTitle: string; emptyCopy: string; course: boolean; events: StudyEvent[]; onSave: (event: StudyEvent) => void; onDelete: (id: string) => void }) {
+  const [editing, setEditing] = useState<StudyEvent | null | "new">(null);
+  const [deleting, setDeleting] = useState<StudyEvent | null>(null);
+  const close = () => setEditing(null);
+  return <section className={`study-calendar academic-section paper-card ${course ? "course-schedule" : "academic-conflicts"}`}>
+    <div className="study-calendar-heading"><div><p className="eyebrow">{eyebrow}</p><h3>{title}</h3></div><button className="mini-add-button" onClick={() => setEditing("new")}><Plus size={15} />新增</button></div>
+    {events.length ? <div className="study-event-list">{[...events].sort((a, b) => a.startDate.localeCompare(b.startDate)).map((item) => <div className="study-event" key={item.id}>
+      <span className={`study-kind ${studyEventMeta[item.kind].className}`}>{studyEventMeta[item.kind].label}</span>
+      <div><strong>{item.title}</strong><small>{formatDate(item.startDate, true)}{item.repeatWeekly ? ` 起每週${item.endDate ? `，至 ${formatDate(item.endDate, true)}` : ""}` : item.endDate ? ` — ${formatDate(item.endDate, true)}` : ""}{item.startTime ? ` · ${item.startTime}${item.endTime ? `–${item.endTime}` : ""}` : ""}{item.classroom ? ` · ${item.classroom}` : item.location ? ` · ${item.location}` : ""}</small></div>
+      <div className="study-event-actions"><button className="icon-button" onClick={() => setEditing(item)} aria-label={`編輯 ${item.title}`} title="編輯"><Pencil size={14} /></button><button className="icon-button danger" onClick={() => setDeleting(item)} aria-label={`刪除 ${item.title}`} title="刪除"><Trash2 size={14} /></button></div>
+    </div>)}</div> : <div className="academic-empty"><GraduationCap size={26} /><div><strong>{emptyTitle}</strong><span>{emptyCopy}</span></div><button className="button secondary" onClick={() => setEditing("new")}><Plus size={15} />{course ? "新增課程" : "新增事項"}</button></div>}
+    <AnimatePresence>{editing ? <StudyEventDialog event={editing === "new" ? undefined : editing} course={course} onClose={close} onSave={(item) => { onSave(item); close(); }} /> : null}</AnimatePresence>
+    <AnimatePresence>{deleting ? <MotionDialog id="delete-study-event-title" eyebrow="Confirm deletion" title={`刪除「${deleting.title}」？`} onClose={() => setDeleting(null)} alert className="confirm-dialog"><p>刪除後，旅行撞期檢查也會立即更新。</p><div className="modal-actions"><button className="button secondary" onClick={() => setDeleting(null)}>取消</button><button className="button text-danger" onClick={() => { onDelete(deleting.id); setDeleting(null); }}><Trash2 size={15} />確認刪除</button></div></MotionDialog> : null}</AnimatePresence>
+  </section>;
 }
 
 export default function TravelPlanner({ state, setState, cloud, focusTripId = "" }: { state: AppState; setState: Dispatch<SetStateAction<AppState>>; cloud: ExchangeCloudController; focusTripId?: string }) {
@@ -445,6 +450,7 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
   const [tripActionsOpen, setTripActionsOpen] = useState(false);
   const [spotlightTripId, setSpotlightTripId] = useState("");
   const tripActionsRef = useRef<HTMLDivElement>(null);
+  const accordionScrollTimer = useRef(0);
 
   const selectedPlan = sortedPlans.find((plan) => plan.id === selectedTripId) ?? sortedPlans[0] ?? null;
   const selectedDay = selectedPlan?.days.find((day) => day.date === selectedDate) ?? selectedPlan?.days[0] ?? null;
@@ -501,6 +507,16 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [tripActionsOpen]);
+
+  useEffect(() => {
+    const openFromQuickNavigation = (event: Event) => {
+      const planId = (event as CustomEvent<{ planId?: string }>).detail?.planId;
+      const plan = sortedPlans.find((item) => item.id === planId);
+      if (plan) toggleTrip(plan);
+    };
+    window.addEventListener("exchange:quick-travel", openFromQuickNavigation);
+    return () => window.removeEventListener("exchange:quick-travel", openFromQuickNavigation);
+  });
 
   function savePlan(plan: TravelPlan) {
     setState((current) => ({
@@ -560,11 +576,14 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
     setSelectedDate(plan.days[0]?.date ?? "");
     setTripView("itinerary");
     setExpandedTripId(opening ? plan.id : "");
-    window.setTimeout(() => {
-      const target = document.getElementById(`trip-${plan.id}`);
-      target?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
-      if (target) window.scrollBy({ top: -88, behavior: reduceMotion ? "auto" : "smooth" });
-    }, reduceMotion ? 0 : opening ? 330 : 180);
+    window.clearTimeout(accordionScrollTimer.current);
+    accordionScrollTimer.current = window.setTimeout(() => {
+      const current = document.getElementById(`trip-${plan.id}`);
+      if (!current) return;
+      const headerOffset = window.innerWidth <= 820 ? 76 : 88;
+      const top = Math.max(0, window.scrollY + current.getBoundingClientRect().top - headerOffset);
+      window.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
+    }, reduceMotion ? 0 : 360);
   }
 
   async function copySummary() {
@@ -606,7 +625,7 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
         <>
         <div className="travel-workspace travel-accordion-workspace">
           <section className="travel-rail travel-accordion" aria-labelledby="travel-year-title">
-            <div className="travel-rail-heading"><div><p className="eyebrow">My travel year</p><h2 id="travel-year-title">這一年想去哪</h2></div><span>{plans.length} trips</span></div>
+                <div className="travel-rail-heading"><div><p id="travel-year-title" className="eyebrow">My travel year</p></div><span>{plans.length} trips</span></div>
             <div className="trip-card-list trip-accordion-list">
               {sortedPlans.map((plan, index) => {
                 const planConflicts = allBlockingEvents.filter((event) => overlaps(plan.startDate, plan.endDate, event));
@@ -656,7 +675,7 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
               {tripView === "itinerary" ? <>
               <TravelStaySection plan={selectedPlan} readOnly={!editable} onUpdate={(plan) => updatePlan(plan.id, () => plan)} />
               <div className="daily-itinerary-heading"><div><p className="eyebrow">Daily itinerary</p><h3>每日行程</h3></div><span>{selectedPlan.days.length} 天</span></div>
-              <div className="day-tabs" role="tablist" aria-label="旅行日期">
+              <div className={`day-tabs ${selectedPlan.days.length <= 4 ? "few-days" : "many-days"}`} role="tablist" aria-label="旅行日期">
                 {selectedPlan.days.map((day, index) => <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} key={day.id} role="tab" aria-selected={selectedDay?.id === day.id} className={selectedDay?.id === day.id ? "active" : ""} onClick={() => setSelectedDate(day.date)}><small>DAY {index + 1}</small><strong>{formatDate(day.date)}</strong><span>{day.activities.length} stops</span></motion.button>)}
               </div>
               {selectedDay ? (
@@ -668,12 +687,12 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
                       return (
                         <motion.article layout className="activity-block" key={activity.id}>
                           <div className={`activity-marker ${meta.color}`}><span>{index + 1}</span><Image src={meta.icon} alt="" width={34} height={34} /></div>
-                          {editingActivityId === activity.id ? <ActivityForm activity={activity} onSave={saveActivity} onCancel={() => setEditingActivityId("")} /> : <>
+                          <>
                             <div className="activity-time"><strong>{activity.time}</strong><span>{activity.durationMinutes ? `${activity.durationMinutes} min` : "時間未定"}</span></div>
                             <div className="activity-content"><div className="activity-title-row"><h4>{activity.title}</h4><span className={`activity-kind ${meta.color}`}>{meta.label}</span></div>{activity.location ? <p><MapPin size={13} />{activity.location}</p> : null}{activity.notes ? <small>{activity.notes}</small> : null}<a className="activity-map-link" href={mapsUrlForActivity(activity, selectedPlan.destinations)} target="_blank" rel="noreferrer"><MapPin size={13} />Google Maps<ExternalLink size={11} /></a></div>
                             <div className="activity-cost"><span>{activity.cost ? `${selectedPlan.currency} ${activity.cost.toLocaleString()}` : "—"}</span><label><input type="checkbox" checked={activity.booked} disabled={!editable} onChange={(event) => saveActivity({ ...activity, booked: event.target.checked })} />{activity.booked ? "已訂" : "待確認"}</label></div>
                             {editable ? <div className="activity-actions"><button className="icon-button" onClick={() => setEditingActivityId(activity.id)} aria-label={`編輯 ${activity.title}`}><Pencil size={15} /></button><button className="icon-button danger" onClick={() => deleteActivity(activity.id)} aria-label={`刪除 ${activity.title}`}><Trash2 size={15} /></button></div> : null}
-                          </>}
+                          </>
                         </motion.article>
                       );
                     })}
@@ -699,10 +718,13 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
         </>
       ) : null}
 
-      {sharedView ? null : <div className="travel-calendar-bottom"><StudyCalendar events={studyEvents} onAdd={(event) => setState((current) => ({ ...current, studyEvents: [...(current.studyEvents ?? []), event] }))} onDelete={(id) => setState((current) => ({ ...current, studyEvents: (current.studyEvents ?? []).filter((event) => event.id !== id) }))} /></div>}
+      {sharedView ? null : <div className="travel-calendar-bottom academic-planner-stack">
+        <AcademicSection title="課表" eyebrow="Course schedule" emptyTitle="還沒有課表" emptyCopy="新增課程後，就可以一起查看旅行與上課時間是否衝突。" course events={studyEvents.filter((event) => event.kind === "class")} onSave={(event) => setState((current) => ({ ...current, studyEvents: (current.studyEvents ?? []).some((item) => item.id === event.id) ? (current.studyEvents ?? []).map((item) => item.id === event.id ? event : item) : [...(current.studyEvents ?? []), event] }))} onDelete={(id) => setState((current) => ({ ...current, studyEvents: (current.studyEvents ?? []).filter((event) => event.id !== id) }))} />
+        <AcademicSection title="學業與交換不可撞期" eyebrow="Do not overlap" emptyTitle="目前沒有其他不可撞期事項" emptyCopy="考試、Orientation 與重要期限會顯示在這裡。" course={false} events={studyEvents.filter((event) => event.kind !== "class")} onSave={(event) => setState((current) => ({ ...current, studyEvents: (current.studyEvents ?? []).some((item) => item.id === event.id) ? (current.studyEvents ?? []).map((item) => item.id === event.id ? event : item) : [...(current.studyEvents ?? []), event] }))} onDelete={(id) => setState((current) => ({ ...current, studyEvents: (current.studyEvents ?? []).filter((event) => event.id !== id) }))} />
+      </div>}
 
       <AnimatePresence>{editingPlan ? <TravelModal plan={editingPlan === "new" ? null : editingPlan} onClose={() => setEditingPlan(null)} onSave={savePlan} /> : null}</AnimatePresence>
-      <AnimatePresence>{addingActivity && selectedDay ? <ActivityModal day={selectedDay} onSave={saveActivity} onClose={() => setAddingActivity(false)} /> : null}</AnimatePresence>
+      <AnimatePresence>{(addingActivity || editingActivityId) && selectedDay ? <ActivityModal day={selectedDay} activity={selectedDay.activities.find((item) => item.id === editingActivityId)} onSave={saveActivity} onClose={() => { setAddingActivity(false); setEditingActivityId(""); }} /> : null}</AnimatePresence>
       <AnimatePresence>{sharing && selectedPlan ? <ShareTravelModal plan={selectedPlan} cloud={cloud} onPlanPublished={(plan) => setState((current) => ({ ...current, travelPlans: (current.travelPlans ?? []).map((item) => item.id === plan.id ? plan : item) }))} onClose={() => setSharing(false)} /> : null}</AnimatePresence>
       <AnimatePresence>{deleteConfirmId && selectedPlan?.id === deleteConfirmId ? <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => event.target === event.currentTarget && setDeleteConfirmId("")}><motion.div className="modal-card delete-travel-modal paper-card" role="alertdialog" aria-modal="true" aria-labelledby="delete-travel-title" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}><p className="eyebrow">Remove this ticket</p><h2 id="delete-travel-title">刪除「{selectedPlan.title}」？</h2><p>這只會刪除這趟旅行，不會影響交換任務或其他人的個人課表。</p><div className="modal-actions"><button className="button secondary" onClick={() => setDeleteConfirmId("")}>保留旅行</button><button className="button text-danger" onClick={() => deletePlan(selectedPlan.id)}><Trash2 size={16} />確認刪除</button></div></motion.div></motion.div> : null}</AnimatePresence>
     </div>

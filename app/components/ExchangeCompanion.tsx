@@ -43,7 +43,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import { downloadIcs, googleCalendarUrl } from "../lib/calendar";
 import { assignedBagWeightBreakdown, bagWeightMap, evaluateBaggageAllowances } from "../lib/baggage";
@@ -58,6 +57,7 @@ import { useExchangeCloud, type ExchangeCloudController } from "../lib/useExchan
 import AuthGate from "./AuthGate";
 import HomeDashboard from "./HomeDashboard";
 import OnboardingWizard from "./OnboardingWizard";
+import QuickNavigation from "./ui/QuickNavigation";
 import type {
   AppState,
   Bag,
@@ -129,12 +129,12 @@ function GuestTravelShell({ state, setState, cloud }: { state: AppState; setStat
     emergencyContact: "",
     studyEvents: [],
     aiInbox: { sources: [], proposals: [] },
-    travelPlans: (state.travelPlans ?? []).filter((plan) => plan.id === cloud.sharedPlanId),
-  }), [cloud.sharedPlanId, state]);
-  const sharedPlan = guestState.travelPlans?.[0];
-  const canEdit = sharedPlan?.cloud?.permission === "editor" || sharedPlan?.cloud?.permission === "owner";
+    travelPlans: (state.travelPlans ?? []).filter((plan) => plan.cloud?.published && plan.cloud.permission !== "owner"),
+  }), [state]);
+  const canEdit = (guestState.travelPlans ?? []).some((plan) => plan.cloud?.permission === "editor");
+  const journeyCount = guestState.travelPlans?.length ?? 0;
 
-  return <div className="guest-travel-shell" data-heading-language={guestState.personalization?.headingLanguage ?? "zh-TW"}><header className="guest-travel-topbar"><div className="auth-brand"><span className="brand-stamp">TRIP</span><div><strong>共同旅行手冊</strong><small>只顯示這趟被分享的行程</small></div></div><span className={`guest-permission-badge ${canEdit ? "editor" : "viewer"}`}>{canEdit ? "受邀編輯者 · 可以編輯" : "一般連結 · 只能查看"}</span></header>{canEdit ? null : <GuestEditorAccess cloud={cloud} />}<main><Suspense fallback={<SectionFallback />}><TravelPlanner state={guestState} setState={setState} cloud={cloud} /></Suspense></main></div>;
+  return <div className="guest-travel-shell" data-heading-language={guestState.personalization?.headingLanguage ?? "zh-TW"}><header className="guest-travel-topbar"><div className="auth-brand"><span className="brand-stamp">TRIP</span><div><strong>共同旅行手冊</strong><small>{journeyCount > 1 ? `這個帳號可存取 ${journeyCount} 趟旅行` : "只顯示你有權限的旅行"}</small></div></div><div className="guest-access-summary"><span className={`guest-permission-badge ${canEdit ? "editor" : "viewer"}`}>{canEdit ? "受邀編輯者 · 依各旅行權限編輯" : "一般連結 · 只能查看"}</span>{canEdit ? null : <GuestEditorAccess cloud={cloud} />}</div></header><main><Suspense fallback={<SectionFallback />}><TravelPlanner state={guestState} setState={setState} cloud={cloud} /></Suspense></main><QuickNavigation section="travel" plans={guestState.travelPlans ?? []} /></div>;
 }
 
 function GuestEditorAccess({ cloud }: { cloud: ExchangeCloudController }) {
@@ -286,10 +286,6 @@ const emptyTask: JourneyTask = {
   checklist: [],
   records: [],
 };
-
-function subscribeHydration() {
-  return () => undefined;
-}
 
 function formatDate(date?: string): string {
   if (!date) return "尚未設定";
@@ -1012,6 +1008,7 @@ function PackingPage({ state, setState, embedded = false }: { state: AppState; s
   const [query, setQuery] = useState("");
   const [decision, setDecision] = useState<PackingDecision | "all">("all");
   const [showAdd, setShowAdd] = useState(false);
+  const [editingPackingItemId, setEditingPackingItemId] = useState("");
   const [showAllowanceForm, setShowAllowanceForm] = useState(false);
   const [showBagForm, setShowBagForm] = useState(false);
   const [allowanceMessage, setAllowanceMessage] = useState("");
@@ -1049,19 +1046,22 @@ function PackingPage({ state, setState, embedded = false }: { state: AppState; s
   function addItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const editingItem = state.packingItems.find((item) => item.id === editingPackingItemId);
     const item: PackingItem = {
-      id: `packing-${Date.now()}`,
+      id: editingItem?.id ?? `packing-${Date.now()}`,
       name: form.get("name")?.toString().trim() ?? "",
       category: form.get("category")?.toString().trim() || "其他",
       decision: form.get("decision") as PackingDecision,
       bagId: form.get("bagId")?.toString() ?? "",
       quantity: Math.max(1, Number(form.get("quantity")) || 1),
       weightKg: Math.max(0, Number(form.get("weightKg")) || 0),
-      packed: false,
+      packed: editingItem?.packed ?? false,
+      notes: form.get("notes")?.toString().trim() || undefined,
     };
-    setState((current) => ({ ...current, packingItems: [...current.packingItems, item] }));
+    setState((current) => ({ ...current, packingItems: editingItem ? current.packingItems.map((currentItem) => currentItem.id === item.id ? item : currentItem) : [...current.packingItems, item] }));
     event.currentTarget.reset();
     setShowAdd(false);
+    setEditingPackingItemId("");
   }
 
   function deleteItem(id: string) {
@@ -1253,21 +1253,22 @@ function PackingPage({ state, setState, embedded = false }: { state: AppState; s
       </section>
 
       <AnimatePresence>
-        {showAdd ? (
-          <motion.div className="modal-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={(event) => event.target === event.currentTarget && setShowAdd(false)}><motion.form className="modal-card add-packing-form paper-card" onSubmit={addItem} initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0,y:8}}>
-            <div className="modal-heading field-full"><div><p className="eyebrow">Add to the list</p><h2>新增行李物品</h2></div><button className="icon-button" type="button" onClick={() => setShowAdd(false)} aria-label="關閉"><X size={20}/></button></div>
-            <label className="field"><span>物品名稱</span><input name="name" required placeholder="例如：登山鞋" /></label>
-            <label className="field"><span>分類</span><input name="category" required placeholder="衣物、電子、文件…" /></label>
-            <label className="field"><span>建議</span><select name="decision" defaultValue="recommend">{Object.entries(decisionMeta).map(([id, meta]) => <option value={id} key={id}>{meta.label}</option>)}</select></label>
-            <label className="field"><span>放哪裡</span><select name="bagId" defaultValue=""><option value="">尚未分配</option>{state.bags.map((bag) => <option value={bag.id} key={bag.id}>{bag.name}</option>)}</select></label>
-            <label className="field"><span>單件重量 kg</span><input name="weightKg" type="number" min="0" step="0.01" defaultValue="0.2" /></label>
-            <label className="field"><span>數量</span><input name="quantity" type="number" min="1" step="1" defaultValue="1" /></label>
-            <button className="button primary" type="submit"><Plus size={18} />加入清單</button>
+        {showAdd ? (() => { const editingItem = state.packingItems.find((item) => item.id === editingPackingItemId); return (
+          <motion.div className="modal-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={(event) => { if (event.target === event.currentTarget) { setShowAdd(false); setEditingPackingItemId(""); } }}><motion.form className="modal-card add-packing-form paper-card" onSubmit={addItem} initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0,y:8}}>
+            <div className="modal-heading field-full"><div><p className="eyebrow">Packing item</p><h2>{editingItem ? "編輯行李物品" : "新增行李物品"}</h2></div><button className="icon-button" type="button" onClick={() => { setShowAdd(false); setEditingPackingItemId(""); }} aria-label="關閉"><X size={20}/></button></div>
+            <label className="field"><span>物品名稱</span><input name="name" defaultValue={editingItem?.name} required placeholder="例如：登山鞋" /></label>
+            <label className="field"><span>分類</span><input name="category" defaultValue={editingItem?.category} required placeholder="衣物、電子、文件…" /></label>
+            <label className="field"><span>建議</span><select name="decision" defaultValue={editingItem?.decision ?? "recommend"}>{Object.entries(decisionMeta).map(([id, meta]) => <option value={id} key={id}>{meta.label}</option>)}</select></label>
+            <label className="field"><span>放哪裡</span><select name="bagId" defaultValue={editingItem?.bagId ?? ""}><option value="">尚未分配</option>{state.bags.map((bag) => <option value={bag.id} key={bag.id}>{bag.name}</option>)}</select></label>
+            <label className="field"><span>單件重量 kg</span><input name="weightKg" type="number" min="0" step="0.01" defaultValue={editingItem?.weightKg ?? 0.2} /></label>
+            <label className="field"><span>數量</span><input name="quantity" type="number" min="1" step="1" defaultValue={editingItem?.quantity ?? 1} /></label>
+            <label className="field field-full"><span>備註</span><textarea name="notes" rows={2} defaultValue={editingItem?.notes} placeholder="限制、放置位置或不要忘記的原因" /></label>
+            <button className="button primary" type="submit"><Check size={18} />{editingItem ? "儲存變更" : "加入清單"}</button>
           </motion.form></motion.div>
-        ) : null}
+        ); })() : null}
       </AnimatePresence>
 
-      <div className="packing-items-heading"><div><p className="eyebrow">Packing inventory</p><h2>物品清單</h2></div><button className="button primary" onClick={() => setShowAdd(true)}><Plus size={18}/>新增物品</button></div>
+      <div className="packing-items-heading"><div><p className="eyebrow">Packing inventory</p><h2>物品清單</h2></div><button className="button primary" onClick={() => { setEditingPackingItemId(""); setShowAdd(true); }}><Plus size={18}/>新增物品</button></div>
       <div className="toolbar paper-card">
         <label className="search-field"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜尋行李物品" /></label>
         <div className="filter-pills">
@@ -1284,11 +1285,11 @@ function PackingPage({ state, setState, embedded = false }: { state: AppState; s
             {filteredItems.filter((item) => item.category === category).map((item) => (
               <motion.div layout className={`packing-row ${item.packed ? "packed" : ""}`} key={item.id}>
                 <button className={`drawn-check ${item.packed ? "checked" : ""}`} onClick={() => updateItem(item.id, { packed: !item.packed })} aria-label={`${item.packed ? "取消" : "標記"}裝入 ${item.name}`}>{item.packed ? <Check size={17} strokeWidth={3} /> : null}</button>
-                <div className="packing-name"><strong>{item.name}</strong><small>{item.warning ? <><AlertTriangle size={13} />{item.warning}</> : null}</small></div>
+                <div className="packing-name"><strong>{item.name}</strong><small>{item.warning ? <><AlertTriangle size={13} />{item.warning}</> : item.notes}</small></div>
                 <select className={`decision-select ${decisionMeta[item.decision].className}`} value={item.decision} onChange={(event) => updateItem(item.id, { decision: event.target.value as PackingDecision })} aria-label={`${item.name} 攜帶建議`}>{Object.entries(decisionMeta).map(([id, meta]) => <option value={id} key={id}>{meta.label}</option>)}</select>
                 <div className="quantity-weight"><input type="number" min="1" value={item.quantity} onChange={(event) => updateItem(item.id, { quantity: Number(event.target.value) })} aria-label={`${item.name} 數量`} /><span>×</span><input type="number" min="0" step="0.01" value={item.weightKg} onChange={(event) => updateItem(item.id, { weightKg: Number(event.target.value) })} aria-label={`${item.name} 單件重量`} /><span>kg</span></div>
                 <select className="bag-select" value={item.bagId} onChange={(event) => updateItem(item.id, { bagId: event.target.value })} aria-label={`${item.name} 行李位置`}><option value="">未分配</option>{state.bags.map((bag) => <option value={bag.id} key={bag.id}>{bag.name}</option>)}</select>
-                <button className="icon-button danger" onClick={() => deleteItem(item.id)} aria-label={`刪除 ${item.name}`}><Trash2 size={16} /></button>
+                <div className="packing-row-actions"><button className="icon-button" onClick={() => { setEditingPackingItemId(item.id); setShowAdd(true); }} aria-label={`編輯 ${item.name}`} title="編輯"><Pencil size={15} /></button><button className="icon-button danger" onClick={() => deleteItem(item.id)} aria-label={`刪除 ${item.name}`} title="刪除"><Trash2 size={16} /></button></div>
               </motion.div>
             ))}
           </div>
@@ -1626,7 +1627,7 @@ function SettingsPage({ state, setState, cloud, onOpenGuide }: { state: AppState
 }
 
 export default function ExchangeCompanion() {
-  const isHydrated = useSyncExternalStore(subscribeHydration, () => true, () => false);
+  const [isHydrated, setIsHydrated] = useState(false);
   const [state, setState] = useState<AppState>(() => loadState(!cloudIsConfigured()));
   const [section, setSection] = useState<NavSection>(initialSection);
   const [journeyView, setJourneyView] = useState<JourneyView>(initialJourneyView);
@@ -1637,6 +1638,11 @@ export default function ExchangeCompanion() {
   const [focusTaskId, setFocusTaskId] = useState(() => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("task") ?? "" : "");
   const [focusTripId, setFocusTripId] = useState(() => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("trip") ?? "" : "");
   const [homeGuideOpen, setHomeGuideOpen] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("guide") === "1");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIsHydrated(true), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const aiNotificationRef = useRef<HTMLDivElement>(null);
   const aiNotificationButtonRef = useRef<HTMLButtonElement>(null);
@@ -1829,6 +1835,8 @@ export default function ExchangeCompanion() {
           </AnimatePresence>
         </main>
       </div>
+
+      <QuickNavigation key={section} section={section} plans={state.travelPlans ?? []} />
 
       <nav className="mobile-bottom-nav" aria-label="手機導覽">
         {mobileNavItems.map((item) => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => { navigateToSection(item.id); setAccountMenuOpen(false); setAiNotificationOpen(false); }}><span className="mobile-nav-icon-wrap"><Image className="nav-doodle-icon" src={item.doodleIcon} alt="" width={34} height={34} />{item.id === "ai" && pendingProposalCount ? <strong className="mobile-nav-badge" aria-label={`${pendingProposalCount} 個待確認提案`}>{pendingProposalCount}</strong> : null}</span><span>{item.shortLabel}</span></button>)}

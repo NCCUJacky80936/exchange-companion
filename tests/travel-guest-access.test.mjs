@@ -23,3 +23,13 @@ test("a verified member stays in the shared travel shell", () => {
   assert.match(controller, /shareStatus === "loading" \|\| \(shareStatus === "active" && sharedPlanPermission !== "owner"\)/);
   assert.match(planner, /指定帳戶會覆蓋一般連結權限/);
 });
+
+test("verified accounts load every journey membership instead of staying link-bound", () => {
+  assert.match(cloud, /export async function listMemberTravelPlans/);
+  assert.match(cloud, /from\("travel_members"\)[\s\S]*select\("plan_id, permission"\)/);
+  assert.match(cloud, /from\("travel_plans"\)[\s\S]*\.in\("id", planIds\)/);
+  assert.match(controller, /const accessiblePlans = await listMemberTravelPlans\(plan\)/);
+  assert.match(controller, /travelPlans: plan\.cloud\?\.permission === "owner"[\s\S]*: accessiblePlans/);
+  assert.match(companion, /travelPlans: \(state\.travelPlans \?\? \[\]\)\.filter\(\(plan\) => plan\.cloud\?\.published && plan\.cloud\.permission !== "owner"\)/);
+  assert.match(companion, /這個帳號可存取 \$\{journeyCount\} 趟旅行/);
+});

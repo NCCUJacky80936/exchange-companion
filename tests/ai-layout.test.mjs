@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [ai, resources, css] = await Promise.all([
+const [ai, resources, cloud, css] = await Promise.all([
   readFile(new URL("../app/components/AiConcierge.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/components/ExchangeCompanion.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../app/lib/useExchangeCloud.ts", import.meta.url), "utf8"),
   readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
 ]);
 
@@ -14,12 +15,17 @@ test("proposal inbox appears before connection and JSON cards", () => {
   assert.match(css, /\.ai-workflow-grid\.has-connection\s*>\s*article\s*\{[^}]*height:\s*100%/);
 });
 
-test("AI page automatically polls the connected proposal inbox", () => {
-  assert.match(ai, /setInterval\(\(\) => void refresh\(\), 60_000\)/);
-  assert.match(ai, /visibilitychange/);
+test("proposal inbox refreshes with account lifecycle events instead of tab-bound polling", () => {
+  assert.doesNotMatch(ai, /setInterval/);
+  assert.doesNotMatch(cloud, /setInterval/);
+  assert.match(cloud, /const count = await refreshInbox\(\)/);
+  assert.match(cloud, /window\.addEventListener\("focus", onVisible\)/);
+  assert.match(cloud, /document\.addEventListener\("visibilitychange", onVisible\)/);
+  assert.match(cloud, /lastAutomaticInboxRefresh\.current < 15_000/);
   assert.match(ai, /每週巡檢會整理信件與新文件/);
   assert.match(ai, /你在 Codex 新增狀態時則立即推送/);
   assert.match(ai, /對話中新狀態立即產生待審提案/);
+  assert.match(ai, /修改後接受/);
 });
 
 test("manual resource entry and AI URL intake share one modal", () => {
