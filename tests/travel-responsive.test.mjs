@@ -49,6 +49,9 @@ test("course schedule uses a Monday to Friday weekly timetable without dropping 
   assert.match(css, /\.course-timetable-scroll\s*\{[^}]*overflow-x:\s*auto/);
   assert.match(css, /\.course-timetable\s*\{[^}]*min-width:\s*760px/);
   assert.match(css, /\.course-day-columns\s*\{[^}]*grid-template-columns:\s*repeat\(5,/);
+  assert.match(css, /@media \(max-width:\s*820px\)[\s\S]*\.course-timetable\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0/);
+  assert.match(css, /@media \(max-width:\s*820px\)[\s\S]*\.course-timetable-header\s*\{[^}]*grid-template-columns:\s*32px repeat\(5,/);
+  assert.match(planner, /className="course-slot-more"/);
 });
 
 test("travel entries use a vertical accordion and reference actions stay at the top right", () => {

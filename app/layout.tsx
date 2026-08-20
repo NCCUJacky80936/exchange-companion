@@ -4,7 +4,7 @@ import { Noto_Sans_TC } from "next/font/google";
 // Keep the local preview from reusing a stale service-worker/browser CSS cache
 // after visual skin iterations. Update this token when the global visual layer
 // changes materially.
-import "./globals.css?visual=miyama-color-motion-20260817b";
+import "./globals.css?visual=notebook-mascot-type-20260820a";
 import PwaRegister from "./components/PwaRegister";
 import { exchangeProfile } from "./lib/profile";
 

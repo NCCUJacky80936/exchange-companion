@@ -429,6 +429,7 @@ function timeToMinutes(value?: string): number | null {
 }
 
 function CourseTimetable({ events, onEdit, onDelete }: { events: StudyEvent[]; onEdit: (event: StudyEvent) => void; onDelete: (event: StudyEvent) => void }) {
+  const [activeCourseId, setActiveCourseId] = useState("");
   const placed = events.filter((event) => event.weekday && timeToMinutes(event.startTime) !== null);
   const unplaced = events.filter((event) => !event.weekday || timeToMinutes(event.startTime) === null);
   const hourCount = courseGridEndHour - courseGridStartHour;
@@ -442,13 +443,14 @@ function CourseTimetable({ events, onEdit, onDelete }: { events: StudyEvent[]; o
           <div className="course-time-axis" aria-hidden="true">{Array.from({ length: hourCount + 1 }, (_, index) => <span key={index}>{String(courseGridStartHour + index).padStart(2, "0")}:00</span>)}</div>
           <div className="course-day-columns">
             {courseWeekdays.map((day, dayIndex) => <div className="course-day-column" aria-label={`星期${day}`} key={day}>
-              {placed.filter((event) => event.weekday === dayIndex + 1).map((event) => {
+              {placed.filter((event) => event.weekday === dayIndex + 1).map((event, courseIndex) => {
                 const start = timeToMinutes(event.startTime) ?? courseGridStartHour * 60;
                 const end = timeToMinutes(event.endTime) ?? start + 60;
                 const top = Math.max(0, (start - courseGridStartHour * 60) / 60 * courseHourHeight);
                 const height = Math.max(44, (Math.max(end, start + 30) - start) / 60 * courseHourHeight);
-                return <article className="course-slot" style={{ top, height }} key={event.id}>
+                return <article className={`course-slot tone-${(dayIndex + courseIndex) % 4} ${activeCourseId === event.id ? "actions-open" : ""}`} style={{ top, height }} key={event.id}>
                   <div><strong>{event.title}</strong><small>{event.startTime}–{event.endTime || "未定"}{event.classroom ? ` · ${event.classroom}` : event.location ? ` · ${event.location}` : ""}</small></div>
+                  <button className="course-slot-more" onClick={() => setActiveCourseId((current) => current === event.id ? "" : event.id)} aria-label={`${activeCourseId === event.id ? "收合" : "開啟"} ${event.title} 操作`} aria-expanded={activeCourseId === event.id}><MoreHorizontal size={14} /></button>
                   <div className="course-slot-actions"><button className="icon-button" onClick={() => onEdit(event)} aria-label={`編輯 ${event.title}`} title="編輯"><Pencil size={13} /></button><button className="icon-button danger" onClick={() => onDelete(event)} aria-label={`刪除 ${event.title}`} title="刪除"><Trash2 size={13} /></button></div>
                 </article>;
               })}

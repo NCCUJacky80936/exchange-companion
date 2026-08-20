@@ -1,4 +1,4 @@
-const CACHE_NAME = "exchange-companion-v2-8";
+const CACHE_NAME = "exchange-companion-v2-9";
 const NAVIGATION_FALLBACK = "/__offline-notebook-shell__";
 const APP_SHELL = ["/manifest.webmanifest", "/icons/exchange-48.png", "/icons/exchange-192.png", "/icons/exchange-512.png", "/icons/apple-touch-icon.png", "/images/doodle-icons-v2/home-notebook.png"];
 
