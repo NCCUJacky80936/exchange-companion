@@ -26,6 +26,8 @@ function shiftMonth(month: string, amount: number): string {
 function HomeMonthCalendar({ state, today, onNavigate }: { state: AppState; today: string; onNavigate: (target: HomeAgendaTarget) => void }) {
   const rootRef = useRef<HTMLElement>(null);
   const activeAnchorRef = useRef<HTMLElement | null>(null);
+  const hoverOpenedDateRef = useRef("");
+  const hoverCloseTimerRef = useRef<number | null>(null);
   const [month, setMonth] = useState(today.slice(0, 7));
   const [activeDate, setActiveDate] = useState("");
   const monthStart = `${month}-01`;
@@ -43,18 +45,39 @@ function HomeMonthCalendar({ state, today, onNavigate }: { state: AppState; toda
   const activeItems = activeDate ? byDate.get(activeDate) ?? [] : [];
   const activeDay = activeDate ? Number(activeDate.slice(-2)) : 0;
 
+  const cancelHoverClose = () => {
+    if (hoverCloseTimerRef.current === null) return;
+    window.clearTimeout(hoverCloseTimerRef.current);
+    hoverCloseTimerRef.current = null;
+  };
+  const closeCalendar = () => {
+    cancelHoverClose();
+    hoverOpenedDateRef.current = "";
+    setActiveDate("");
+  };
+  const scheduleHoverClose = () => {
+    cancelHoverClose();
+    hoverCloseTimerRef.current = window.setTimeout(closeCalendar, 160);
+  };
+
   useEffect(() => {
     const closeOnOutsidePress = (event: PointerEvent) => {
       const target = event.target as HTMLElement;
-      if (!rootRef.current?.contains(target) && !target.closest(".home-calendar-popover")) setActiveDate("");
+      if (!target.closest(".home-calendar-date:not(:disabled)") && !target.closest(".home-calendar-popover")) {
+        hoverOpenedDateRef.current = "";
+        setActiveDate("");
+      }
     };
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setActiveDate(""); };
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") closeCalendar(); };
     document.addEventListener("pointerdown", closeOnOutsidePress);
     document.addEventListener("keydown", closeOnEscape);
     return () => {
+      if (hoverCloseTimerRef.current !== null) window.clearTimeout(hoverCloseTimerRef.current);
       document.removeEventListener("pointerdown", closeOnOutsidePress);
       document.removeEventListener("keydown", closeOnEscape);
     };
+    // Calendar close helpers intentionally stay scoped to this mounted calendar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return <section ref={rootRef} className="home-agenda-board home-calendar-board paper-card" aria-labelledby="home-calendar-title">
@@ -82,18 +105,28 @@ function HomeMonthCalendar({ state, today, onNavigate }: { state: AppState; toda
         return <div
           className={`home-month-day ${date === today ? "today" : ""} ${active ? "active" : ""} row-${row} column-${column}`}
           key={date}
-          onMouseEnter={(event) => { if (!dayItems.length) return; activeAnchorRef.current = event.currentTarget.querySelector("button"); setActiveDate(date); }}
+          onMouseEnter={(event) => { if (!dayItems.length) return; cancelHoverClose(); activeAnchorRef.current = event.currentTarget.querySelector("button"); hoverOpenedDateRef.current = date; setActiveDate(date); }}
+          onMouseLeave={scheduleHoverClose}
         >
-          <button className="home-calendar-date" aria-expanded={active} disabled={!dayItems.length} onClick={(event) => { activeAnchorRef.current = event.currentTarget; setActiveDate(date); }}>
+          <button className="home-calendar-date" aria-expanded={active} disabled={!dayItems.length} onClick={(event) => {
+            activeAnchorRef.current = event.currentTarget;
+            setActiveDate((current) => {
+              if (current === date && hoverOpenedDateRef.current !== date) return "";
+              hoverOpenedDateRef.current = "";
+              return date;
+            });
+          }}>
             <strong>{day}</strong>
             {dayItems.length ? <span className="home-calendar-dots" aria-label={`${dayItems.length} 個行程`}>{dayItems.slice(0, 4).map((item) => <i key={item.id} className={`source-${item.source}`} />)}{dayItems.length > 4 ? <small>+{dayItems.length - 4}</small> : null}</span> : null}
           </button>
         </div>;
       })}
     </div>
-    <FloatingSurface open={Boolean(activeDate && activeItems.length)} anchorRef={activeAnchorRef} onClose={() => setActiveDate("")} prefer="top" label={`${first.getUTCMonth() + 1} 月 ${activeDay} 日行程`} className="home-calendar-popover">
-      <strong>{first.getUTCMonth() + 1} 月 {activeDay} 日</strong>
-      {activeItems.map((item) => <button key={item.id} className={`source-${item.source}`} onClick={() => { setActiveDate(""); onNavigate(item.target); }}><i /><span><b>{item.title}</b><small>{item.time ? `${item.time} · ` : ""}{item.detail}</small></span><ChevronRight /></button>)}
+    <FloatingSurface open={Boolean(activeDate && activeItems.length)} anchorRef={activeAnchorRef} onClose={closeCalendar} prefer="top" label={`${first.getUTCMonth() + 1} 月 ${activeDay} 日行程`} className="home-calendar-popover">
+      <div className="home-calendar-popover-content" onMouseEnter={cancelHoverClose} onMouseLeave={scheduleHoverClose}>
+        <strong>{first.getUTCMonth() + 1} 月 {activeDay} 日</strong>
+        {activeItems.map((item) => <button key={item.id} className={`source-${item.source}`} onClick={() => { closeCalendar(); onNavigate(item.target); }}><i /><span><b>{item.title}</b><small>{item.time ? `${item.time} · ` : ""}{item.detail}</small></span><ChevronRight /></button>)}
+      </div>
     </FloatingSurface>
   </section>;
 }

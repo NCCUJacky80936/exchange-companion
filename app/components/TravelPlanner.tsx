@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import Image from "next/image";
-import { type Dispatch, type FormEvent, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type Dispatch, type FormEvent, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import type { ExchangeCloudController } from "../lib/useExchangeCloud";
 import type {
   AppState,
@@ -394,6 +394,7 @@ function StudyEventDialog({ event, course, onSave, onClose }: { event?: StudyEve
       classroom: form.get("classroom")?.toString().trim() || undefined,
       teacher: form.get("teacher")?.toString().trim() || undefined,
       semester: form.get("semester")?.toString().trim() || undefined,
+      weekday: course ? Number(form.get("weekday")) as StudyEvent["weekday"] : undefined,
       notes: form.get("notes")?.toString().trim() || (course ? "手動加入的課程。" : "手動加入的不可撞期行程。"),
     });
   }
@@ -401,11 +402,12 @@ function StudyEventDialog({ event, course, onSave, onClose }: { event?: StudyEve
     <form className="form-grid study-event-modal-form" onSubmit={submit}>
       <label className="field field-full"><span>{course ? "課程名稱" : "事項名稱"}</span><input name="title" defaultValue={event?.title} placeholder={course ? "例如：Integrated Product Design" : "課程、考試或重要期限"} required /></label>
       {!course ? <label className="field"><span>類型</span><select name="kind" defaultValue={event?.kind ?? "deadline"}>{Object.entries(studyEventMeta).filter(([id]) => id !== "class").map(([id, meta]) => <option value={id} key={id}>{meta.label}</option>)}</select></label> : null}
+      {course ? <label className="field"><span>每週星期</span><select name="weekday" defaultValue={event?.weekday ?? ""} required><option value="" disabled>選擇星期</option>{["一", "二", "三", "四", "五"].map((day, index) => <option value={index + 1} key={day}>星期{day}</option>)}</select></label> : null}
       <label className="field"><span>{course ? "Semester / Term" : "學期／期間（選填）"}</span><input name="semester" defaultValue={event?.semester} placeholder="WiSe 2026/27" /></label>
       <label className="field"><span>開始日期</span><input type="date" name="startDate" defaultValue={event?.startDate} required /></label>
       <label className="field"><span>結束日期</span><input type="date" name="endDate" defaultValue={event?.endDate} /></label>
-      <label className="field"><span>開始時間</span><input type="time" name="startTime" defaultValue={event?.startTime} /></label>
-      <label className="field"><span>結束時間</span><input type="time" name="endTime" defaultValue={event?.endTime} /></label>
+      <label className="field"><span>開始時間</span><input type="time" name="startTime" defaultValue={event?.startTime} required={course} /></label>
+      <label className="field"><span>結束時間</span><input type="time" name="endTime" defaultValue={event?.endTime} required={course} /></label>
       {course ? <><label className="field"><span>地點</span><input name="location" defaultValue={event?.location} placeholder="HdM Nobelstraße" /></label><label className="field"><span>教室</span><input name="classroom" defaultValue={event?.classroom} /></label><label className="field"><span>教師</span><input name="teacher" defaultValue={event?.teacher} /></label></> : null}
       <label className="field field-full"><span>備註</span><textarea name="notes" rows={3} defaultValue={event?.notes} /></label>
       <label className="field confirmation-field"><input type="checkbox" name="mandatory" defaultChecked={event?.mandatory ?? true} /><span>一定不能撞期</span></label>
@@ -415,13 +417,57 @@ function StudyEventDialog({ event, course, onSave, onClose }: { event?: StudyEve
   </MotionDialog>;
 }
 
+const courseWeekdays = ["一", "二", "三", "四", "五"] as const;
+const courseGridStartHour = 8;
+const courseGridEndHour = 20;
+const courseHourHeight = 58;
+
+function timeToMinutes(value?: string): number | null {
+  if (!value || !/^\d{2}:\d{2}$/.test(value)) return null;
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function CourseTimetable({ events, onEdit, onDelete }: { events: StudyEvent[]; onEdit: (event: StudyEvent) => void; onDelete: (event: StudyEvent) => void }) {
+  const placed = events.filter((event) => event.weekday && timeToMinutes(event.startTime) !== null);
+  const unplaced = events.filter((event) => !event.weekday || timeToMinutes(event.startTime) === null);
+  const hourCount = courseGridEndHour - courseGridStartHour;
+  const timetableStyle = { "--course-hour-height": `${courseHourHeight}px`, "--course-hour-count": hourCount } as CSSProperties;
+
+  return <div className="course-timetable-wrap">
+    <div className="course-timetable-scroll" role="region" aria-label="週一到週五課表，可水平捲動">
+      <div className="course-timetable" style={timetableStyle}>
+        <div className="course-timetable-header"><span>時間</span>{courseWeekdays.map((day) => <strong key={day}>星期{day}</strong>)}</div>
+        <div className="course-timetable-body">
+          <div className="course-time-axis" aria-hidden="true">{Array.from({ length: hourCount + 1 }, (_, index) => <span key={index}>{String(courseGridStartHour + index).padStart(2, "0")}:00</span>)}</div>
+          <div className="course-day-columns">
+            {courseWeekdays.map((day, dayIndex) => <div className="course-day-column" aria-label={`星期${day}`} key={day}>
+              {placed.filter((event) => event.weekday === dayIndex + 1).map((event) => {
+                const start = timeToMinutes(event.startTime) ?? courseGridStartHour * 60;
+                const end = timeToMinutes(event.endTime) ?? start + 60;
+                const top = Math.max(0, (start - courseGridStartHour * 60) / 60 * courseHourHeight);
+                const height = Math.max(44, (Math.max(end, start + 30) - start) / 60 * courseHourHeight);
+                return <article className="course-slot" style={{ top, height }} key={event.id}>
+                  <div><strong>{event.title}</strong><small>{event.startTime}–{event.endTime || "未定"}{event.classroom ? ` · ${event.classroom}` : event.location ? ` · ${event.location}` : ""}</small></div>
+                  <div className="course-slot-actions"><button className="icon-button" onClick={() => onEdit(event)} aria-label={`編輯 ${event.title}`} title="編輯"><Pencil size={13} /></button><button className="icon-button danger" onClick={() => onDelete(event)} aria-label={`刪除 ${event.title}`} title="刪除"><Trash2 size={13} /></button></div>
+                </article>;
+              })}
+            </div>)}
+          </div>
+        </div>
+      </div>
+    </div>
+    {unplaced.length ? <div className="course-unplaced"><div className="course-unplaced-heading"><strong>尚未排入每週時間格</strong><span>補上星期與時間後，課程就會自動放進上方課表。</span></div><div className="study-event-list">{unplaced.map((item) => <div className="study-event" key={item.id}><span className={`study-kind ${studyEventMeta[item.kind].className}`}>{studyEventMeta[item.kind].label}</span><div><strong>{item.title}</strong><small>{formatDate(item.startDate, true)}{item.endDate ? ` — ${formatDate(item.endDate, true)}` : ""}</small></div><div className="study-event-actions"><button className="icon-button" onClick={() => onEdit(item)} aria-label={`編輯 ${item.title}`} title="編輯"><Pencil size={14} /></button><button className="icon-button danger" onClick={() => onDelete(item)} aria-label={`刪除 ${item.title}`} title="刪除"><Trash2 size={14} /></button></div></div>)}</div></div> : null}
+  </div>;
+}
+
 function AcademicSection({ title, eyebrow, emptyTitle, emptyCopy, course, events, onSave, onDelete }: { title: string; eyebrow: string; emptyTitle: string; emptyCopy: string; course: boolean; events: StudyEvent[]; onSave: (event: StudyEvent) => void; onDelete: (id: string) => void }) {
   const [editing, setEditing] = useState<StudyEvent | null | "new">(null);
   const [deleting, setDeleting] = useState<StudyEvent | null>(null);
   const close = () => setEditing(null);
   return <section className={`study-calendar academic-section paper-card ${course ? "course-schedule" : "academic-conflicts"}`}>
     <div className="study-calendar-heading"><div><p className="eyebrow">{eyebrow}</p><h3>{title}</h3></div><button className="mini-add-button" onClick={() => setEditing("new")}><Plus size={15} />新增</button></div>
-    {events.length ? <div className="study-event-list">{[...events].sort((a, b) => a.startDate.localeCompare(b.startDate)).map((item) => <div className="study-event" key={item.id}>
+    {events.length && course ? <CourseTimetable events={events} onEdit={setEditing} onDelete={setDeleting} /> : events.length ? <div className="study-event-list">{[...events].sort((a, b) => a.startDate.localeCompare(b.startDate)).map((item) => <div className="study-event" key={item.id}>
       <span className={`study-kind ${studyEventMeta[item.kind].className}`}>{studyEventMeta[item.kind].label}</span>
       <div><strong>{item.title}</strong><small>{formatDate(item.startDate, true)}{item.repeatWeekly ? ` 起每週${item.endDate ? `，至 ${formatDate(item.endDate, true)}` : ""}` : item.endDate ? ` — ${formatDate(item.endDate, true)}` : ""}{item.startTime ? ` · ${item.startTime}${item.endTime ? `–${item.endTime}` : ""}` : ""}{item.classroom ? ` · ${item.classroom}` : item.location ? ` · ${item.location}` : ""}</small></div>
       <div className="study-event-actions"><button className="icon-button" onClick={() => setEditing(item)} aria-label={`編輯 ${item.title}`} title="編輯"><Pencil size={14} /></button><button className="icon-button danger" onClick={() => setDeleting(item)} aria-label={`刪除 ${item.title}`} title="刪除"><Trash2 size={14} /></button></div>

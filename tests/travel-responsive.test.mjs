@@ -41,6 +41,16 @@ test("hotel bases and references precede itinerary days while the conflict calen
   assert.ok(planner.indexOf('title="課表"') < planner.indexOf('title="學業與交換不可撞期"'));
 });
 
+test("course schedule uses a Monday to Friday weekly timetable without dropping legacy entries", () => {
+  assert.match(planner, /function CourseTimetable/);
+  assert.match(planner, /const courseWeekdays = \["一", "二", "三", "四", "五"\]/);
+  assert.match(planner, /name="weekday"[\s\S]*選擇星期/);
+  assert.match(planner, /className="course-unplaced"/);
+  assert.match(css, /\.course-timetable-scroll\s*\{[^}]*overflow-x:\s*auto/);
+  assert.match(css, /\.course-timetable\s*\{[^}]*min-width:\s*760px/);
+  assert.match(css, /\.course-day-columns\s*\{[^}]*grid-template-columns:\s*repeat\(5,/);
+});
+
 test("travel entries use a vertical accordion and reference actions stay at the top right", () => {
   assert.match(planner, /const \[expandedTripId, setExpandedTripId\] = useState\(""\)/);
   assert.match(planner, /target\?\.scrollIntoView\(\{ behavior: reduceMotion \? "auto" : "smooth", block: "start" \}\)/);

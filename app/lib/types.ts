@@ -374,6 +374,7 @@ export interface StudyEvent {
   classroom?: string;
   teacher?: string;
   semester?: string;
+  weekday?: 1 | 2 | 3 | 4 | 5;
   repeatWeekly?: boolean;
   mandatory: boolean;
   notes: string;

@@ -14,7 +14,11 @@ test("daily home keeps the interactive month calendar, bulletin, journey, and bu
   for (const marker of ["HomeMonthCalendar", "home-calendar-dots", "交換佈告欄", "交換旅程", "基礎預算"]) assert.ok(dashboard.includes(marker));
   assert.match(dashboard, /section: "journey", task: nextTask\?\.id/);
   assert.match(dashboard, /<FloatingSurface[\s\S]*prefer="top"/);
-  assert.match(dashboard, /onMouseEnter=\{\(event\) => \{ if \(!dayItems\.length\) return; activeAnchorRef\.current/);
+  assert.match(dashboard, /onMouseEnter=\{\(event\) => \{ if \(!dayItems\.length\) return; cancelHoverClose\(\); activeAnchorRef\.current/);
+  assert.match(dashboard, /onMouseLeave=\{scheduleHoverClose\}/);
+  assert.match(dashboard, /current === date && hoverOpenedDateRef\.current !== date/);
+  assert.match(dashboard, /home-calendar-date:not\(:disabled\)/);
+  assert.match(dashboard, /home-calendar-popover-content/);
   assert.match(dashboard, /home-bulletin-empty/);
   assert.match(styles, /grid-template-areas:\s*"bulletin" "agenda"/);
   assert.match(styles, /\.home-bulletin-board\s*\{[^}]*overflow:\s*clip/);
