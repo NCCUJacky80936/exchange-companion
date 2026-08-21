@@ -6260,7 +6260,10 @@ textarea:focus-visible,
   background: transparent;
   color: var(--ink);
 }
-.mobile-bottom-nav { border-top: 0 !important; }
+.mobile-bottom-nav {
+  border-top: 0 !important;
+  box-shadow: 0 -8px 24px rgba(48, 50, 49, 0.1);
+}
 
 .trip-accordion-item.expanded .trip-ticket { min-height: 142px; align-items: center; padding-block: 28px 24px; }
 .trip-accordion-item.expanded .trip-ticket-index { width: 62px; height: 62px; font-size: 21px; }

@@ -4,7 +4,7 @@ import { Noto_Sans_TC } from "next/font/google";
 // Keep the local preview from reusing a stale service-worker/browser CSS cache
 // after visual skin iterations. Update this token when the global visual layer
 // changes materially.
-import "./globals.css?visual=calendar-clean-cells-today-lift-20260821c";
+import "./globals.css?visual=bottom-nav-soft-shadow-20260821d";
 import PwaRegister from "./components/PwaRegister";
 import { exchangeProfile } from "./lib/profile";
 

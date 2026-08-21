@@ -28,6 +28,7 @@ test("daily home keeps the interactive month calendar, bulletin, journey, and bu
   assert.match(styles, /\.home-month-day\.today \.home-calendar-date\s*\{[^}]*box-shadow:[^}]*transform:\s*translateY\(-3px\)/);
   assert.match(styles, /\.home-month-day\.today \.home-calendar-date > strong\s*\{[^}]*border:\s*0[^}]*border-radius:\s*0[^}]*background:\s*transparent/);
   assert.match(styles, /\.mobile-bottom-nav\s*\{\s*border-top:\s*0\s*!important/);
+  assert.match(styles, /box-shadow:\s*0\s+-8px\s+24px\s+rgba\(48,\s*50,\s*49,\s*0\.1\)/);
 });
 
 test("activation copy separates public skill installation from the private connection file", () => {
