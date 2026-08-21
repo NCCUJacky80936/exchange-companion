@@ -6238,17 +6238,29 @@ textarea:focus-visible,
 }
 
 .home-calendar-today { background: rgba(32, 34, 32, 0.07); }
-.home-calendar-board { background-image: none !important; border-left-color: transparent !important; }
-.home-calendar-board::before { display: none; }
+.home-inline-month-grid .home-calendar-date { border-left: 0 !important; }
 .home-calendar-date:not(:disabled):hover,
 .home-calendar-date:not(:disabled):focus-visible,
 .home-month-day.active .home-calendar-date { background: rgba(32, 34, 32, 0.065); }
 .home-calendar-date:not(:disabled):focus-visible { outline-color: var(--ink); outline-offset: -3px; }
+.home-month-day.today .home-calendar-date {
+  position: relative;
+  z-index: 2;
+  border-radius: 12px;
+  background: rgba(255, 254, 252, 0.96);
+  box-shadow: 0 7px 16px rgba(48, 50, 49, 0.14);
+  transform: translateY(-3px);
+}
 .home-month-day.today .home-calendar-date > strong {
-  border: 1.5px solid var(--ink);
+  display: block;
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   color: var(--ink);
 }
+.mobile-bottom-nav { border-top: 0 !important; }
 
 .trip-accordion-item.expanded .trip-ticket { min-height: 142px; align-items: center; padding-block: 28px 24px; }
 .trip-accordion-item.expanded .trip-ticket-index { width: 62px; height: 62px; font-size: 21px; }

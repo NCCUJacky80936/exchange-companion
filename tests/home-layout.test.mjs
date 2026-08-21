@@ -24,8 +24,10 @@ test("daily home keeps the interactive month calendar, bulletin, journey, and bu
   assert.match(styles, /\.home-bulletin-board\s*\{[^}]*overflow:\s*clip/);
   assert.match(styles, /clarity pass:[\s\S]*\.home-month-day\.active \.home-calendar-date\s*\{\s*background:\s*rgba\(32, 34, 32, 0\.065\)/);
   assert.match(styles, /\.home-bulletin-item:nth-child\(3n\)\s*\{\s*background:\s*rgba\(255, 254, 252, 0\.72\)\s*!important/);
-  assert.match(styles, /\.home-calendar-board\s*\{\s*background-image:\s*none\s*!important;\s*border-left-color:\s*transparent\s*!important/);
-  assert.match(styles, /\.home-month-day\.today \.home-calendar-date > strong\s*\{[^}]*border:\s*1\.5px solid var\(--ink\)[^}]*background:\s*transparent/);
+  assert.match(styles, /\.home-inline-month-grid \.home-calendar-date\s*\{\s*border-left:\s*0\s*!important/);
+  assert.match(styles, /\.home-month-day\.today \.home-calendar-date\s*\{[^}]*box-shadow:[^}]*transform:\s*translateY\(-3px\)/);
+  assert.match(styles, /\.home-month-day\.today \.home-calendar-date > strong\s*\{[^}]*border:\s*0[^}]*border-radius:\s*0[^}]*background:\s*transparent/);
+  assert.match(styles, /\.mobile-bottom-nav\s*\{\s*border-top:\s*0\s*!important/);
 });
 
 test("activation copy separates public skill installation from the private connection file", () => {
