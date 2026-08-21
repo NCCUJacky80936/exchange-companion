@@ -75,9 +75,10 @@ test("expanded accordion reads as one paper sheet instead of nested heavy cards"
 });
 
 test("mobile trip actions use a dedicated row instead of squeezing the title", () => {
-  assert.match(css, /\.travel-overview\s*\{\s*padding:\s*58px\s+10px\s+18px/);
-  assert.match(css, /\.travel-overview-top\s*>\s*div:nth-child\(2\)\s*\{\s*padding-right:\s*0/);
-  assert.match(css, /\.travel-overview-actions\s*\{\s*top:\s*-42px;\s*right:\s*0/);
+  assert.match(planner, /className="travel-overview-actions trip-cover-actions"/);
+  assert.match(css, /\.trip-cover-actions\s*\{[^}]*position:\s*absolute[^}]*right:\s*4px/);
+  assert.doesNotMatch(planner, /className="travel-overview-top"/);
+  assert.doesNotMatch(planner, /<h2>\{selectedPlan\.title\}<\/h2>/);
 });
 
 test("travel creation forms open in modal dialogs instead of extending the accordion", () => {

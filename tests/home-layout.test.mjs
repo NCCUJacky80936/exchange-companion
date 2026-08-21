@@ -22,6 +22,8 @@ test("daily home keeps the interactive month calendar, bulletin, journey, and bu
   assert.match(dashboard, /home-bulletin-empty/);
   assert.match(styles, /grid-template-areas:\s*"bulletin" "agenda"/);
   assert.match(styles, /\.home-bulletin-board\s*\{[^}]*overflow:\s*clip/);
+  assert.match(styles, /clarity pass:[\s\S]*\.home-month-day\.active \.home-calendar-date\s*\{\s*background:\s*rgba\(32, 34, 32, 0\.065\)/);
+  assert.match(styles, /\.home-bulletin-item:nth-child\(3n\)\s*\{\s*background:\s*rgba\(255, 254, 252, 0\.72\)\s*!important/);
 });
 
 test("activation copy separates public skill installation from the private connection file", () => {
