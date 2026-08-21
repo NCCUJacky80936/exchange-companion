@@ -6304,3 +6304,21 @@ textarea:focus-visible,
   .trip-cover-actions { top: 14px; right: 0; }
   .travel-overview { padding-top: 56px; }
 }
+
+@media (max-width: 640px) {
+  .proposal-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .proposal-actions .button {
+    width: 100%;
+    min-height: 44px;
+    flex: none;
+    padding: 9px 10px;
+  }
+  .proposal-actions .button.primary {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+}

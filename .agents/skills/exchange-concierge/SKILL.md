@@ -64,6 +64,14 @@ Run from the Exchange Companion repository.
 
    `finalize` validates the bundle against the complete handoff, audits all surfaces, writes a field-level run summary, and updates the local checkpoint only after a successful push or a valid no-change run. If a revision conflict occurs, prepare again, reconcile against the new revision, and finalize again. Never force-push stale state.
 
+## Cost-aware execution
+
+- Run `prepare`, `inspect`, initialization, deduplication, schema validation, coverage auditing, and `finalize` with the provided deterministic scripts. Do not spend model calls on work those scripts already perform.
+- Keep the compact context and narrow `inspect` output as the only handoff to any delegated model. Never duplicate the complete private handoff, mailbox history, or unrelated website state across agents.
+- When the runtime supports explicit model selection, a bounded independent task that needs no policy judgment may use `gpt-5.6-luna` with `reasoning_effort: none` or `low`. Suitable tasks include classifying already-redacted evidence into a fixed taxonomy, extracting explicitly stated fields into a supplied schema, and normalizing an already-confirmed list.
+- Keep authorization checks, privacy classification, conflicting-evidence resolution, current-rule research, medical/legal/financial interpretation, dependency closure, and the final proposal decision with the primary model. The primary model must review every delegated result before it enters a proposal bundle.
+- Do not delegate when copying enough context would cost more tokens than completing the small task locally. Model routing is a cost optimization, never a reason to broaden source access or weaken validation.
+
 ## Reconciliation contract
 
 - `state` is the current website truth; `baseRevision` is the concurrency guard; `editableSurfaces` is the coverage list. `setupSnapshot` is first-use context only.

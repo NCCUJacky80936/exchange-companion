@@ -17,6 +17,14 @@ test("validates the reusable profile, skills, and privacy boundary", () => {
   assert.match(run(process.execPath, ["scripts/privacy-check.mjs"]), /隱私檢查通過/);
 });
 
+test("concierge routes only bounded mechanical work to a low-cost model", async () => {
+  const skill = await readFile(new URL("../.agents/skills/exchange-concierge/SKILL.md", import.meta.url), "utf8");
+  assert.match(skill, /gpt-5\.6-luna/);
+  assert.match(skill, /provided deterministic scripts/);
+  assert.match(skill, /primary model must review every delegated result/);
+  assert.match(skill, /Do not delegate when copying enough context would cost more tokens/);
+});
+
 test("installed app fetches the current notebook before using an offline fallback", async () => {
   const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
   const networkFetch = worker.indexOf("event.preloadResponse || fetch(request)");
