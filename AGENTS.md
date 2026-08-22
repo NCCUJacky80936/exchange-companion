@@ -19,6 +19,13 @@ First-use country, school, time zone, currencies, fixed interface copy, and artw
 - Run `npm run check` and responsive visual QA before deployment.
 - Deploy one reviewed release after local validation; do not repeatedly provision or publish during development.
 
+## Deployment routing (mandatory)
+
+- If `.openai/hosting.json` contains a non-empty `project_id`, the existing Codex Sites project is the canonical production target. Use the Sites building/hosting workflow and reuse that binding for normal releases.
+- Do not route an ordinary site update through Wrangler, `deploy:preflight`, or `deploy:cloudflare`; those npm scripts are guarded and will stop when a Sites binding exists.
+- Cloudflare Workers is an exception only when the user explicitly requests a Worker migration or a separate Worker deployment. The one-command `ALLOW_CLOUDFLARE_WORKERS_DEPLOY=1` override is required and must not be persisted.
+- Installing Cloudflare skills or MCP servers is independent of the website's hosting route and never changes this precedence.
+
 ## Continuous reconciliation contract
 
 - A user-confirmed exchange status added in the current conversation, an authorized project file, or the website is new evidence. When `$exchange-concierge` is active, do not stop after updating or reading Markdown, project memory, a task note, or a local output file.
