@@ -29,12 +29,13 @@ test("server-renders the exchange companion shell", async () => {
 });
 
 test("keeps private parent files outside the app bundle", async () => {
-  const [page, component, defaultData, travelPlanner, travelPanels, packageJson] = await Promise.all([
+  const [page, component, defaultData, travelPlanner, travelPanels, cloudHook, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/ExchangeCompanion.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/default-data.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/components/TravelPlanner.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/TravelTripPanels.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/useExchangeCloud.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
   assert.match(page, /ExchangeCompanion/);
@@ -48,6 +49,8 @@ test("keeps private parent files outside the app bundle", async () => {
   assert.match(travelPlanner, /Google Maps 分享連結/);
   assert.match(travelPanels, /mapsUrlForActivity/);
   assert.match(travelPanels, /TravelNotesPanel/);
+  assert.match(cloudHook, /網站目前無法啟用雲端登入/);
+  assert.doesNotMatch(cloudHook, /本機尚未連接雲端/);
   assert.match(travelPanels, /TravelPackingPanel/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.doesNotMatch(`${component}\n${travelPlanner}\n${travelPanels}`, /credentials\.json|private_token|passport-scan|private-room-number/i);
