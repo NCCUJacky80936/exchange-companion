@@ -120,6 +120,42 @@ test("accepts study events with an end time and location", () => {
   assert.equal(validateAiImportBundle(bundle), true);
 });
 
+test("keeps only the richer pending add proposal for the same study event", () => {
+  const firstBundle = validResourceBundle();
+  firstBundle.proposals[0] = {
+    ...firstBundle.proposals[0],
+    id: "proposal-study-event-basic-2027-01-15",
+    entity: "study-event",
+    action: "add",
+    value: {
+      id: "study-event-briefing",
+      title: "Pre-arrival briefing",
+      kind: "orientation",
+      startDate: "2027-03-02",
+      startTime: "21:00",
+      mandatory: false,
+      notes: "Calendar hold.",
+    },
+    privacy: "private",
+  };
+  const secondBundle = structuredClone(firstBundle);
+  secondBundle.generatedAt = "2027-01-15T13:00:00+01:00";
+  secondBundle.sources[0].id = "source-school-briefing-richer-2027-01-15";
+  secondBundle.proposals[0] = {
+    ...secondBundle.proposals[0],
+    id: "proposal-study-event-richer-2027-01-15",
+    value: { ...secondBundle.proposals[0].value, endTime: "22:00", location: "Zoom" },
+    evidenceIds: [secondBundle.sources[0].id],
+  };
+
+  const afterFirst = importAiBundle(cleanState(), firstBundle, "run-basic");
+  const afterSecond = importAiBundle(afterFirst, secondBundle, "run-richer");
+  assert.deepEqual(afterSecond.aiInbox?.proposals.map(({ id, status }) => ({ id, status })), [
+    { id: "proposal-study-event-basic-2027-01-15", status: "dismissed" },
+    { id: "proposal-study-event-richer-2027-01-15", status: "pending" },
+  ]);
+});
+
 test("keeps journey identity stable while editable destination facts change", () => {
   const state = cleanState();
   const originalScope = journeyScopeForState(state);
