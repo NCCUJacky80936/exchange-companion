@@ -309,7 +309,7 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
 
       <article className="paper-card ai-telegram-card">
         <div className="ai-card-heading"><MessageCircle size={24} /><div><p className="eyebrow">Telegram inbox</p><h2>用 Telegram 丟給 AI 整理</h2></div></div>
-        <p>只接收私人一對一文字訊息，並等你的 Codex 排程整理成待確認提案。Telegram 不會直接修改手帳。</p>
+        <p>只接收私人一對一文字訊息，並由 Antigravity 每日排程整理成待確認提案。Telegram 不會直接修改手帳。</p>
         <label className="field"><span>要授權的 Exchange Concierge 連線</span><select value={telegramConnectionId} disabled={!activeConnections.length || cloud.busy} onChange={(event) => {
           const connectionId = event.currentTarget.value;
           setSelectedTelegramConnectionId(connectionId);
