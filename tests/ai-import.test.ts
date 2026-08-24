@@ -91,7 +91,33 @@ test("exports a self-describing handoff with first-use setup locked for routine 
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("days[].activities[].mapsUrl"), true);
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("stays[]"), true);
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("references[]"), true);
+  assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "study-events")?.fields.includes("endTime"), true);
+  assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "study-events")?.fields.includes("location"), true);
   assert.equal(handoff.state, state);
+});
+
+test("accepts study events with an end time and location", () => {
+  const bundle = validResourceBundle();
+  bundle.proposals[0] = {
+    ...bundle.proposals[0],
+    id: "proposal-study-event-with-location-2027-01-15",
+    entity: "study-event",
+    action: "add",
+    value: {
+      id: "study-event-with-location",
+      title: "Pre-arrival briefing",
+      kind: "orientation",
+      startDate: "2027-03-02",
+      endDate: "2027-03-02",
+      startTime: "21:00",
+      endTime: "22:00",
+      location: "Zoom",
+      mandatory: false,
+      notes: "One of two backup holds.",
+    },
+    privacy: "private",
+  };
+  assert.equal(validateAiImportBundle(bundle), true);
 });
 
 test("keeps journey identity stable while editable destination facts change", () => {

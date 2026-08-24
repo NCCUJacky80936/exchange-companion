@@ -120,7 +120,7 @@ test("validates a reviewable concierge import bundle", async () => {
       summary: "學校已公布日期，等待使用者確認。",
       entity: "study-event",
       action: "add",
-      value: { id: "orientation-2027", title: "Orientation", kind: "orientation", startDate: "2027-03-02", mandatory: true, notes: "" },
+      value: { id: "orientation-2027", title: "Orientation", kind: "orientation", startDate: "2027-03-02", startTime: "09:00", endTime: "10:00", location: "Online", mandatory: true, notes: "" },
       confidence: "high",
       privacy: "private",
       evidenceIds: ["source-school-2027-01-15"],

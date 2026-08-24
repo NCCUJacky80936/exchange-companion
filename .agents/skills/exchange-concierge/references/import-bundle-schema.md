@@ -39,6 +39,8 @@ Each proposal requires:
 - one or more `evidenceIds` referring to sources;
 - `status`: always `pending` in newly generated bundles.
 
+A `study-event` may include `startTime`, `endTime`, and `location` in addition to its required date, kind, mandatory flag, and notes. Use `HH:MM` for both times. When an end time is an explicit calendar hold rather than an official duration, say so in `notes` instead of presenting it as a school-confirmed fact.
+
 Use `YYYY-MM-DD` for dates and ISO 8601 with an offset for timestamps. Website entity fields must match `app/lib/types.ts`.
 
 Do not add undocumented root, source, proposal, or nested entity fields. Unknown fields are rejected because they could hide private message or account data outside the visible review diff. Date ranges must be chronological, nested IDs must be unique, travel days must stay within the trip, and task predecessor IDs must resolve to current or proposed tasks.

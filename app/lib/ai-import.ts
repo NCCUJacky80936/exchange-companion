@@ -313,7 +313,8 @@ function validatesEntityField(entity: AiProposalEntity, key: string, value: unkn
     if (key === "kind") return new Set(["class", "exam", "deadline", "orientation", "personal"]).has(String(value));
     if (key === "startDate") return isDate(value);
     if (key === "endDate") return isOptionalDate(value);
-    if (key === "startTime") return value === undefined || isClockTime(value);
+    if (key === "startTime" || key === "endTime") return value === undefined || isClockTime(value);
+    if (key === "location") return isOptionalText(value, 500);
     if (key === "repeatWeekly" || key === "mandatory") return isBoolean(value);
     if (key === "notes") return typeof value === "string" && value.length <= 4_000;
     return false;
