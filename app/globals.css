@@ -6335,96 +6335,174 @@ textarea:focus-visible,
   }
 }
 
-/* 2026-08-24 travel polish: join the active ticket and handbook into one paper object. */
+/* 2026-08-24 travel polish: replace the ticket face with the open handbook. */
+.trip-card-list {
+  gap: 16px;
+  border-block: 0 !important;
+}
+
+.trip-accordion-item,
+.trip-accordion-item.collapsed,
 .trip-accordion-item.expanded {
-  border: 1.35px solid rgba(48, 50, 49, 0.34) !important;
-  border-radius: 12px;
+  border: 1.2px solid rgba(48, 50, 49, 0.2) !important;
+  border-radius: 28px;
+  overflow: hidden;
   background: var(--paper);
-  box-shadow: 0 10px 24px rgba(48, 50, 49, 0.1), 0 3px 0 rgba(48, 50, 49, 0.12);
+  box-shadow: var(--shadow);
 }
 
-.trip-accordion-item.expanded .trip-ticket.active {
-  border-bottom: 1.35px solid rgba(48, 50, 49, 0.24) !important;
-  border-radius: 11px 11px 0 0 !important;
-  background: color-mix(in srgb, var(--yellow) 18%, var(--paper)) !important;
-  padding-inline: 22px;
+.trip-accordion-item + .trip-accordion-item {
+  margin-top: 0;
+  border-top: 1.2px solid rgba(48, 50, 49, 0.2) !important;
+  padding-top: 0;
 }
 
-.trip-accordion-item.expanded .trip-ticket-copy strong {
-  display: block;
-  width: 100%;
-  overflow: visible;
-  font-size: clamp(26px, 2.6vw, 36px);
-  letter-spacing: 0.035em;
-  text-overflow: clip;
-  white-space: nowrap;
+.trip-accordion-item.collapsed .trip-ticket {
+  min-height: 96px;
+  border-radius: 28px !important;
+  background: var(--paper) !important;
+  padding: 18px 20px;
+}
+
+.trip-accordion-item.collapsed .trip-ticket:hover,
+.trip-accordion-item.collapsed .trip-ticket:focus-visible {
+  background: color-mix(in srgb, var(--blue) 12%, var(--paper)) !important;
+}
+
+.trip-accordion-item.expanded {
+  background:
+    repeating-linear-gradient(0deg, transparent 0 31px, rgba(130, 185, 232, 0.075) 31px 32px),
+    var(--paper);
+  box-shadow: var(--shadow);
 }
 
 .trip-accordion-item.expanded .trip-accordion-panel {
   margin: 0;
   border: 0 !important;
-  border-radius: 0 0 11px 11px !important;
-  background:
-    repeating-linear-gradient(0deg, transparent 0 31px, rgba(130, 185, 232, 0.075) 31px 32px),
-    var(--paper) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
 }
 
 .trip-accordion-item.expanded .trip-accordion-panel > .travel-main {
-  padding-inline: 18px;
-}
-
-.trip-accordion-item.expanded .trip-cover-actions {
-  top: 18px;
-  right: 22px;
+  padding: 0 18px 28px;
 }
 
 .trip-accordion-item.expanded .travel-overview {
-  padding-top: 18px;
+  padding: 24px 0 20px;
+}
+
+.travel-overview-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.travel-overview-title {
+  min-width: 0;
+}
+
+.travel-overview-title h2 {
+  overflow: visible;
+  color: #53655f;
+  font-size: clamp(26px, 2.6vw, 36px);
+  letter-spacing: 0.035em;
+  line-height: 1.2;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.travel-overview-title small {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.trip-panel-toggle {
+  display: grid;
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1.35px solid var(--ink);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
+  transform: rotate(180deg);
+}
+
+.travel-overview-toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 16px;
 }
 
 .trip-accordion-item.expanded .destination-route {
+  min-width: 0;
   min-height: 38px;
-  margin-top: 0;
-  padding-right: 132px;
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.trip-accordion-item.expanded .trip-cover-actions {
+  position: static;
+  flex: 0 0 auto;
 }
 
 @media (max-width: 560px) {
   .trip-accordion-item.expanded {
     width: calc(100% + 8px);
     margin-inline: -4px;
-    border-radius: 10px;
-    box-shadow: 0 7px 17px rgba(48, 50, 49, 0.09), 0 2px 0 rgba(48, 50, 49, 0.1);
+    border-radius: 24px;
   }
 
-  .trip-accordion-item.expanded .trip-ticket.active {
-    border-radius: 9px 9px 0 0 !important;
-    padding-inline: 14px;
+  .trip-accordion-item.collapsed {
+    border-radius: 24px;
   }
 
-  .trip-accordion-item.expanded .trip-ticket-copy strong {
+  .trip-accordion-item.collapsed .trip-ticket {
+    min-height: 100px;
+    border-radius: 24px !important;
+    padding: 17px 14px;
+  }
+
+  .travel-overview-title h2 {
     font-size: 20px;
     letter-spacing: 0.015em;
   }
 
   .trip-accordion-item.expanded .trip-accordion-panel {
-    border-radius: 0 0 9px 9px !important;
+    border-radius: 0 !important;
   }
 
   .trip-accordion-item.expanded .trip-accordion-panel > .travel-main {
-    padding-inline: 14px;
-  }
-
-  .trip-accordion-item.expanded .trip-cover-actions {
-    top: 12px;
-    right: 14px;
+    padding: 0 14px 22px;
   }
 
   .trip-accordion-item.expanded .travel-overview {
-    padding-top: 12px;
+    padding: 18px 0 16px;
   }
 
-  .trip-accordion-item.expanded .destination-route {
-    min-height: 40px;
-    padding-right: 116px;
+  .travel-overview-toolbar {
+    gap: 10px;
+    margin-top: 13px;
   }
+}
+
+/* Reuse the home-page watercolor palette across collapsed travel cards. */
+.trip-accordion-item.collapsed:nth-child(4n + 1) { --trip-card-accent: var(--yellow); }
+.trip-accordion-item.collapsed:nth-child(4n + 2) { --trip-card-accent: var(--blue); }
+.trip-accordion-item.collapsed:nth-child(4n + 3) { --trip-card-accent: var(--pink); }
+.trip-accordion-item.collapsed:nth-child(4n) { --trip-card-accent: var(--sage); }
+
+.trip-accordion-item.collapsed .trip-ticket {
+  background: color-mix(in srgb, var(--trip-card-accent) 30%, var(--paper)) !important;
+}
+
+.trip-accordion-item.collapsed .trip-ticket:hover,
+.trip-accordion-item.collapsed .trip-ticket:focus-visible {
+  background: color-mix(in srgb, var(--trip-card-accent) 42%, var(--paper)) !important;
 }

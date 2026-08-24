@@ -74,19 +74,35 @@ test("expanded accordion reads as one paper sheet instead of nested heavy cards"
   assert.match(css, /\.conflict-panel\s*\{[^}]*width:\s*auto[^}]*max-width:\s*760px[^}]*border:\s*0[^}]*border-block:[^}]*box-shadow:\s*none/);
 });
 
-test("mobile trip actions use a dedicated row instead of squeezing the title", () => {
-  assert.match(planner, /className="travel-overview-actions trip-cover-actions"/);
-  assert.match(css, /\.trip-cover-actions\s*\{[^}]*position:\s*absolute[^}]*right:\s*4px/);
+test("expanded travel content replaces the ticket face and keeps location with actions", () => {
+  assert.match(planner, /!expanded \? <motion\.button/);
+  assert.match(planner, /className="travel-overview-toolbar"/);
+  assert.match(planner, /className="destination-route"[\s\S]*className="travel-overview-actions trip-cover-actions"/);
+  assert.match(css, /\.travel-overview-toolbar\s*\{[^}]*display:\s*flex[^}]*justify-content:\s*space-between/);
+  assert.match(css, /\.trip-accordion-item\.expanded \.trip-cover-actions\s*\{[^}]*position:\s*static/);
   assert.doesNotMatch(planner, /className="travel-overview-top"/);
-  assert.doesNotMatch(planner, /<h2>\{selectedPlan\.title\}<\/h2>/);
+  assert.match(planner, /<h2>\{selectedPlan\.title\}<\/h2>/);
+});
+
+test("collapsed travel entries use the same raised white paper-card language as the course cards", () => {
+  assert.match(planner, /className=\{`trip-accordion-item paper-card/);
+  assert.match(css, /\.trip-card-list\s*\{[^}]*gap:\s*16px[^}]*border-block:\s*0\s*!important/);
+  assert.match(css, /\.trip-accordion-item\.collapsed\s*\.trip-ticket\s*\{[^}]*border-radius:\s*28px\s*!important[^}]*background:\s*var\(--paper\)\s*!important/);
+});
+
+test("collapsed travel cards rotate through the existing home-page watercolor palette", () => {
+  for (const color of ["yellow", "blue", "pink", "sage"]) {
+    assert.match(css, new RegExp(`--trip-card-accent:\\s*var\\(--${color}\\)`));
+  }
+  assert.match(css, /background:\s*color-mix\(in srgb,\s*var\(--trip-card-accent\)\s*30%,\s*var\(--paper\)\)\s*!important/);
 });
 
 test("travel titles stay complete on one line and new edits are limited to ten characters", () => {
   assert.match(planner, /name="title"[\s\S]*maxLength=\{10\}/);
   assert.match(planner, /Array\.from\(event\.target\.value\)\.slice\(0, 10\)\.join\(""\)/);
   assert.match(planner, /\{titleLength\}\/10 個字，會完整顯示在旅行車票上/);
-  assert.match(css, /\.trip-accordion-item\.expanded \.trip-ticket-copy strong\s*\{[^}]*overflow:\s*visible[^}]*text-overflow:\s*clip[^}]*white-space:\s*nowrap/);
-  assert.doesNotMatch(css, /\.trip-accordion-item\.expanded \.trip-ticket-copy strong\s*\{[^}]*text-overflow:\s*ellipsis/);
+  assert.match(css, /\.travel-overview-title h2\s*\{[^}]*overflow:\s*visible[^}]*text-overflow:\s*clip[^}]*white-space:\s*nowrap/);
+  assert.doesNotMatch(css, /\.travel-overview-title h2\s*\{[^}]*text-overflow:\s*ellipsis/);
 });
 
 test("travel creation forms open in modal dialogs instead of extending the accordion", () => {

@@ -679,25 +679,28 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
                 const temporalStatus = travelTemporalStatus(plan, today);
                 const expanded = selectedPlan.id === plan.id && expandedTripId === plan.id;
                 return (
-                  <motion.article layout="position" id={`trip-${plan.id}`} key={plan.id} className={`trip-accordion-item ${temporalStatus} ${expanded ? "expanded" : "collapsed"} ${spotlightTripId === plan.id ? "trip-attention" : ""}`}>
-                  <motion.button
+                  <motion.article layout id={`trip-${plan.id}`} key={plan.id} className={`trip-accordion-item paper-card ${temporalStatus} ${expanded ? "expanded" : "collapsed"} ${spotlightTripId === plan.id ? "trip-attention" : ""}`}>
+                  <AnimatePresence initial={false} mode="wait">
+                  {!expanded ? <motion.button
+                    key={`trip-cover-${plan.id}`}
                     className={`trip-ticket ${expanded ? "active" : ""}`}
                     aria-expanded={expanded}
                     aria-controls={`trip-panel-${plan.id}`}
+                    initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.99 }}
                     whileTap={reduceMotion ? undefined : { y: 2, scale: 0.995 }}
-                    transition={{ type: "spring", stiffness: 520, damping: 32 }}
+                    transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 32 }}
                     onClick={() => toggleTrip(plan)}
                   >
                     <span className="trip-ticket-index">0{index + 1}</span>
                     <div className="trip-ticket-copy"><strong>{plan.title}</strong><small>{formatDateRange(plan.startDate, plan.endDate)}</small><em>{plan.destinations.join(" · ")}</em></div>
                     <span className="trip-ticket-end"><span className="trip-time-label">{temporalStatus === "past" ? "已結束" : temporalStatus === "ongoing" ? "旅途中" : "即將出發"}</span>{planConflicts.length ? <span className="trip-conflict-count"><AlertTriangle size={13} />{planConflicts.length}</span> : <span className="trip-safe"><Check size={13} /></span>}<span className="trip-accordion-chevron"><ChevronDown size={19} /></span></span>
-                  </motion.button>
-                  <AnimatePresence initial={false}>
-                  {expanded ? <motion.div id={`trip-panel-${plan.id}`} className="trip-accordion-panel" initial={reduceMotion ? false : { height: 0, opacity: 0, y: -8 }} animate={{ height: "auto", opacity: 1, y: 0 }} exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0, y: -5 }} transition={reduceMotion ? { duration: 0 } : { height: { duration: 0.32, ease: [0.22, 1, 0.36, 1] }, opacity: { duration: 0.2 }, y: { type: "spring", stiffness: 430, damping: 34 } }}>
-                  <div className="travel-overview-actions trip-cover-actions"><div className="travel-action-menu" ref={tripActionsRef}><button className={`icon-button ${tripActionsOpen ? "active" : ""}`} onClick={() => setTripActionsOpen((open) => !open)} aria-expanded={tripActionsOpen} aria-haspopup="menu" aria-controls={`travel-actions-${selectedPlan.id}`} aria-label="更多旅行操作"><MoreHorizontal size={18} /></button>{tripActionsOpen ? <div id={`travel-actions-${selectedPlan.id}`} className="travel-action-popover paper-card" role="menu"><button role="menuitem" onClick={() => { void copySummary(); setTripActionsOpen(false); }}><Copy size={15} />{copied ? "已複製摘要" : "複製摘要"}</button><button role="menuitem" onClick={() => { downloadTravel(selectedPlan); setTripActionsOpen(false); }}><Download size={15} />匯出旅行</button><button role="menuitem" onClick={() => { setSharing(true); setTripActionsOpen(false); }}><Share2 size={15} />分享與共編</button></div> : null}</div>{editable ? <><button className="icon-button" onClick={() => setEditingPlan(selectedPlan)} aria-label="編輯旅行"><Pencil size={16} /></button><button className="icon-button danger" onClick={() => setDeleteConfirmId(selectedPlan.id)} aria-label="刪除旅行"><Trash2 size={16} /></button></> : null}</div>
+                  </motion.button> : <motion.div key={`trip-content-${plan.id}`} id={`trip-panel-${plan.id}`} className="trip-accordion-panel" role="region" aria-label={`${plan.title}旅行內容`} initial={reduceMotion ? false : { height: 0, opacity: 0, y: 8 }} animate={{ height: "auto", opacity: 1, y: 0 }} exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0, y: 6 }} transition={reduceMotion ? { duration: 0 } : { height: { duration: 0.36, ease: [0.22, 1, 0.36, 1] }, opacity: { duration: 0.22 }, y: { type: "spring", stiffness: 380, damping: 32 } }}>
                   <div className="travel-main">
             <section className="travel-overview paper-card">
-              <div className="destination-route">{selectedPlan.destinations.map((destination, index) => <span key={`${destination}-${index}`}><MapPin size={15} /><strong>{destination}</strong>{index < selectedPlan.destinations.length - 1 ? <i /> : null}</span>)}</div>
+              <div className="travel-overview-heading"><div className="travel-overview-title"><h2>{selectedPlan.title}</h2><small>{formatDateRange(selectedPlan.startDate, selectedPlan.endDate)}</small></div><motion.button className="trip-panel-toggle" type="button" aria-expanded="true" aria-controls={`trip-panel-${plan.id}`} aria-label={`收合 ${selectedPlan.title}`} whileTap={reduceMotion ? undefined : { y: 2, scale: 0.96 }} onClick={() => toggleTrip(plan)}><ChevronDown size={20} /></motion.button></div>
+              <div className="travel-overview-toolbar"><div className="destination-route">{selectedPlan.destinations.map((destination, index) => <span key={`${destination}-${index}`}><MapPin size={15} /><strong>{destination}</strong>{index < selectedPlan.destinations.length - 1 ? <i /> : null}</span>)}</div><div className="travel-overview-actions trip-cover-actions"><div className="travel-action-menu" ref={tripActionsRef}><button className={`icon-button ${tripActionsOpen ? "active" : ""}`} onClick={() => setTripActionsOpen((open) => !open)} aria-expanded={tripActionsOpen} aria-haspopup="menu" aria-controls={`travel-actions-${selectedPlan.id}`} aria-label="更多旅行操作"><MoreHorizontal size={18} /></button>{tripActionsOpen ? <div id={`travel-actions-${selectedPlan.id}`} className="travel-action-popover paper-card" role="menu"><button role="menuitem" onClick={() => { void copySummary(); setTripActionsOpen(false); }}><Copy size={15} />{copied ? "已複製摘要" : "複製摘要"}</button><button role="menuitem" onClick={() => { downloadTravel(selectedPlan); setTripActionsOpen(false); }}><Download size={15} />匯出旅行</button><button role="menuitem" onClick={() => { setSharing(true); setTripActionsOpen(false); }}><Share2 size={15} />分享與共編</button></div> : null}</div>{editable ? <><button className="icon-button" onClick={() => setEditingPlan(selectedPlan)} aria-label="編輯旅行"><Pencil size={16} /></button><button className="icon-button danger" onClick={() => setDeleteConfirmId(selectedPlan.id)} aria-label="刪除旅行"><Trash2 size={16} /></button></> : null}</div></div>
               {selectedPlan.notes ? <p className="travel-note">“{selectedPlan.notes}”</p> : null}
               <div className="travel-metrics"><div><span>預算</span><strong>{selectedPlan.currency} {selectedPlan.budget.toLocaleString()}</strong></div><div><span>已排費用</span><strong>{selectedPlan.currency} {plannedCost.toLocaleString()}</strong></div><div><span>已排景點</span><strong>{selectedPlan.days.reduce((sum, day) => sum + day.activities.length, 0)}</strong></div></div>
             </section>
@@ -754,7 +757,7 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
               <div className="travel-sharing-note"><Sparkles size={16} /><span>這裡匯出的只有旅行內容，不包含簽證、帳戶、住宿合約或私人交換進度。</span></div>
             </section>
           </div>
-                  </motion.div> : null}
+                  </motion.div>}
                   </AnimatePresence>
                   </motion.article>
                 );
