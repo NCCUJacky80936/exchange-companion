@@ -431,7 +431,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         setNotice(message.includes("cloud_not_configured")
-          ? "本機尚未連接雲端，請補上本機設定並重新啟動網站。 "
+          ? "網站目前無法啟用雲端登入，請稍後再試。 "
           : message.includes("fetch") || message.includes("network")
             ? "目前無法連到雲端，請確認網路後再試。 "
             : "Email／舊版帳號代號或密碼不正確。 ");
