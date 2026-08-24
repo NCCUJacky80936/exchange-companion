@@ -22,12 +22,16 @@ test("mobile modal height uses the dynamic iOS viewport", () => {
   assert.doesNotMatch(css, /body\s*\{[^}]*overflow-x:\s*hidden/);
 });
 
-test("hotel details become an inline touch panel on phones", () => {
-  assert.match(css, /\.travel-stay-popover[^}]*position:\s*static[^}]*display:\s*none/);
-  assert.match(css, /\.travel-stay-card\.open\s+\.travel-stay-popover\s*\{[^}]*display:\s*grid/);
-  assert.match(staySection, /setHoveredId\(""\);\s*setPinnedId/);
-  assert.match(staySection, /event\.currentTarget\.blur\(\)/);
-  assert.match(staySection, /aria-label=\{open \? `收合/);
+test("hotel details open in a floating dialog without pushing the itinerary", () => {
+  assert.match(staySection, /aria-haspopup="dialog"/);
+  assert.match(staySection, /setDetailStayId\(stay\.id\)/);
+  assert.match(staySection, /className="travel-stay-detail-modal"/);
+  assert.match(staySection, /className="modal-backdrop"/);
+  assert.match(staySection, /createPortal\([\s\S]*document\.body/);
+  assert.doesNotMatch(staySection, /className="travel-stay-popover"/);
+  assert.doesNotMatch(staySection, /setPinnedId|setHoveredId/);
+  assert.match(css, /\.modal-backdrop\s*\{[^}]*position:\s*fixed/);
+  assert.match(css, /\.travel-stay-detail-modal-body\s*\{[^}]*display:\s*grid/);
 });
 
 test("the hotel section uses straightforward accommodation labels", () => {
@@ -76,6 +80,9 @@ test("expanded accordion reads as one paper sheet instead of nested heavy cards"
 
 test("expanded travel content replaces the ticket face and keeps location with actions", () => {
   assert.match(planner, /!expanded \? <motion\.button/);
+  assert.match(planner, /mode="popLayout"/);
+  assert.match(planner, /layout="position"/);
+  assert.doesNotMatch(planner, /mode="wait"/);
   assert.match(planner, /className="travel-overview-toolbar"/);
   assert.match(planner, /className="destination-route"[\s\S]*className="travel-overview-actions trip-cover-actions"/);
   assert.match(css, /\.travel-overview-toolbar\s*\{[^}]*display:\s*flex[^}]*justify-content:\s*space-between/);
@@ -84,17 +91,21 @@ test("expanded travel content replaces the ticket face and keeps location with a
   assert.match(planner, /<h2>\{selectedPlan\.title\}<\/h2>/);
 });
 
-test("collapsed travel entries use the same raised white paper-card language as the course cards", () => {
+test("collapsed travel entries use the taped paper-card language from the home dashboard", () => {
   assert.match(planner, /className=\{`trip-accordion-item paper-card/);
   assert.match(css, /\.trip-card-list\s*\{[^}]*gap:\s*16px[^}]*border-block:\s*0\s*!important/);
-  assert.match(css, /\.trip-accordion-item\.collapsed\s*\.trip-ticket\s*\{[^}]*border-radius:\s*28px\s*!important[^}]*background:\s*var\(--paper\)\s*!important/);
+  assert.match(css, /\.trip-accordion-item\.collapsed\s*\{[^}]*border-top:\s*3px solid color-mix/);
+  assert.match(css, /\.trip-accordion-item\.collapsed::before\s*\{[^}]*background:\s*color-mix[^}]*content:\s*""/);
+  assert.match(css, /\.trip-accordion-item\.collapsed::after\s*\{[^}]*background:\s*linear-gradient/);
+  assert.match(css, /\.trip-accordion-item\.collapsed \.trip-ticket,[\s\S]*background:\s*transparent\s*!important/);
 });
 
-test("collapsed travel cards rotate through the existing home-page watercolor palette", () => {
+test("collapsed travel cards rotate the home palette through borders and tape", () => {
   for (const color of ["yellow", "blue", "pink", "sage"]) {
     assert.match(css, new RegExp(`--trip-card-accent:\\s*var\\(--${color}\\)`));
   }
-  assert.match(css, /background:\s*color-mix\(in srgb,\s*var\(--trip-card-accent\)\s*30%,\s*var\(--paper\)\)\s*!important/);
+  assert.match(css, /border-top:\s*3px solid color-mix\(in srgb,\s*var\(--trip-card-accent\)\s*76%,\s*var\(--ink\)\)/);
+  assert.match(css, /background:\s*color-mix\(in srgb,\s*var\(--trip-card-accent\)\s*56%,\s*transparent\)/);
 });
 
 test("travel titles stay complete on one line and new edits are limited to ten characters", () => {
@@ -106,7 +117,7 @@ test("travel titles stay complete on one line and new edits are limited to ten c
 });
 
 test("travel creation forms open in modal dialogs instead of extending the accordion", () => {
-  assert.match(staySection, /className="modal-card travel-entry-modal paper-card"/);
+  assert.match(staySection, /className=\{`modal-card travel-entry-modal paper-card/);
   assert.match(staySection, />新增飯店</);
   assert.match(staySection, />新增參考</);
   assert.doesNotMatch(staySection, /addingStay \? <StayForm/);

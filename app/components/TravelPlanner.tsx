@@ -679,8 +679,8 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
                 const temporalStatus = travelTemporalStatus(plan, today);
                 const expanded = selectedPlan.id === plan.id && expandedTripId === plan.id;
                 return (
-                  <motion.article layout id={`trip-${plan.id}`} key={plan.id} className={`trip-accordion-item paper-card ${temporalStatus} ${expanded ? "expanded" : "collapsed"} ${spotlightTripId === plan.id ? "trip-attention" : ""}`}>
-                  <AnimatePresence initial={false} mode="wait">
+                  <motion.article layout="position" transition={{ layout: { duration: reduceMotion ? 0 : 0.28, ease: [0.22, 1, 0.36, 1] } }} id={`trip-${plan.id}`} key={plan.id} className={`trip-accordion-item paper-card ${temporalStatus} ${expanded ? "expanded" : "collapsed"} ${spotlightTripId === plan.id ? "trip-attention" : ""}`}>
+                  <AnimatePresence initial={false} mode="popLayout">
                   {!expanded ? <motion.button
                     key={`trip-cover-${plan.id}`}
                     className={`trip-ticket ${expanded ? "active" : ""}`}
@@ -688,15 +688,15 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
                     aria-controls={`trip-panel-${plan.id}`}
                     initial={reduceMotion ? false : { opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.99 }}
+                    exit={{ opacity: 0, transition: { duration: 0 } }}
                     whileTap={reduceMotion ? undefined : { y: 2, scale: 0.995 }}
-                    transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 32 }}
+                    transition={reduceMotion ? { duration: 0 } : { duration: 0.06, ease: "easeOut" }}
                     onClick={() => toggleTrip(plan)}
                   >
                     <span className="trip-ticket-index">0{index + 1}</span>
                     <div className="trip-ticket-copy"><strong>{plan.title}</strong><small>{formatDateRange(plan.startDate, plan.endDate)}</small><em>{plan.destinations.join(" · ")}</em></div>
                     <span className="trip-ticket-end"><span className="trip-time-label">{temporalStatus === "past" ? "已結束" : temporalStatus === "ongoing" ? "旅途中" : "即將出發"}</span>{planConflicts.length ? <span className="trip-conflict-count"><AlertTriangle size={13} />{planConflicts.length}</span> : <span className="trip-safe"><Check size={13} /></span>}<span className="trip-accordion-chevron"><ChevronDown size={19} /></span></span>
-                  </motion.button> : <motion.div key={`trip-content-${plan.id}`} id={`trip-panel-${plan.id}`} className="trip-accordion-panel" role="region" aria-label={`${plan.title}旅行內容`} initial={reduceMotion ? false : { height: 0, opacity: 0, y: 8 }} animate={{ height: "auto", opacity: 1, y: 0 }} exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0, y: 6 }} transition={reduceMotion ? { duration: 0 } : { height: { duration: 0.36, ease: [0.22, 1, 0.36, 1] }, opacity: { duration: 0.22 }, y: { type: "spring", stiffness: 380, damping: 32 } }}>
+                  </motion.button> : <motion.div key={`trip-content-${plan.id}`} id={`trip-panel-${plan.id}`} className="trip-accordion-panel" role="region" aria-label={`${plan.title}旅行內容`} initial={reduceMotion ? false : { height: 0, opacity: 1 }} animate={{ height: "auto", opacity: 1 }} exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0, transition: { opacity: { duration: 0 }, height: { duration: 0.24, ease: [0.4, 0, 1, 1] } } }} transition={reduceMotion ? { duration: 0 } : { height: { duration: 0.32, ease: [0.22, 1, 0.36, 1] }, opacity: { duration: 0 } }}>
                   <div className="travel-main">
             <section className="travel-overview paper-card">
               <div className="travel-overview-heading"><div className="travel-overview-title"><h2>{selectedPlan.title}</h2><small>{formatDateRange(selectedPlan.startDate, selectedPlan.endDate)}</small></div><motion.button className="trip-panel-toggle" type="button" aria-expanded="true" aria-controls={`trip-panel-${plan.id}`} aria-label={`收合 ${selectedPlan.title}`} whileTap={reduceMotion ? undefined : { y: 2, scale: 0.96 }} onClick={() => toggleTrip(plan)}><ChevronDown size={20} /></motion.button></div>
