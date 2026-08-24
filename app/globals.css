@@ -6334,3 +6334,97 @@ textarea:focus-visible,
     grid-row: 1;
   }
 }
+
+/* 2026-08-24 travel polish: join the active ticket and handbook into one paper object. */
+.trip-accordion-item.expanded {
+  border: 1.35px solid rgba(48, 50, 49, 0.34) !important;
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: 0 10px 24px rgba(48, 50, 49, 0.1), 0 3px 0 rgba(48, 50, 49, 0.12);
+}
+
+.trip-accordion-item.expanded .trip-ticket.active {
+  border-bottom: 1.35px solid rgba(48, 50, 49, 0.24) !important;
+  border-radius: 11px 11px 0 0 !important;
+  background: color-mix(in srgb, var(--yellow) 18%, var(--paper)) !important;
+  padding-inline: 22px;
+}
+
+.trip-accordion-item.expanded .trip-ticket-copy strong {
+  display: block;
+  width: 100%;
+  overflow: visible;
+  font-size: clamp(26px, 2.6vw, 36px);
+  letter-spacing: 0.035em;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.trip-accordion-item.expanded .trip-accordion-panel {
+  margin: 0;
+  border: 0 !important;
+  border-radius: 0 0 11px 11px !important;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 31px, rgba(130, 185, 232, 0.075) 31px 32px),
+    var(--paper) !important;
+}
+
+.trip-accordion-item.expanded .trip-accordion-panel > .travel-main {
+  padding-inline: 18px;
+}
+
+.trip-accordion-item.expanded .trip-cover-actions {
+  top: 18px;
+  right: 22px;
+}
+
+.trip-accordion-item.expanded .travel-overview {
+  padding-top: 18px;
+}
+
+.trip-accordion-item.expanded .destination-route {
+  min-height: 38px;
+  margin-top: 0;
+  padding-right: 132px;
+}
+
+@media (max-width: 560px) {
+  .trip-accordion-item.expanded {
+    width: calc(100% + 8px);
+    margin-inline: -4px;
+    border-radius: 10px;
+    box-shadow: 0 7px 17px rgba(48, 50, 49, 0.09), 0 2px 0 rgba(48, 50, 49, 0.1);
+  }
+
+  .trip-accordion-item.expanded .trip-ticket.active {
+    border-radius: 9px 9px 0 0 !important;
+    padding-inline: 14px;
+  }
+
+  .trip-accordion-item.expanded .trip-ticket-copy strong {
+    font-size: 20px;
+    letter-spacing: 0.015em;
+  }
+
+  .trip-accordion-item.expanded .trip-accordion-panel {
+    border-radius: 0 0 9px 9px !important;
+  }
+
+  .trip-accordion-item.expanded .trip-accordion-panel > .travel-main {
+    padding-inline: 14px;
+  }
+
+  .trip-accordion-item.expanded .trip-cover-actions {
+    top: 12px;
+    right: 14px;
+  }
+
+  .trip-accordion-item.expanded .travel-overview {
+    padding-top: 12px;
+  }
+
+  .trip-accordion-item.expanded .destination-route {
+    min-height: 40px;
+    padding-right: 116px;
+  }
+}

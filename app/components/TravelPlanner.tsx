@@ -269,17 +269,20 @@ function downloadTravel(plan: TravelPlan): void {
 }
 
 function TravelModal({ plan, onClose, onSave }: { plan: TravelPlan | null; onClose: () => void; onSave: (plan: TravelPlan) => void }) {
+  const [title, setTitle] = useState(plan?.title ?? "");
+  const titleLength = Array.from(title).length;
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const startDate = form.get("startDate")?.toString() ?? "";
     const endDate = form.get("endDate")?.toString() ?? "";
-    if (!startDate || !endDate || endDate < startDate) return;
+    if (!title.trim() || titleLength > 10 || !startDate || !endDate || endDate < startDate) return;
     const now = new Date().toISOString();
     onSave({
       id: plan?.id ?? `travel-${Date.now()}`,
       kind: "travel",
-      title: form.get("title")?.toString().trim() ?? "",
+      title: title.trim(),
       destinations: (form.get("destinations")?.toString() ?? "").split(/[、,，]/).map((item) => item.trim()).filter(Boolean),
       startDate,
       endDate,
@@ -305,7 +308,7 @@ function TravelModal({ plan, onClose, onSave }: { plan: TravelPlan | null; onClo
           <button className="icon-button" type="button" onClick={onClose} aria-label="關閉"><X size={20} /></button>
         </div>
         <form className="form-grid" onSubmit={submit}>
-          <label className="field field-full"><span>旅行名稱</span><input name="title" defaultValue={plan?.title} placeholder="例如：聖誕假期去布拉格" required /></label>
+          <label className="field field-full"><span>旅行名稱</span><input name="title" value={title} maxLength={10} aria-describedby="travel-title-limit" aria-invalid={titleLength > 10} onChange={(event) => setTitle(Array.from(event.target.value).slice(0, 10).join(""))} placeholder="例如：聖誕假期去布拉格" required /><small id="travel-title-limit">{titleLength}/10 個字，會完整顯示在旅行車票上。</small></label>
           <label className="field field-full"><span>城市／國家</span><input name="destinations" defaultValue={plan?.destinations.join("、")} placeholder="可輸入多個：Prague、Vienna" required /><small>先丟進想去的城市，之後再慢慢補細節。</small></label>
           <label className="field"><span>開始日期</span><input type="date" name="startDate" defaultValue={plan?.startDate} required /></label>
           <label className="field"><span>結束日期</span><input type="date" name="endDate" defaultValue={plan?.endDate} required /></label>
@@ -313,7 +316,7 @@ function TravelModal({ plan, onClose, onSave }: { plan: TravelPlan | null; onClo
           <div className="field"><span>旅行預算</span><div className="inline-fields"><input aria-label="旅行預算金額" name="budget" type="number" min="0" step="1" defaultValue={plan?.budget ?? 0} /><select name="currency" defaultValue={plan?.currency ?? exchangeProfile.primaryCurrency} aria-label="旅行預算幣別">{exchangeCurrencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}</select></div></div>
           <label className="field field-full"><span>旅行想法</span><textarea name="notes" rows={3} defaultValue={plan?.notes} placeholder="想做什麼、從哪裡看到的靈感、一定要吃什麼…" /></label>
           <div className="travel-modal-note field-full"><GraduationCap size={19} /><span>儲存後會自動比對上課、考試、Orientation 與交換期限。</span></div>
-          <div className="modal-actions field-full"><button type="button" className="button secondary" onClick={onClose}>取消</button><button className="button primary" type="submit"><Check size={17} />{plan ? "儲存變更" : "建立旅行"}</button></div>
+          <div className="modal-actions field-full"><button type="button" className="button secondary" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={!title.trim() || titleLength > 10}><Check size={17} />{plan ? "儲存變更" : "建立旅行"}</button></div>
         </form>
       </motion.div>
     </motion.div>

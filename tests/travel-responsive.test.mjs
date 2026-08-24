@@ -81,6 +81,14 @@ test("mobile trip actions use a dedicated row instead of squeezing the title", (
   assert.doesNotMatch(planner, /<h2>\{selectedPlan\.title\}<\/h2>/);
 });
 
+test("travel titles stay complete on one line and new edits are limited to ten characters", () => {
+  assert.match(planner, /name="title"[\s\S]*maxLength=\{10\}/);
+  assert.match(planner, /Array\.from\(event\.target\.value\)\.slice\(0, 10\)\.join\(""\)/);
+  assert.match(planner, /\{titleLength\}\/10 個字，會完整顯示在旅行車票上/);
+  assert.match(css, /\.trip-accordion-item\.expanded \.trip-ticket-copy strong\s*\{[^}]*overflow:\s*visible[^}]*text-overflow:\s*clip[^}]*white-space:\s*nowrap/);
+  assert.doesNotMatch(css, /\.trip-accordion-item\.expanded \.trip-ticket-copy strong\s*\{[^}]*text-overflow:\s*ellipsis/);
+});
+
 test("travel creation forms open in modal dialogs instead of extending the accordion", () => {
   assert.match(staySection, /className="modal-card travel-entry-modal paper-card"/);
   assert.match(staySection, />新增飯店</);
