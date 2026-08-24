@@ -1387,7 +1387,7 @@ h3 {
 .trip-conflict-count { background: #f7cbc5; color: #842f29; }
 .travel-main { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 .travel-main > * { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
-.travel-overview { overflow: hidden; border: 0; border-bottom: 1px dashed rgba(46, 58, 52, 0.4); background: transparent; padding: 28px 20px 22px; box-shadow: none; }
+.travel-overview { position: relative; overflow: visible; border: 0; border-bottom: 1px dashed rgba(46, 58, 52, 0.4); background: transparent; padding: 28px 20px 22px; box-shadow: none; }
 .travel-overview::after { position: absolute; top: -46px; right: -38px; width: 160px; height: 160px; pointer-events: none; border: 18px double rgba(130, 185, 232, 0.18); border-radius: 50%; content: ""; }
 .travel-overview-top { position: relative; z-index: 1; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 18px; }
 .travel-overview-top > div:nth-child(2) { padding-right: 122px; }
@@ -1397,7 +1397,7 @@ h3 {
 .travel-overview-actions { position: absolute; top: 0; right: 0; z-index: 3; display: flex; gap: 6px; }
 .travel-action-menu { position: relative; }
 .travel-action-menu > .icon-button.active { background: var(--yellow-soft); box-shadow: 0 3px 0 rgba(46, 58, 52, 0.18); transform: translateY(-1px); }
-.travel-action-popover { position: absolute; top: calc(100% + 7px); right: 0; display: grid; width: 176px; overflow: hidden; border: 1.5px solid var(--ink); padding: 5px; box-shadow: 5px 6px 0 rgba(46, 58, 52, 0.18); }
+.travel-action-popover { position: absolute; top: calc(100% + 7px); right: 0; z-index: 50; display: grid; width: 176px; overflow: hidden; border: 1.5px solid var(--ink); border-radius: 8px; background: var(--paper); padding: 5px; box-shadow: 5px 6px 0 rgba(46, 58, 52, 0.18); }
 .travel-action-popover button { display: flex; width: 100%; min-height: 37px; cursor: pointer; align-items: center; gap: 8px; border: 0; border-bottom: 1px dashed rgba(46, 58, 52, 0.2); background: transparent; padding: 8px 9px; color: var(--ink); font: inherit; font-size: 12px; font-weight: 800; text-align: left; }
 .travel-action-popover button:last-child { border-bottom: 0; }
 .travel-action-popover button:hover, .travel-action-popover button:focus-visible { background: var(--yellow-soft); outline: none; }
@@ -6127,10 +6127,10 @@ textarea:focus-visible,
 .course-timetable-header { display: grid; grid-template-columns: 58px repeat(5, minmax(0, 1fr)); position: sticky; top: 0; z-index: 3; border-bottom: 1px solid rgba(32, 34, 32, 0.24); background: color-mix(in srgb, var(--paper) 84%, var(--blue)); }
 .course-timetable-header > * { min-height: 42px; display: grid; place-items: center; border-left: 1px dashed rgba(32, 34, 32, 0.16); font-size: 12px; }
 .course-timetable-header > span { border-left: 0; color: var(--muted); font-size: 10px; letter-spacing: 0.08em; }
-.course-timetable-body { display: grid; grid-template-columns: 58px minmax(0, 1fr); min-height: calc(var(--course-hour-height) * var(--course-hour-count)); }
-.course-time-axis { display: grid; grid-template-rows: repeat(var(--course-hour-count), var(--course-hour-height)); position: relative; color: var(--muted); font-size: 10px; }
-.course-time-axis span { transform: translateY(-6px); padding-right: 8px; text-align: right; }
-.course-time-axis span:last-child { position: absolute; right: 0; bottom: -5px; }
+.course-timetable-body { display: grid; grid-template-columns: 58px minmax(0, 1fr); min-height: calc(var(--course-hour-height) * var(--course-hour-count)); padding: 12px 0 16px; }
+.course-time-axis { display: grid; grid-template-rows: repeat(var(--course-hour-count), var(--course-hour-height)); position: relative; color: var(--muted); font-size: 10px; line-height: 1; }
+.course-time-axis span { display: flex; align-items: flex-start; justify-content: flex-end; transform: translateY(-50%); padding-right: 8px; text-align: right; }
+.course-time-axis span:last-child { position: absolute; right: 0; bottom: 16px; transform: translateY(50%); padding-right: 8px; }
 .course-day-columns { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); min-width: 0; }
 .course-day-column { position: relative; min-width: 0; height: calc(var(--course-hour-height) * var(--course-hour-count)); border-left: 1px dashed rgba(32, 34, 32, 0.18); background: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--course-hour-height) - 1px), rgba(32, 34, 32, 0.15) calc(var(--course-hour-height) - 1px), rgba(32, 34, 32, 0.15) var(--course-hour-height)); }
 .course-slot { position: absolute; left: 5px; right: 5px; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--blue) 58%, var(--ink)); border-radius: 9px; background: color-mix(in srgb, var(--blue-soft) 78%, var(--paper)); padding: 7px 5px 6px 8px; box-shadow: 0 3px 0 rgba(74, 136, 190, 0.16); }
@@ -6196,9 +6196,10 @@ textarea:focus-visible,
   .course-timetable-header { grid-template-columns: 32px repeat(5, minmax(0, 1fr)); }
   .course-timetable-header > * { min-height: 40px; padding: 2px; font-size: 12px; }
   .course-timetable-header > span { font-size: 9px; }
-  .course-timetable-body { grid-template-columns: 32px minmax(0, 1fr); }
+  .course-timetable-body { grid-template-columns: 32px minmax(0, 1fr); padding: 10px 0 14px; }
   .course-time-axis { font-size: 9px; }
   .course-time-axis span { padding-right: 4px; }
+  .course-time-axis span:last-child { bottom: 14px; padding-right: 4px; }
   .course-slot { left: 2px; right: 2px; border-radius: 8px; padding: 6px 3px 5px 5px; }
   .course-slot > div:first-child { width: 100%; padding-right: 19px; }
   .course-slot strong { font-size: 11px; white-space: normal; }
