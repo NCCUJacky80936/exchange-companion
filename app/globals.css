@@ -2555,6 +2555,11 @@ img[src*="/images/doodle-icons-v2/"],
 
 .ai-header { background: linear-gradient(105deg, rgba(246, 196, 174, 0.62), rgba(255, 254, 248, 0.86) 62%); }
 .ai-header > img { position: relative; z-index: 1; object-fit: contain; }
+.ai-telegram-card { display: grid; gap: 12px; border-left: 7px solid var(--blue); background: var(--blue-soft); padding: 22px; }
+.ai-telegram-card > p { margin: 0; color: var(--muted); }
+.ai-telegram-card .field { min-width: 0; }
+.ai-telegram-card select { width: 100%; min-width: 0; }
+.ai-telegram-card code { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
 .ai-workflow-grid { display: grid; grid-template-columns: 1.08fr 0.92fr; gap: 20px; }
 .ai-start-card,
 .ai-import-card { position: relative; padding: 26px; }

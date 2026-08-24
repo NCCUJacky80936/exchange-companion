@@ -32,8 +32,9 @@ npm run dev
 - localStorage 完整本機模式。
 - 可選的 Supabase 私人同步與限旅行範圍的分享／共編。
 - `config/exchange-profile.json`：可重複的國家、學校與視覺設定。
+- 可選的 Telegram Concierge 自然語言提案入口：可綁定專屬 Telegram Bot，以文字即時傳送筆記／待辦／行李異動；訊息先進入私人佇列，再由排程或 Agent 比對手帳現狀並送回 Pending 提案審核。
 - `$create-exchange-companion`：從選目的地、研究、製圖、網站到上雲的完整流程。
-- `$exchange-concierge`：從授權信件／檔案／官方網站抓進度；首次連結後可直接讀取雲端最新版本並送回可審核提案，JSON 保留為離線備援。
+- `$exchange-concierge`：從授權信件／檔案／官方網站／Telegram 訊息抓進度；首次連結後可直接讀取雲端最新版本並送回可審核提案，JSON 保留為離線備援。
 - `$exchange-email-intake`：只在目前使用者明確授權的信箱、訊息、寄件者、查詢與日期範圍內擷取證據，不綁作者帳號或德國寄件者。
 - 初始化、健康檢查、設定驗證、Skill 驗證與隱私掃描。
 
@@ -42,7 +43,7 @@ npm run dev
 ```mermaid
 flowchart LR
   A["網站首次下載可撤銷的 Agent 連結檔"] --> B["Codex 每次先讀取雲端最新版本"]
-  B --> C["Email Intake 依授權範圍擷取；Concierge 比對檔案與最新官方資料"]
+  B --> C["Email / Files / Telegram 佇列依授權範圍擷取"]
   C --> D["產生跨旅程、任務、預算、資源、行李、課程與旅行的待審提案"]
   D --> E["提案送回網站收件匣，逐項或批次套用、忽略、復原"]
   E --> F["登入帳號後自動同步私人手帳"]
@@ -59,7 +60,13 @@ flowchart LR
 
 正式連結檔應由 Agent 存放在 gitignored 的 `work/exchange-concierge-connection.json`。之後 Agent 會用 `baseRevision` 先讀最新手帳再送回 pending 提案，不需反覆下載／上傳 JSON。連結可隨時從網站撤銷，權限只有讀取這趟私人手帳與提交待審提案，不能自行套用。完整信件、附件與證件仍不會匯入網站。
 
-私人連線只負責安全讀取與送達，不會自己叫醒 Agent。這個專案使用一個每週 Codex 主動巡檢，擷取已授權的德國交換信件並檢查 workspace 新增的截圖或文件；若使用者在 Codex 對話中直接確認新狀態，則在同一輪立即整理，不等待下週。兩種觸發都會拉取網站最新 revision、完整驗證後只推送 pending 提案。網站在 AI 頁開啟時會每分鐘及回到分頁時自動收件。連線失效、版本衝突或驗證失敗必須主動通知，不能靜默留下只存在本機的結果。
+私人連線只負責安全讀取與送達，不會自己叫醒 Agent。這個專案支援主動定時巡檢（例如每日或每週），一併檢查授權信件、本地文件變更與 **Telegram 訊息佇列**（`--include-telegram`）；若使用者在對話中直接確認新狀態，則在同一輪立即整理。所有觸發都會拉取網站最新 revision、完整驗證後只推送 pending 提案。網站在 AI 頁開啟時會每分鐘及回到分頁時自動收件。連線失效、版本衝突或驗證失敗必須主動通知，不能靜默留下只存在本機的結果。
+
+### Telegram Concierge 自然語言入口（選配）
+
+- 在 AI 頁面可產生一次性 10 分鐘配對碼，於專屬 Telegram Bot 輸入 `/start <配對碼>` 完成綁定。
+- 支援以自然語言傳送文字筆記（如新增行李、待辦任務、行前備忘等）。
+- **安全邊界**：Telegram Bot Token 與 Webhook Secret 僅由後端 Supabase Edge Function Secrets 保存；Telegram 訊息只會即時存入私人安全佇列，並在排程或 Agent 執行時轉化為 **Pending 待審提案**，任何路徑皆不會直接變更手帳內容。
 
 無法使用雲端時，AI 頁面仍提供完整交接 JSON 的離線下載／匯入流程。
 

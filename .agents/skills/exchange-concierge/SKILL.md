@@ -33,8 +33,14 @@ Run from the Exchange Companion repository.
    python3 .agents/skills/exchange-concierge/scripts/concierge_run.py prepare \
      --mode full \
      --intent "weekly exchange evidence audit" \
+     --include-telegram \
      --scan-root ..
    ```
+
+   `--include-telegram` performs a fresh cloud pull, then leases at most 20 oldest
+   private text requests (32,000 characters total) for two hours. The compact
+   context contains only the request text, received time, and internal request
+   linkage. It never contains Telegram account, chat, or username identifiers.
 
    If no private cloud connection is available, place the exact latest website handoff at `work/latest-exchange-companion-handoff.json` and add `--no-pull`. Never substitute an old backup when the user says the website is newer.
 
@@ -63,6 +69,24 @@ Run from the Exchange Companion repository.
    ```
 
    `finalize` validates the bundle against the complete handoff, audits all surfaces, writes a field-level run summary, and updates the local checkpoint only after a successful push or a valid no-change run. If a revision conflict occurs, prepare again, reconcile against the new revision, and finalize again. Never force-push stale state.
+
+   For Telegram evidence, `finalize --push` marks requests complete and removes
+   raw text only after the pending inbox push succeeds. A valid zero-proposal run
+   is completed as `no_change`. If one request needs a concrete answer instead,
+   ask exactly one Force Reply question and leave it for the next scheduled run:
+
+   ```bash
+   python3 .agents/skills/exchange-concierge/scripts/concierge_run.py clarify \
+     --request-id "REQUEST UUID" \
+     --question "ONE CONCRETE QUESTION"
+   ```
+
+   On a processing failure, release the active lease without claiming success:
+
+   ```bash
+   python3 .agents/skills/exchange-concierge/scripts/concierge_run.py fail \
+     --error "SHORT NON-SENSITIVE REASON"
+   ```
 
 ## Cost-aware execution
 
@@ -102,6 +126,7 @@ Every coverage row must be `updated`, `no-new-evidence`, or `needs-confirmation`
 - Prefer current official school, city, government, airline, and provider sources. Current evergreen official pages are acceptable when today's check date is recorded and the lack of a page update date is noted.
 - Experience reports and the configured YouTube inspiration sources may suggest ordinary packing or daily-life ideas only. They never establish law, medicine, fees, deadlines, customs, ticket allowances, or carrier rules, and their promotional metadata must not appear on the website.
 - Mailbox authorization is account-, sender/domain-, query-, and date-bounded. Exact-message permission does not authorize a wider mailbox search or attachment reading.
+- Telegram authorization covers only the explicitly linked private text queue. A message may narrow official research to its stated topic, but never expands mailbox, file, calendar, or unrelated web-research authorization.
 - Keep raw emails, message IDs, attachment names, documents, and credentials in gitignored private work areas. The proposal bundle receives concise, de-identified facts only.
 - The cloud connection is a private revocable credential. Never commit, print, quote, or include it in a bundle. It can read the latest state and submit pending proposals only; it cannot apply them.
 

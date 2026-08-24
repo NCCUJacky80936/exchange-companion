@@ -1,7 +1,7 @@
 "use client";
 
 import { createClient, type RealtimeChannel, type Session, type SupabaseClient } from "@supabase/supabase-js";
-import type { AiImportBundle, AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
+import type { AiImportBundle, AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TelegramLinkInfo, TelegramPairingInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
 import { cloudPlanIdFor, matchesPublicTravelPayload, publicTravelPayload, resolveTravelPermission } from "./travel-cloud";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -193,6 +193,23 @@ export async function pullConciergeProposalRuns(): Promise<ConciergeProposalRun[
 export async function acknowledgeConciergeProposalRuns(runIds: string[]): Promise<void> {
   if (!runIds.length) return;
   await invokeConcierge({ action: "ack", runIds });
+}
+
+export async function createTelegramPairing(connectionId: string): Promise<TelegramPairingInfo> {
+  const data = await invokeConcierge<{ pairing: TelegramPairingInfo }>({ action: "telegram-pair", connectionId });
+  return data.pairing;
+}
+
+export async function getTelegramStatus(connectionId?: string, currentSession?: Session): Promise<TelegramLinkInfo | null> {
+  const data = await invokeConcierge<{ link: TelegramLinkInfo | null }>({
+    action: "telegram-status",
+    ...(connectionId ? { connectionId } : {}),
+  }, currentSession);
+  return data.link;
+}
+
+export async function revokeTelegramLink(connectionId: string): Promise<void> {
+  await invokeConcierge({ action: "telegram-revoke", connectionId });
 }
 
 export async function publishTravelPlan(plan: TravelPlan): Promise<TravelPlan> {

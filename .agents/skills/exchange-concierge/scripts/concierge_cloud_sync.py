@@ -81,7 +81,55 @@ def run_key(bundle: dict) -> str:
     return datetime.now().astimezone().strftime("run-%Y%m%d-%H%M%S-cli")
 
 
-def push(connection: dict, bundle_path: Path) -> None:
+def claim(connection: dict) -> dict:
+    response = post(connection, {"action": "telegram-claim"})
+    batch = response.get("telegramBatch")
+    if not isinstance(batch, dict):
+        raise SystemExit("Cloud returned an invalid Telegram batch.")
+    requests = batch.get("requests")
+    lease_id = batch.get("leaseId")
+    if not isinstance(requests, list) or (lease_id is not None and not isinstance(lease_id, str)):
+        raise SystemExit("Cloud returned an invalid Telegram batch.")
+    return batch
+
+
+def clarify(connection: dict, lease_id: str, request_id: str, question: str) -> dict:
+    return post(connection, {
+        "action": "telegram-clarify",
+        "leaseId": lease_id,
+        "requestId": request_id,
+        "question": question,
+    })
+
+
+def complete(
+    connection: dict,
+    lease_id: str,
+    request_ids: list[str],
+    completion_run_key: str,
+    proposal_count: int,
+    outcome: str,
+) -> dict:
+    return post(connection, {
+        "action": "telegram-complete",
+        "leaseId": lease_id,
+        "requestIds": request_ids,
+        "runKey": completion_run_key,
+        "proposalCount": proposal_count,
+        "outcome": outcome,
+    })
+
+
+def fail(connection: dict, lease_id: str, request_ids: list[str], error: str) -> dict:
+    return post(connection, {
+        "action": "telegram-fail",
+        "leaseId": lease_id,
+        "requestIds": request_ids,
+        "error": error,
+    })
+
+
+def push(connection: dict, bundle_path: Path, run_key_override: str | None = None) -> None:
     bundle = read_object(bundle_path)
     base_revision = bundle.get("baseRevision")
     if not isinstance(base_revision, int) or base_revision < 1:
@@ -89,7 +137,7 @@ def push(connection: dict, bundle_path: Path) -> None:
     response = post(connection, {
         "action": "proposals",
         "baseRevision": base_revision,
-        "runKey": run_key(bundle),
+        "runKey": run_key_override or run_key(bundle),
         "bundle": bundle,
     })
     duplicate = " (already submitted)" if response.get("duplicate") else ""
@@ -104,6 +152,23 @@ def parser() -> argparse.ArgumentParser:
     pull_parser.add_argument("--output", type=Path, default=DEFAULT_HANDOFF)
     push_parser = subcommands.add_parser("push", help="submit a validated proposal bundle")
     push_parser.add_argument("bundle", type=Path)
+    push_parser.add_argument("--run-key")
+    claim_parser = subcommands.add_parser("claim", help="lease the oldest Telegram requests")
+    claim_parser.add_argument("--output", type=Path, required=True, help="private JSON destination for the de-identified batch")
+    clarify_parser = subcommands.add_parser("clarify", help="ask one Telegram request a Force Reply question")
+    clarify_parser.add_argument("--lease-id", required=True)
+    clarify_parser.add_argument("--request-id", required=True)
+    clarify_parser.add_argument("--question", required=True)
+    complete_parser = subcommands.add_parser("complete", help="complete leased Telegram requests after delivery")
+    complete_parser.add_argument("--lease-id", required=True)
+    complete_parser.add_argument("--request-id", action="append", required=True)
+    complete_parser.add_argument("--run-key", required=True)
+    complete_parser.add_argument("--proposal-count", type=int, required=True)
+    complete_parser.add_argument("--outcome", choices=("processed", "no_change"), required=True)
+    fail_parser = subcommands.add_parser("fail", help="release or fail leased Telegram requests")
+    fail_parser.add_argument("--lease-id", required=True)
+    fail_parser.add_argument("--request-id", action="append", required=True)
+    fail_parser.add_argument("--error", default="processing_failed")
     return result
 
 
@@ -112,8 +177,23 @@ def main() -> None:
     connection = read_connection(args.connection)
     if args.command == "pull":
         pull(connection, args.output)
+    elif args.command == "push":
+        push(connection, args.bundle, args.run_key)
+    elif args.command == "claim":
+        batch = claim(connection)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(batch, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print(f"Claimed {len(batch['requests'])} Telegram request(s) to {args.output}")
+    elif args.command == "clarify":
+        clarify(connection, args.lease_id, args.request_id, args.question)
+        print("Telegram clarification sent")
+    elif args.command == "complete":
+        response = complete(connection, args.lease_id, args.request_id, args.run_key, args.proposal_count, args.outcome)
+        print(f"Completed {response.get('completed', len(args.request_id))} Telegram request(s)")
     else:
-        push(connection, args.bundle)
+        response = fail(connection, args.lease_id, args.request_id, args.error)
+        requests = response.get("requests")
+        print(f"Recorded failure for {len(requests) if isinstance(requests, list) else len(args.request_id)} Telegram request(s)")
 
 
 if __name__ == "__main__":

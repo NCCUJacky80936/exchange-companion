@@ -43,6 +43,25 @@ npx supabase functions deploy exchange-concierge-sync --no-verify-jwt
 
 Edge Function 會自行驗證登入者或可撤銷的 Agent token；Agent token 只能讀取一趟旅程的最新版本並提交 pending proposals。
 
+### Telegram Concierge（選用）
+
+Telegram 入口需要專用 Bot，且只能在 action-time 確認後設定正式環境。以下四個值只存於 Supabase Edge Function secrets，不可寫入 `.env`、前端、提案或 Git：
+
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_WEBHOOK_SECRET`
+- `TELEGRAM_BOT_USERNAME`
+- `EXCHANGE_COMPANION_URL`
+
+先套用 migration，再部署兩個 Function；最後才以 Telegram `setWebhook` 設定 `secret_token` 與只接收 `message` update：
+
+```bash
+npx supabase db push
+npx supabase functions deploy exchange-concierge-sync --no-verify-jwt
+npx supabase functions deploy telegram-concierge-webhook --no-verify-jwt
+```
+
+設定完成後須以 `getWebhookInfo` 確認正式 URL、pending update 數與最後錯誤，並用真實私人帳號完成「配對、收件、claim、pending inbox、完成通知」smoke test。不得將 Bot token 放在 command history、部署紀錄或驗證截圖中；呼叫 Telegram API 時應由安全的 secrets 注入流程完成。
+
 第一次使用 Wrangler 時，先登入自己的 Cloudflare 帳號：
 
 ```bash

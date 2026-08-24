@@ -6,9 +6,11 @@ import {
   cloudIsConfigured,
   acknowledgeConciergeProposalRuns,
   createConciergeConnection,
+  createTelegramPairing,
   createPasswordAccount,
   ensureCloudSession,
   getCloudClient,
+  getTelegramStatus,
   isPermanentSession,
   listConciergeConnections,
   listMemberTravelPlans,
@@ -21,6 +23,7 @@ import {
   removeTravelSubscription,
   restoreOwnedTravelPermissions,
   revokeConciergeConnection,
+  revokeTelegramLink,
   sendMagicLink,
   sendTravelGuestMagicLink,
   signInWithPasswordAccount,
@@ -35,7 +38,7 @@ import {
 import { findAiBundleCollisions, importAiBundle, matchesAiJourneyScope, validateAiImportBundle } from "./ai-import";
 import { normalizeImportedState, resetState } from "./storage";
 import { matchesPublicTravelPayload, publicTravelPayload } from "./travel-cloud";
-import type { AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
+import type { AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TelegramLinkInfo, TelegramPairingInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
 
 const PRIVATE_SYNC_KEY = "exchange-companion:private-cloud-sync";
 export type ShareRedemptionStatus = "none" | "loading" | "active" | "login-required" | "invalid";
@@ -53,6 +56,8 @@ export interface ExchangeCloudController {
   syncConflict: boolean;
   conciergeConnections: ConciergeConnectionInfo[];
   conciergeConnectionsReady: boolean;
+  telegramLink: TelegramLinkInfo | null;
+  telegramLinkReady: boolean;
   busy: boolean;
   notice: string;
   setNotice: (notice: string) => void;
@@ -68,6 +73,9 @@ export interface ExchangeCloudController {
   createConciergeConnection: () => Promise<ConciergeConnectionFile>;
   refreshConciergeConnections: () => Promise<void>;
   revokeConciergeConnection: (connectionId: string) => Promise<void>;
+  createTelegramPairing: (connectionId: string) => Promise<TelegramPairingInfo>;
+  refreshTelegramLink: (connectionId?: string) => Promise<TelegramLinkInfo | null>;
+  revokeTelegramLink: (connectionId: string) => Promise<void>;
   refreshConciergeInbox: () => Promise<number>;
   publishPlan: (plan: TravelPlan) => Promise<TravelPlan>;
   loadTravelSharing: (plan: TravelPlan) => Promise<TravelSharingSettings>;
@@ -90,6 +98,8 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   const [syncConflict, setSyncConflict] = useState(false);
   const [conciergeConnections, setConciergeConnections] = useState<ConciergeConnectionInfo[]>([]);
   const [conciergeConnectionsReady, setConciergeConnectionsReady] = useState(!configured);
+  const [telegramLink, setTelegramLink] = useState<TelegramLinkInfo | null>(null);
+  const [telegramLinkReady, setTelegramLinkReady] = useState(!configured);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(configured ? "正在準備免費雲端…" : "尚未連接免費雲端；本機功能仍可完整使用。 ");
   const redeemedToken = useRef("");
@@ -133,12 +143,20 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     loadedAccount.current = currentSession.user.id;
     setAccountDataReady(false);
     setConciergeConnectionsReady(false);
+    setTelegramLinkReady(false);
     void listConciergeConnections(currentSession).then((connections) => {
       if (loadedAccount.current !== currentSession.user.id) return;
       setConciergeConnections(connections);
       setConciergeConnectionsReady(true);
     }).catch(() => {
       if (loadedAccount.current === currentSession.user.id) setConciergeConnectionsReady(false);
+    });
+    void getTelegramStatus(undefined, currentSession).then((link) => {
+      if (loadedAccount.current !== currentSession.user.id) return;
+      setTelegramLink(link);
+      setTelegramLinkReady(true);
+    }).catch(() => {
+      if (loadedAccount.current === currentSession.user.id) setTelegramLinkReady(false);
     });
     try {
       const remote = await readPrivateState(currentSession);
@@ -320,6 +338,19 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     }
   }, [session]);
 
+  const refreshTelegramStatus = useCallback(async (connectionId?: string): Promise<TelegramLinkInfo | null> => {
+    if (!isPermanentSession(session)) return null;
+    try {
+      const link = await getTelegramStatus(connectionId);
+      setTelegramLink(link);
+      setTelegramLinkReady(true);
+      return link;
+    } catch (error) {
+      setTelegramLinkReady(false);
+      throw error;
+    }
+  }, [session]);
+
   const refreshInbox = useCallback(async (): Promise<number> => {
     if (!isPermanentSession(session) || !latestState.current) return 0;
     const runs = await pullConciergeProposalRuns();
@@ -379,6 +410,8 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     syncConflict,
     conciergeConnections,
     conciergeConnectionsReady,
+    telegramLink,
+    telegramLinkReady,
     busy,
     notice,
     setNotice,
@@ -428,6 +461,8 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       setSyncConflict(false);
       setConciergeConnections([]);
       setConciergeConnectionsReady(false);
+      setTelegramLink(null);
+      setTelegramLinkReady(false);
       await signOutCloud();
       setNotice("已登出，請重新登入後再開啟私人手帳。 ");
     }),
@@ -473,6 +508,16 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     revokeConciergeConnection: (connectionId: string) => runBusy(async () => {
       await revokeConciergeConnection(connectionId);
       await refreshConnections();
+      if (telegramLink?.connectionId === connectionId) {
+        setTelegramLink(null);
+        setTelegramLinkReady(true);
+      }
+    }),
+    createTelegramPairing: (connectionId: string) => runBusy(() => createTelegramPairing(connectionId)),
+    refreshTelegramLink: (connectionId?: string) => runBusy(() => refreshTelegramStatus(connectionId)),
+    revokeTelegramLink: (connectionId: string) => runBusy(async () => {
+      await revokeTelegramLink(connectionId);
+      await refreshTelegramStatus(connectionId);
     }),
     refreshConciergeInbox: () => runBusy(refreshInbox),
     publishPlan: (plan: TravelPlan) => runBusy(() => publishTravelPlan(plan)),
@@ -481,5 +526,5 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     upsertTravelMember: (plan, account, permission) => runBusy(() => upsertTravelMember(plan, account, permission)),
     updateTravelMember: (plan, memberId, permission) => runBusy(() => updateTravelMemberPermission(plan, memberId, permission)),
     removeTravelMember: (plan, memberId) => runBusy(() => removeTravelMember(plan, memberId)),
-  }), [accountDataReady, authReady, busy, conciergeConnections, conciergeConnectionsReady, configured, loadPermanentAccountState, notice, privateRevision, privateSyncEnabled, refreshConnections, refreshInbox, runBusy, session, setState, shareStatus, sharedPlanId, sharedToken, syncConflict]);
+  }), [accountDataReady, authReady, busy, conciergeConnections, conciergeConnectionsReady, configured, loadPermanentAccountState, notice, privateRevision, privateSyncEnabled, refreshConnections, refreshInbox, refreshTelegramStatus, runBusy, session, setState, shareStatus, sharedPlanId, sharedToken, syncConflict, telegramLink, telegramLinkReady]);
 }
