@@ -54,3 +54,14 @@ test("installed app uses dedicated Android and Apple home-screen artwork", () =>
 test("mobile home completion count stays below the progress bar", () => {
   assert.doesNotMatch(styles, /\.home-status-progress small \{[^}]*margin-top:\s*-\d/);
 });
+
+test("dynamic home grids use their real size on the first render", () => {
+  assert.doesNotMatch(
+    styles,
+    /\.home-daily-grid,\s*\.home-core-grid\s*\{[^}]*content-visibility:\s*auto/s,
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.home-daily-grid,\s*\.home-core-grid\s*\{[^}]*contain-intrinsic-size/s,
+  );
+});

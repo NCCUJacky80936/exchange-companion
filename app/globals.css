@@ -5779,13 +5779,6 @@ body {
   mix-blend-mode: normal;
 }
 
-/* Keep dashboard work below the first viewport out of initial layout and paint. */
-.home-daily-grid,
-.home-core-grid {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 620px;
-}
-
 @media (max-width: 820px) {
   .topbar {
     background: rgba(247, 243, 239, 0.98);
