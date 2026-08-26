@@ -192,11 +192,11 @@ function ShareTravelModal({ plan, cloud, onPlanPublished, onClose }: { plan: Tra
 }
 
 const activityMeta: Record<TravelActivityKind, { label: string; icon: string; color: string }> = {
-  place: { label: "景點", icon: "/images/doodle-icons-v2/journey-route.png", color: "terracotta" },
-  food: { label: "餐廳", icon: "/images/doodle-icons-v2/home-notebook.png", color: "yellow" },
-  transport: { label: "交通", icon: "/images/doodle-icons-v2/travel-suitcase.png", color: "blue" },
-  stay: { label: "住宿", icon: "/images/doodle-icons-v2/home-notebook.png", color: "sage" },
-  note: { label: "備忘", icon: "/images/doodle-icons-v2/resources-book.png", color: "gray" },
+  place: { label: "景點", icon: "/images/doodle-icons-v2/journey-route.webp", color: "terracotta" },
+  food: { label: "餐廳", icon: "/images/doodle-icons-v2/home-notebook.webp", color: "yellow" },
+  transport: { label: "交通", icon: "/images/doodle-icons-v2/travel-suitcase.webp", color: "blue" },
+  stay: { label: "住宿", icon: "/images/doodle-icons-v2/home-notebook.webp", color: "sage" },
+  note: { label: "備忘", icon: "/images/doodle-icons-v2/resources-book.webp", color: "gray" },
 };
 
 const studyEventMeta: Record<StudyEventKind, { label: string; className: string }> = {
@@ -660,7 +660,7 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
       {plans.length === 0 ? (
         <div className="travel-empty-layout travel-empty-layout-single">
           <motion.section className="travel-empty paper-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="empty-route-art"><Image src="/images/doodle-icons-v2/travel-suitcase.png" alt="手繪旅行行李圖示" width={180} height={180} /></div>
+            <div className="empty-route-art"><Image src="/images/doodle-icons-v2/travel-suitcase.webp" alt="手繪旅行行李圖示" width={180} height={180} /></div>
             <p className="eyebrow">An empty page is a good start</p>
             <h2>還沒有旅行，先留一張空白車票</h2>
             <p>只要先決定「想去哪」和「哪幾天」，住宿、交通、景點與預算都可以之後再補。</p>
@@ -718,9 +718,9 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
             <section className="itinerary-board paper-card">
               <div className="itinerary-heading"><div><p className="eyebrow">Trip handbook</p><h2>{tripView === "itinerary" ? "行程與地圖" : tripView === "notes" ? "注意事項" : "旅行行李"}</h2></div></div>
               <div className="trip-section-tabs" role="tablist" aria-label="旅行手冊內容">
-                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "itinerary"} className={tripView === "itinerary" ? "active" : ""} onClick={() => setTripView("itinerary")}><Image src="/images/doodle-icons-v2/journey-route.png" alt="" width={28} height={28} /><span>行程與地圖</span><small>{selectedPlan.days.reduce((sum, day) => sum + day.activities.length, 0)} 個地點</small></motion.button>
-                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "notes"} className={tripView === "notes" ? "active" : ""} onClick={() => setTripView("notes")}><Image src="/images/doodle-icons-v2/resources-book.png" alt="" width={28} height={28} /><span>注意事項</span><small>{selectedPlan.travelNotes.length} 則提醒</small></motion.button>
-                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "packing"} className={tripView === "packing" ? "active" : ""} onClick={() => setTripView("packing")}><Image src="/images/doodle-icons-v2/travel-suitcase.png" alt="" width={28} height={28} /><span>旅行行李</span><small>{selectedPlan.packingItems.filter((item) => item.packed).length}/{selectedPlan.packingItems.length} 已裝</small></motion.button>
+                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "itinerary"} className={tripView === "itinerary" ? "active" : ""} onClick={() => setTripView("itinerary")}><Image src="/images/doodle-icons-v2/journey-route.webp" alt="" width={28} height={28} /><span>行程與地圖</span><small>{selectedPlan.days.reduce((sum, day) => sum + day.activities.length, 0)} 個地點</small></motion.button>
+                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "notes"} className={tripView === "notes" ? "active" : ""} onClick={() => setTripView("notes")}><Image src="/images/doodle-icons-v2/resources-book.webp" alt="" width={28} height={28} /><span>注意事項</span><small>{selectedPlan.travelNotes.length} 則提醒</small></motion.button>
+                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "packing"} className={tripView === "packing" ? "active" : ""} onClick={() => setTripView("packing")}><Image src="/images/doodle-icons-v2/travel-suitcase.webp" alt="" width={28} height={28} /><span>旅行行李</span><small>{selectedPlan.packingItems.filter((item) => item.packed).length}/{selectedPlan.packingItems.length} 已裝</small></motion.button>
               </div>
               {tripView === "itinerary" ? <>
               <TravelStaySection plan={selectedPlan} readOnly={!editable} onUpdate={(plan) => updatePlan(plan.id, () => plan)} />

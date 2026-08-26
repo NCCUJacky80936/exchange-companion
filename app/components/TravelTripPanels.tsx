@@ -62,7 +62,7 @@ export function DayMapPanel({ activities, destinations }: { activities: TravelAc
   return (
     <section className="day-map-panel">
       <div className="day-map-heading">
-        <div className="day-map-icon"><Image src="/images/doodle-icons-v2/journey-route.png" alt="" width={46} height={46} /></div>
+        <div className="day-map-icon"><Image src="/images/doodle-icons-v2/journey-route.webp" alt="" width={46} height={46} /></div>
         <div><p className="eyebrow">Google Maps</p><h3>今天的地點</h3><p>地址會保留在手帳裡；點擊後才會開啟 Google Maps。</p></div>
         {routeUrl ? <a className="button secondary map-route-button" href={routeUrl} target="_blank" rel="noreferrer"><Route size={16} />依順序開啟路線</a> : null}
       </div>
@@ -129,7 +129,7 @@ export function TravelNotesPanel({ plan, onUpdate, readOnly = false }: { plan: T
           <h4>{note.title}</h4><p>{note.details}</p>
           {readOnly ? null : <div className="trip-note-actions"><button className="icon-button" onClick={() => { setEditingId(note.id); setAdding(false); }} aria-label={`編輯 ${note.title}`}><Pencil size={14} /></button><button className="icon-button danger" onClick={() => setDeleteId(note.id)} aria-label={`刪除 ${note.title}`}><Trash2 size={14} /></button></div>}
         </article>
-      ))}</div> : <div className="trip-extra-empty"><Image src="/images/doodle-icons-v2/resources-book.png" alt="" width={72} height={72} /><strong>還沒有旅行提醒</strong><span>想到需要預約、避開或特別小心的事，就先記在這裡。</span></div>}
+      ))}</div> : <div className="trip-extra-empty"><Image src="/images/doodle-icons-v2/resources-book.webp" alt="" width={72} height={72} /><strong>還沒有旅行提醒</strong><span>想到需要預約、避開或特別小心的事，就先記在這裡。</span></div>}
     </div>
   );
 }
@@ -189,7 +189,7 @@ export function TravelPackingPanel({ plan, onUpdate, readOnly = false }: { plan:
           <div><strong>{item.name}</strong>{item.notes ? <small>{item.notes}</small> : null}</div><span>× {item.quantity}</span>
           {readOnly ? null : <><button className="icon-button" onClick={() => { setEditingId(item.id); setAdding(false); }} aria-label={`編輯 ${item.name}`}><Pencil size={14} /></button><button className="icon-button danger" onClick={() => setDeleteId(item.id)} aria-label={`刪除 ${item.name}`}><Trash2 size={14} /></button></>}
         </div>
-      ))}</section>)}</div> : <div className="trip-extra-empty"><Image src="/images/doodle-icons-v2/travel-suitcase.png" alt="" width={72} height={72} /><strong>旅行包還是空的</strong><span>這裡適合放週末小旅行的證件、衣物、藥品和充電用品。</span></div>}
+      ))}</section>)}</div> : <div className="trip-extra-empty"><Image src="/images/doodle-icons-v2/travel-suitcase.webp" alt="" width={72} height={72} /><strong>旅行包還是空的</strong><span>這裡適合放週末小旅行的證件、衣物、藥品和充電用品。</span></div>}
     </div>
   );
 }

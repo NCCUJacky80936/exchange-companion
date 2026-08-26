@@ -40,7 +40,20 @@ const worker = {
       }, allowedWidths);
     }
 
-    return handler.fetch(request, env, ctx);
+    const response = await handler.fetch(request, env, ctx);
+    if (!response.ok || (request.method !== "GET" && request.method !== "HEAD")) return response;
+
+    const headers = new Headers(response.headers);
+    if (url.pathname.startsWith("/_next/static/")) {
+      headers.set("Cache-Control", "public, max-age=31536000, immutable");
+    } else if (/^\/(?:icons|images)\//.test(url.pathname)) {
+      headers.set("Cache-Control", "public, max-age=604800, stale-while-revalidate=86400");
+    }
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
   },
 };
 

@@ -125,17 +125,39 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
 
   useEffect(() => {
     if (!configured) return;
-    const client = getCloudClient();
-    void ensureCloudSession().then((current) => {
-      setSession(current);
-      setNotice(current?.user.is_anonymous ? "請先登入；旅行分享連結仍可免登入開啟。" : "帳戶已連線。 ");
-    }).catch(() => setNotice("雲端暫時無法連線，請重新整理後再試。"))
-      .finally(() => setAuthReady(true));
-    const { data: listener } = client!.auth.onAuthStateChange((_event, nextSession) => {
-      if (!isPermanentSession(nextSession)) setAccountDataReady(false);
-      setSession(nextSession);
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+
+    void getCloudClient().then(async (client) => {
+      if (!client || !active) return;
+      const { data: listener } = client.auth.onAuthStateChange((_event, nextSession) => {
+        if (!active) return;
+        if (!isPermanentSession(nextSession)) setAccountDataReady(false);
+        setSession(nextSession);
+      });
+      unsubscribe = () => listener.subscription.unsubscribe();
+
+      try {
+        const current = await ensureCloudSession();
+        if (!active) return;
+        setSession(current);
+        setNotice(current?.user.is_anonymous ? "請先登入；旅行分享連結仍可免登入開啟。" : "帳戶已連線。 ");
+      } catch {
+        if (active) setNotice("雲端暫時無法連線，請重新整理後再試。");
+      } finally {
+        if (active) setAuthReady(true);
+      }
+    }).catch(() => {
+      if (active) {
+        setNotice("雲端暫時無法連線，請重新整理後再試。");
+        setAuthReady(true);
+      }
     });
-    return () => listener.subscription.unsubscribe();
+
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
   }, [configured]);
 
   const loadPermanentAccountState = useCallback(async (currentSession: Session) => {

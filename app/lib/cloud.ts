@@ -1,6 +1,6 @@
 "use client";
 
-import { createClient, type RealtimeChannel, type Session, type SupabaseClient } from "@supabase/supabase-js";
+import type { RealtimeChannel, Session, SupabaseClient } from "@supabase/supabase-js";
 import type { AiImportBundle, AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TelegramLinkInfo, TelegramPairingInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
 import { cloudPlanIdFor, matchesPublicTravelPayload, publicTravelPayload, resolveTravelPermission } from "./travel-cloud";
 
@@ -8,25 +8,29 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
 
 let browserClient: SupabaseClient | null = null;
+let browserClientPromise: Promise<SupabaseClient | null> | null = null;
 
 export function cloudIsConfigured(): boolean {
   return Boolean(url && publishableKey);
 }
 
-export function getCloudClient(): SupabaseClient | null {
+export async function getCloudClient(): Promise<SupabaseClient | null> {
   if (!cloudIsConfigured() || typeof window === "undefined") return null;
-  browserClient ??= createClient(url, publishableKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
+  browserClientPromise ??= import("@supabase/supabase-js").then(({ createClient }) => {
+    browserClient ??= createClient(url, publishableKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    });
+    return browserClient;
   });
-  return browserClient;
+  return browserClientPromise;
 }
 
 export async function ensureCloudSession(): Promise<Session | null> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   if (!client) return null;
   const { data: { session } } = await client.auth.getSession();
   if (session) return session;
@@ -47,7 +51,7 @@ function accountIdToEmail(accountId: string): string {
 
 export async function createPasswordAccount(accountId: string, email: string, password: string): Promise<"signed-in" | "confirmation-required"> {
   if (password.length < 8) throw new Error("weak_password");
-  const client = getCloudClient();
+  const client = await getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
   const normalized = accountId.trim().toLowerCase();
   const normalizedEmail = email.trim().toLowerCase();
@@ -63,7 +67,7 @@ export async function createPasswordAccount(accountId: string, email: string, pa
 }
 
 export async function signInWithPasswordAccount(accountId: string, password: string): Promise<void> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
   const identifier = accountId.trim().toLowerCase();
   const { error } = await client.auth.signInWithPassword({ email: identifier.includes("@") ? identifier : accountIdToEmail(identifier), password });
@@ -71,7 +75,7 @@ export async function signInWithPasswordAccount(accountId: string, password: str
 }
 
 export async function sendMagicLink(email: string): Promise<void> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
   const { error } = await client.auth.signInWithOtp({
     email,
@@ -81,7 +85,7 @@ export async function sendMagicLink(email: string): Promise<void> {
 }
 
 export async function sendTravelGuestMagicLink(email: string, shareToken: string): Promise<void> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
   const normalizedEmail = email.trim().toLowerCase();
   if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) throw new Error("invalid_email");
@@ -99,7 +103,7 @@ export async function sendTravelGuestMagicLink(email: string, shareToken: string
 }
 
 export async function signOutCloud(): Promise<void> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   if (!client) return;
   const { error } = await client.auth.signOut();
   if (error) throw error;
@@ -112,7 +116,7 @@ export interface VersionedPrivateState {
 }
 
 export async function readPrivateState(currentSession?: Session): Promise<VersionedPrivateState | null> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   const session = currentSession ?? await ensureCloudSession();
   if (!client || !isPermanentSession(session)) return null;
   const { data, error } = await client
@@ -129,7 +133,7 @@ export async function writePrivateState(
   expectedRevision: number,
   actor: "manual" | "proposal" | "system" = "manual",
 ): Promise<number> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   const session = await ensureCloudSession();
   if (!client || !isPermanentSession(session)) throw new Error("permanent_account_required");
   const { data, error } = await client.rpc("save_private_app_state", {
@@ -153,7 +157,7 @@ interface ConciergeProposalRun {
 }
 
 async function invokeConcierge<T>(body: Record<string, unknown>, currentSession?: Session): Promise<T> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   const session = currentSession ?? await ensureCloudSession();
   if (!client || !isPermanentSession(session)) throw new Error("permanent_account_required");
   const { data, error } = await client.functions.invoke("exchange-concierge-sync", { body });
@@ -213,7 +217,7 @@ export async function revokeTelegramLink(connectionId: string): Promise<void> {
 }
 
 export async function publishTravelPlan(plan: TravelPlan): Promise<TravelPlan> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   const session = await ensureCloudSession();
   if (!client || !isPermanentSession(session)) throw new Error("permanent_account_required");
   const cloudPlanId = await cloudPlanIdFor(plan, session.user.id);
@@ -248,7 +252,7 @@ export async function publishTravelPlan(plan: TravelPlan): Promise<TravelPlan> {
 }
 
 export async function updatePublishedTravelPlan(plan: TravelPlan): Promise<void> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   if (!client || !plan.cloud?.published || plan.cloud.permission === "viewer") return;
   const cloudPlanId = plan.cloud.cloudPlanId ?? plan.id;
   const payload = publicTravelPayload(plan);
@@ -289,7 +293,7 @@ function memberAccountToEmail(account: string): string {
 }
 
 async function ensurePrimaryTravelLink(plan: TravelPlan): Promise<TravelLinkSettings> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   const session = await ensureCloudSession();
   if (!client || !isPermanentSession(session)) throw new Error("permanent_account_required");
   const cloudPlanId = plan.cloud?.cloudPlanId ?? plan.id;
@@ -324,7 +328,7 @@ async function ensurePrimaryTravelLink(plan: TravelPlan): Promise<TravelLinkSett
 }
 
 async function listTravelMembers(plan: TravelPlan): Promise<TravelMemberAccess[]> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
   const cloudPlanId = plan.cloud?.cloudPlanId ?? plan.id;
   const { data, error } = await client.from("travel_members")
@@ -341,7 +345,7 @@ export async function loadTravelSharingSettings(plan: TravelPlan): Promise<Trave
 }
 
 export async function updateTravelLinkSettings(plan: TravelPlan, settings: { enabled: boolean; permission: "viewer" | "editor"; expiresAt?: string }): Promise<TravelLinkSettings> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
   const current = await ensurePrimaryTravelLink(plan);
   const { data, error } = await client.from("travel_share_links").update({
@@ -354,7 +358,7 @@ export async function updateTravelLinkSettings(plan: TravelPlan, settings: { ena
 }
 
 export async function upsertTravelMember(plan: TravelPlan, account: string, permission: "viewer" | "editor"): Promise<TravelMemberAccess[]> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   const session = await ensureCloudSession();
   if (!client || !isPermanentSession(session)) throw new Error("permanent_account_required");
   await ensurePrimaryTravelLink(plan);
@@ -375,7 +379,7 @@ export async function upsertTravelMember(plan: TravelPlan, account: string, perm
 }
 
 export async function updateTravelMemberPermission(plan: TravelPlan, memberId: string, permission: "viewer" | "editor"): Promise<TravelMemberAccess[]> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
   const { error } = await client.from("travel_members").update({ permission }).eq("id", memberId);
   if (error) throw error;
@@ -383,7 +387,7 @@ export async function updateTravelMemberPermission(plan: TravelPlan, memberId: s
 }
 
 export async function removeTravelMember(plan: TravelPlan, memberId: string): Promise<TravelMemberAccess[]> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
   const { error } = await client.from("travel_members").delete().eq("id", memberId);
   if (error) throw error;
@@ -391,7 +395,7 @@ export async function removeTravelMember(plan: TravelPlan, memberId: string): Pr
 }
 
 export async function redeemTravelShare(token: string): Promise<TravelPlan> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   const session = await ensureCloudSession();
   if (!client || !session) throw new Error("cloud_not_configured");
   const { data: redemption, error: redemptionError } = await client.rpc("redeem_travel_share", { share_token: token });
@@ -413,7 +417,7 @@ export async function redeemTravelShare(token: string): Promise<TravelPlan> {
 }
 
 export async function listMemberTravelPlans(seedPlan: TravelPlan): Promise<TravelPlan[]> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   const session = await ensureCloudSession();
   if (!client || !isPermanentSession(session)) return [seedPlan];
   const { data: memberships, error: membershipError } = await client.from("travel_members")
@@ -430,7 +434,7 @@ export async function listMemberTravelPlans(seedPlan: TravelPlan): Promise<Trave
     .select("id, payload, owner_id, updated_at")
     .in("id", planIds);
   if (plansError) throw plansError;
-  const accessible = (plans ?? []).map((row) => ({
+  const accessible: TravelPlan[] = (plans ?? []).map((row) => ({
     ...(row.payload as TravelPlan),
     cloud: {
       published: true,
@@ -445,7 +449,7 @@ export async function listMemberTravelPlans(seedPlan: TravelPlan): Promise<Trave
 }
 
 export async function restoreOwnedTravelPermissions(state: AppState, currentSession?: Session): Promise<AppState> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   const session = currentSession ?? await ensureCloudSession();
   if (!client || !isPermanentSession(session)) return state;
   const cloudPlanIds = [...new Set((state.travelPlans ?? [])
@@ -469,7 +473,7 @@ export async function restoreOwnedTravelPermissions(state: AppState, currentSess
 }
 
 export function subscribeToTravelPlan(planId: string, onChange: (plan: TravelPlan) => void): RealtimeChannel | null {
-  const client = getCloudClient();
+  const client = browserClient;
   if (!client) return null;
   return client.channel(`travel-plan:${planId}`)
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "travel_plans", filter: `id=eq.${planId}` }, (event) => {
@@ -483,6 +487,6 @@ export function subscribeToTravelPlan(planId: string, onChange: (plan: TravelPla
 }
 
 export async function removeTravelSubscription(channel: RealtimeChannel | null): Promise<void> {
-  const client = getCloudClient();
+  const client = await getCloudClient();
   if (client && channel) await client.removeChannel(channel);
 }

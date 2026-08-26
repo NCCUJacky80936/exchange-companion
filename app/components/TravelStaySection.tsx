@@ -144,7 +144,7 @@ export function TravelStaySection({ plan, onUpdate, readOnly = false }: { plan: 
               <Plus className="stay-toggle" size={18} aria-hidden="true" />
             </button>
           </article>
-      ))}</div> : <div className="travel-stay-empty"><Image src="/images/doodle-icons-v2/home-notebook.png" alt="" width={70} height={70} /><div><strong>住宿還沒放進這趟旅行</strong><span>先記飯店與入住日期，排每天路線時才不會一直折返。</span></div></div>}
+      ))}</div> : <div className="travel-stay-empty"><Image src="/images/doodle-icons-v2/home-notebook.webp" alt="" width={70} height={70} /><div><strong>住宿還沒放進這趟旅行</strong><span>先記飯店與入住日期，排每天路線時才不會一直折返。</span></div></div>}
 
       <div className="travel-reference-desk">
         <div className="travel-reference-heading"><div><p className="eyebrow">Reference desk</p><h4>旅行參考資料</h4><p>收藏清單與共同表格放在住宿後、每日行程前；規劃時不用離開這趟旅行四處找連結。</p></div>{readOnly ? null : <button className="mini-add-button" onClick={() => { setAddingReference(true); setEditingReferenceId(""); }}><Plus size={15} />新增參考</button>}</div>
@@ -164,7 +164,7 @@ export function TravelStaySection({ plan, onUpdate, readOnly = false }: { plan: 
             <div className="stay-photo">
               {/* Arbitrary official/user-authorized destination images cannot use a build-time host allowlist. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              {detailStay.imageUrl ? <img src={detailStay.imageUrl} alt={detailStay.imageAlt || `${detailStay.name} 飯店照片`} loading="lazy" referrerPolicy="no-referrer" /> : <Image src="/images/doodle-icons-v2/home-notebook.png" alt="" width={150} height={150} />}
+              {detailStay.imageUrl ? <img src={detailStay.imageUrl} alt={detailStay.imageAlt || `${detailStay.name} 飯店照片`} loading="lazy" referrerPolicy="no-referrer" /> : <Image src="/images/doodle-icons-v2/home-notebook.webp" alt="" width={150} height={150} />}
             </div>
             <div className="stay-detail-copy"><p>{detailStay.summary}</p>{detailStay.highlights.length ? <ul>{detailStay.highlights.map((item) => <li key={item}>{item}</li>)}</ul> : null}{detailStay.address ? <small>{detailStay.address}</small> : null}<div className="stay-detail-links">{detailStay.mapsUrl ? <a href={detailStay.mapsUrl} target="_blank" rel="noreferrer"><MapPinned size={14} />Google Maps<ExternalLink size={11} /></a> : null}{detailStay.sourceUrl ? <a href={detailStay.sourceUrl} target="_blank" rel="noreferrer">官方資訊<ExternalLink size={11} /></a> : null}</div>{detailStay.notes ? <p className="stay-private-note">{detailStay.notes}</p> : null}</div>
           </div>

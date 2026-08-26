@@ -52,7 +52,7 @@ try {
     profile.secondaryCurrency = (await ask(rl, "備用／本國幣別", profile.secondaryCurrency)).toUpperCase();
     profile.visual.routeLabel = `${profile.homeCity} → ${profile.hostCity}`;
     if (profile.visual.routeLabel !== originalRoute) {
-      profile.visual.heroImage = "/images/exchange-hero-clean.png";
+      profile.visual.heroImage = "/images/exchange-hero-clean.webp";
       profile.visual.socialImage = "/images/exchange-social-placeholder.svg";
     }
     profile.visual.generatedFor = { homeCity: profile.homeCity, hostCity: profile.hostCity };
