@@ -42,6 +42,10 @@ test("a worker update takes control without forcibly navigating open tabs", asyn
   const register = await readFile(new URL("../app/components/PwaRegister.tsx", import.meta.url), "utf8");
   const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
   assert.match(register, /updateViaCache:\s*"none"/);
+  assert.match(register, /readyState === "complete"/);
+  assert.match(register, /addEventListener\("load", register/);
+  assert.match(register, /requestIdleCallback/);
+  assert.match(register, /setTimeout\(update, 2_500\)/);
   assert.match(worker, /self\.clients\.claim\(\)/);
   assert.doesNotMatch(worker, /clients\.matchAll/);
   assert.doesNotMatch(worker, /client\.navigate/);

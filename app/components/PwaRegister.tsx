@@ -6,16 +6,40 @@ export default function PwaRegister() {
   useEffect(() => {
     if (!("serviceWorker" in navigator) || process.env.NODE_ENV !== "production") return;
 
-    const register = () => {
-      void navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then((registration) => registration.update());
+    let disposed = false;
+    let idleId: number | undefined;
+    let fallbackTimer: number | undefined;
+
+    const scheduleUpdate = (registration: ServiceWorkerRegistration) => {
+      const update = () => {
+        if (!disposed) void registration.update();
+      };
+      const requestIdleCallback = window.requestIdleCallback?.bind(window);
+      if (requestIdleCallback) {
+        idleId = requestIdleCallback(update, { timeout: 4_000 });
+      } else {
+        fallbackTimer = window.setTimeout(update, 2_500);
+      }
     };
-    const requestIdleCallback = window.requestIdleCallback?.bind(window);
-    if (requestIdleCallback) {
-      const idleId = requestIdleCallback(register, { timeout: 4_000 });
-      return () => window.cancelIdleCallback(idleId);
+
+    const register = () => {
+      void navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then((registration) => {
+        if (!disposed) scheduleUpdate(registration);
+      });
+    };
+
+    if (document.readyState === "complete") {
+      register();
+    } else {
+      window.addEventListener("load", register, { once: true });
     }
-    const timer = window.setTimeout(register, 2_500);
-    return () => window.clearTimeout(timer);
+
+    return () => {
+      disposed = true;
+      window.removeEventListener("load", register);
+      if (idleId !== undefined) window.cancelIdleCallback?.(idleId);
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+    };
   }, []);
   return null;
 }

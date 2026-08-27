@@ -49,7 +49,7 @@ body {
     var(--cream);
   background-size: 21px 21px, 17px 17px, auto;
   color: var(--ink);
-  font-family: var(--font-body), sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", "Segoe UI", sans-serif;
   font-size: 15px;
   line-height: 1.55;
 }
@@ -131,7 +131,7 @@ textarea:focus-visible {
 }
 
 .boot-shell strong {
-  font-family: var(--font-hand-zh), serif;
+  font-family: inherit;
   font-size: 28px;
   font-weight: 400;
 }

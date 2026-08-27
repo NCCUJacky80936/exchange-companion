@@ -37,6 +37,7 @@ import {
 } from "./cloud";
 import { findAiBundleCollisions, importAiBundle, matchesAiJourneyScope, validateAiImportBundle } from "./ai-import";
 import { normalizeImportedState, resetState } from "./storage";
+import { markExchangePerformance } from "./performance";
 import { matchesPublicTravelPayload, publicTravelPayload } from "./travel-cloud";
 import type { AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TelegramLinkInfo, TelegramPairingInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
 import { PRIVATE_SYNC_KEY } from "./cloud-session";
@@ -104,6 +105,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   const [notice, setNotice] = useState(configured ? "正在準備免費雲端…" : "尚未連接免費雲端；本機功能仍可完整使用。 ");
   const redeemedToken = useRef("");
   const loadedAccount = useRef("");
+  const accountLoadGeneration = useRef(0);
   const latestState = useRef<AppState | null>(null);
   const lastSavedState = useRef<AppState | null>(null);
   const revisionRef = useRef(0);
@@ -133,6 +135,18 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       if (!client || !active) return;
       const { data: listener } = client.auth.onAuthStateChange((_event, nextSession) => {
         if (!active) return;
+        const nextAccountId = isPermanentSession(nextSession) ? nextSession.user.id : "";
+        if (loadedAccount.current !== nextAccountId) {
+          accountLoadGeneration.current += 1;
+          loadedAccount.current = "";
+          setAccountDataReady(false);
+          setPrivateSyncEnabled(false);
+          setPrivateRevision(0);
+          revisionRef.current = 0;
+          lastSavedState.current = null;
+          skipNextPrivateSave.current = false;
+          setSyncConflict(false);
+        }
         if (!isPermanentSession(nextSession)) setAccountDataReady(false);
         setSession(nextSession);
       });
@@ -146,12 +160,16 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       } catch {
         if (active) setNotice("雲端暫時無法連線，請重新整理後再試。");
       } finally {
-        if (active) setAuthReady(true);
+        if (active) {
+          setAuthReady(true);
+          markExchangePerformance("auth-ready");
+        }
       }
     }).catch(() => {
       if (active) {
         setNotice("雲端暫時無法連線，請重新整理後再試。");
         setAuthReady(true);
+        markExchangePerformance("auth-ready");
       }
     });
 
@@ -163,32 +181,42 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
 
   const loadPermanentAccountState = useCallback(async (currentSession: Session) => {
     if (!isPermanentSession(currentSession)) return;
-    loadedAccount.current = currentSession.user.id;
+    const accountId = currentSession.user.id;
+    const loadGeneration = accountLoadGeneration.current + 1;
+    accountLoadGeneration.current = loadGeneration;
+    loadedAccount.current = accountId;
+    const isCurrentLoad = () => accountLoadGeneration.current === loadGeneration && loadedAccount.current === accountId;
     setAccountDataReady(false);
+    setPrivateSyncEnabled(false);
     setConciergeConnectionsReady(false);
     setTelegramLinkReady(false);
     void listConciergeConnections(currentSession).then((connections) => {
-      if (loadedAccount.current !== currentSession.user.id) return;
+      if (!isCurrentLoad()) return;
       setConciergeConnections(connections);
       setConciergeConnectionsReady(true);
     }).catch(() => {
-      if (loadedAccount.current === currentSession.user.id) setConciergeConnectionsReady(false);
+      if (isCurrentLoad()) setConciergeConnectionsReady(false);
     });
     void getTelegramStatus(undefined, currentSession).then((link) => {
-      if (loadedAccount.current !== currentSession.user.id) return;
+      if (!isCurrentLoad()) return;
       setTelegramLink(link);
       setTelegramLinkReady(true);
     }).catch(() => {
-      if (loadedAccount.current === currentSession.user.id) setTelegramLinkReady(false);
+      if (isCurrentLoad()) setTelegramLinkReady(false);
     });
     try {
+      // SECURITY REQUIRED + RENDER REQUIRED: only this account's remote state,
+      // its normalized shape, and its restored owner permissions may be released.
       const remote = await readPrivateState(currentSession);
+      if (!isCurrentLoad()) return;
       if (remote) {
         const normalized = normalizeImportedState(remote.state);
         const repaired = await restoreOwnedTravelPermissions(normalized, currentSession);
+        if (!isCurrentLoad()) return;
         const historyWasPruned = JSON.stringify(repaired.aiInbox) !== JSON.stringify(remote.state.aiInbox);
         const ownershipWasRestored = repaired !== normalized;
-        const revision = historyWasPruned || ownershipWasRestored ? await writePrivateState(repaired, remote.revision, "system") : remote.revision;
+        const revision = historyWasPruned || ownershipWasRestored ? await writePrivateState(repaired, remote.revision, "system", currentSession) : remote.revision;
+        if (!isCurrentLoad()) return;
         revisionRef.current = revision;
         setPrivateRevision(revision);
         skipNextPrivateSave.current = true;
@@ -196,10 +224,12 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
         setState(repaired);
         setNotice(ownershipWasRestored ? "已載入私人手帳，並恢復你擁有的旅行分享權限。 " : "已載入你的私人交換手帳。 ");
       } else {
-        const fresh = resetState();
+        // Keep any existing local fallback untouched until cloud initialization succeeds.
+        const fresh = resetState(false);
         skipNextPrivateSave.current = true;
         setState(fresh);
-        const revision = await writePrivateState(fresh, 0, "system");
+        const revision = await writePrivateState(fresh, 0, "system", currentSession);
+        if (!isCurrentLoad()) return;
         lastSavedState.current = fresh;
         revisionRef.current = revision;
         setPrivateRevision(revision);
@@ -209,7 +239,9 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       window.localStorage.setItem(PRIVATE_SYNC_KEY, "on");
       setPrivateSyncEnabled(true);
       setAccountDataReady(true);
+      markExchangePerformance("private-state-ready");
     } catch {
+      if (!isCurrentLoad()) return;
       loadedAccount.current = "";
       setPrivateSyncEnabled(false);
       revisionRef.current = 0;
@@ -220,7 +252,10 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
 
   useEffect(() => {
     if (!configured || !isPermanentSession(session)) {
-      loadedAccount.current = "";
+      if (loadedAccount.current) {
+        accountLoadGeneration.current += 1;
+        loadedAccount.current = "";
+      }
       return;
     }
     if (shareStatus === "loading" || (shareStatus === "active" && sharedPlanPermission !== "owner")) return;
@@ -323,7 +358,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
         skipNextPrivateSave.current = true;
         setState(stateToSave);
       }
-      void writePrivateState(stateToSave, expectedRevision, actor).then((revision) => {
+      void writePrivateState(stateToSave, expectedRevision, actor, session).then((revision) => {
         lastSavedState.current = stateToSave;
         revisionRef.current = revision;
         setPrivateRevision(revision);
@@ -479,8 +514,11 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       window.localStorage.removeItem(PRIVATE_SYNC_KEY);
       setPrivateSyncEnabled(false);
       setAccountDataReady(false);
+      accountLoadGeneration.current += 1;
       loadedAccount.current = "";
       revisionRef.current = 0;
+      lastSavedState.current = null;
+      skipNextPrivateSave.current = false;
       setPrivateRevision(0);
       setSyncConflict(false);
       setConciergeConnections([]);
@@ -494,12 +532,12 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     enablePrivateSync: (mode: "upload-local" | "use-cloud") => runBusy(async () => {
       if (!isPermanentSession(session)) throw new Error("permanent_account_required");
       if (mode === "use-cloud") {
-        const remote = await readPrivateState();
+        const remote = await readPrivateState(session);
         if (!remote) throw new Error("cloud_state_missing");
         skipNextPrivateSave.current = true;
         const normalized = normalizeImportedState(remote.state);
         const repaired = await restoreOwnedTravelPermissions(normalized, session);
-        const revision = repaired !== normalized ? await writePrivateState(repaired, remote.revision, "system") : remote.revision;
+        const revision = repaired !== normalized ? await writePrivateState(repaired, remote.revision, "system", session) : remote.revision;
         revisionRef.current = revision;
         setPrivateRevision(revision);
         lastSavedState.current = repaired;
@@ -507,7 +545,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       } else {
         if (!latestState.current) throw new Error("local_state_missing");
         const expectedRevision = revisionRef.current;
-        const revision = await writePrivateState(latestState.current, expectedRevision, "system");
+        const revision = await writePrivateState(latestState.current, expectedRevision, "system", session);
         lastSavedState.current = latestState.current;
         revisionRef.current = revision;
         setPrivateRevision(revision);

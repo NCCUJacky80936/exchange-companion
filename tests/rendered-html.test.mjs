@@ -23,6 +23,9 @@ test("server-renders the exchange companion shell", async () => {
   assert.match(html, new RegExp(`<title>${profile.appName}｜AI 優先的交換生旅程控制台<\\/title>`, "i"));
   assert.match(html, new RegExp(`property="og:image" content="https:\\/\\/exchange-companion\\.example${profile.visual.socialImage.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`, "i"));
   assert.match(html, new RegExp(profile.appName));
+  assert.match(html, /initial-loading-shell/);
+  assert.match(html, /loading-brand/);
+  assert.match(html, /正在打開你的交換手帳/);
   assert.match(html, /我的交換|正在打開/);
   assert.doesNotMatch(html, /Repository Student|Personal Buddy|Private Coordinator/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);

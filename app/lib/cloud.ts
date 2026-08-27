@@ -44,6 +44,11 @@ export function isPermanentSession(session: Session | null): session is Session 
   return Boolean(session && !session.user.is_anonymous);
 }
 
+async function assertCurrentSession(client: SupabaseClient, expectedSession: Session): Promise<void> {
+  const { data: { session } } = await client.auth.getSession();
+  if (!isPermanentSession(session) || session.user.id !== expectedSession.user.id) throw new Error("session_changed");
+}
+
 function accountIdToEmail(accountId: string): string {
   const normalized = accountId.trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9_-]{2,31}$/.test(normalized)) throw new Error("invalid_account_id");
@@ -133,10 +138,12 @@ export async function writePrivateState(
   state: AppState,
   expectedRevision: number,
   actor: "manual" | "proposal" | "system" = "manual",
+  currentSession?: Session,
 ): Promise<number> {
   const client = await getCloudClient();
-  const session = await ensureCloudSession();
+  const session = currentSession ?? await ensureCloudSession();
   if (!client || !isPermanentSession(session)) throw new Error("permanent_account_required");
+  if (currentSession) await assertCurrentSession(client, currentSession);
   const { data, error } = await client.rpc("save_private_app_state", {
     next_state: state,
     expected_revision: expectedRevision,

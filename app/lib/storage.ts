@@ -255,9 +255,9 @@ export function saveState(state: AppState): void {
   window.localStorage.setItem(journeyStorageKey(), JSON.stringify(state));
 }
 
-export function resetState(): AppState {
+export function resetState(persist = true): AppState {
   const fresh = cloneDefault();
-  saveState(fresh);
+  if (persist) saveState(fresh);
   return fresh;
 }
 

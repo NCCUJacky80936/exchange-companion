@@ -1,24 +1,25 @@
 "use client";
 
 import { lazy, Suspense, useEffect, useState } from "react";
-import { shouldResumePrivateNotebook } from "../lib/cloud-session";
+import { hasPrivateEntryQuery } from "../lib/cloud-session";
+import { markExchangePerformance } from "../lib/performance";
+import LoadingShell from "./LoadingShell";
 import PublicWelcome from "./PublicWelcome";
 
 const loadExchangeCompanion = () => import("./ExchangeCompanion");
 const ExchangeCompanion = lazy(loadExchangeCompanion);
+const cloudConfigured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
 
-if (typeof window !== "undefined" && shouldResumePrivateNotebook()) void loadExchangeCompanion();
-
-function InstantBoot() {
-  return <div className="instant-boot" role="status"><span>旅</span><strong>交換手帳</strong><p>正在確認登入狀態…</p></div>;
-}
+if (typeof window !== "undefined" && (cloudConfigured || hasPrivateEntryQuery())) void loadExchangeCompanion();
 
 export default function AppEntry() {
   const [launchApp, setLaunchApp] = useState(false);
   const [initialAuthView, setInitialAuthView] = useState<"welcome" | "login">("welcome");
 
   useEffect(() => {
-    if (!shouldResumePrivateNotebook()) return;
+    markExchangePerformance("boot-start");
+    document.documentElement.dataset.appEntryReady = "true";
+    if (!cloudConfigured && !hasPrivateEntryQuery()) return;
     const frame = window.requestAnimationFrame(() => {
       const params = new URLSearchParams(window.location.search);
       if (params.get("auth") === "login") setInitialAuthView("login");
@@ -27,7 +28,7 @@ export default function AppEntry() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
-  if (launchApp) return <Suspense fallback={<InstantBoot />}><ExchangeCompanion initialAuthView={initialAuthView} /></Suspense>;
+  if (launchApp) return <Suspense fallback={<LoadingShell message="正在確認登入狀態…" />}><ExchangeCompanion initialAuthView={initialAuthView} /></Suspense>;
 
   const openLogin = () => {
     document.documentElement.dataset.privateNotebook = "true";
@@ -35,5 +36,8 @@ export default function AppEntry() {
     setLaunchApp(true);
   };
 
-  return <div className="app-entry"><div className="app-entry-public"><PublicWelcome onLogin={openLogin} /></div><div className="app-entry-boot"><InstantBoot /></div></div>;
+  return <div className="app-entry">{cloudConfigured
+    ? <div className="app-entry-boot app-entry-boot-visible"><LoadingShell message="正在確認登入狀態…" /></div>
+    : <div className="app-entry-public"><PublicWelcome onLogin={openLogin} /></div>}
+  </div>;
 }

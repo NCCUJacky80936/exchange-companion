@@ -52,6 +52,7 @@ import { exchangeCurrencies, exchangeProfile, exchangeTimeZones } from "../lib/p
 import { limitSidebarNote, notebookCharacterCount, SIDEBAR_NOTE_LIMIT } from "../lib/personalization";
 import { pruneProcessedResourceIntake } from "../lib/resource-intake";
 import type { HomeAgendaTarget } from "../lib/home-dashboard";
+import { markExchangePerformance } from "../lib/performance";
 import { loadState, normalizeImportedState, resetState, saveState, validateImport } from "../lib/storage";
 import { useExchangeCloud, type ExchangeCloudController } from "../lib/useExchangeCloud";
 import AuthGate from "./AuthGate";
@@ -1646,8 +1647,16 @@ export default function ExchangeCompanion({ initialAuthView = "welcome" }: { ini
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const aiNotificationRef = useRef<HTMLDivElement>(null);
   const aiNotificationButtonRef = useRef<HTMLButtonElement>(null);
+  const homeRenderMarked = useRef(false);
   const cloud = useExchangeCloud(state, setState);
   const localAppPreview = localAppPreviewEnabled();
+
+  useEffect(() => {
+    if (homeRenderMarked.current || !isHydrated || section !== "home" || !state.setupCompleted) return;
+    if (cloud.configured && (!cloud.authReady || !cloud.permanentAccount || !cloud.accountDataReady)) return;
+    homeRenderMarked.current = true;
+    markExchangePerformance("home-render");
+  }, [cloud.accountDataReady, cloud.authReady, cloud.configured, cloud.permanentAccount, isHydrated, section, state.setupCompleted]);
 
   useEffect(() => {
     const alignExpandedDetails = (event: Event) => {
@@ -1750,8 +1759,7 @@ export default function ExchangeCompanion({ initialAuthView = "welcome" }: { ini
     );
   }
 
-  const restoringPersistedAccount = !cloud.authReady && cloud.privateSyncEnabled;
-  if (!localAppPreview && cloud.configured && (restoringPersistedAccount || cloud.shareStatus === "loading")) {
+  if (!localAppPreview && cloud.configured && (!cloud.authReady || cloud.shareStatus === "loading")) {
     return <div className="boot-shell" role="status"><span className="brand-stamp">旅</span><strong>交換手帳</strong><p>{cloud.shareStatus === "loading" ? "正在確認旅行分享權限…" : "正在確認登入狀態…"}</p></div>;
   }
 
