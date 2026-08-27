@@ -64,6 +64,41 @@ function randomToken(): string {
   return `xc_${encoded}`;
 }
 
+function randomPairCode(): string {
+  const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const bytes = crypto.getRandomValues(new Uint8Array(10));
+  return [...bytes].map((byte) => alphabet[byte % alphabet.length]).join("");
+}
+
+function telegramSecret(name: string): string {
+  return requiredEnv(name).trim();
+}
+
+async function sendTelegramMessage(chatId: string, text: string, forceReply = false): Promise<number> {
+  const response = await fetch(`https://api.telegram.org/bot${telegramSecret("TELEGRAM_BOT_TOKEN")}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      disable_web_page_preview: true,
+      ...(forceReply ? { reply_markup: { force_reply: true, selective: true } } : {}),
+    }),
+  });
+  const result = await response.json().catch(() => null) as JsonRecord | null;
+  const message = result && isRecord(result.result) ? result.result : null;
+  if (!response.ok || result?.ok !== true || !message || !Number.isSafeInteger(message.message_id)) {
+    throw new Error("telegram_send_failed");
+  }
+  return Number(message.message_id);
+}
+
+function telegramBotInfo() {
+  const username = telegramSecret("TELEGRAM_BOT_USERNAME").replace(/^@/, "");
+  if (!/^[A-Za-z0-9_]{5,32}$/.test(username)) throw new Error("invalid_telegram_bot_username");
+  return { botUsername: `@${username}`, botUrl: `https://t.me/${username}` };
+}
+
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -202,6 +237,76 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (["telegram-pair", "telegram-status", "telegram-revoke"].includes(payload.action)) {
+      const user = await authenticateUser();
+      if (!user) return json({ error: "login_required" }, 401);
+      const requestedConnectionId = typeof payload.connectionId === "string" ? payload.connectionId : "";
+
+      if (payload.action === "telegram-pair") {
+        if (!requestedConnectionId) return json({ error: "connection_id_required" }, 400);
+        const { data: connection, error: connectionError } = await admin.from("concierge_connections")
+          .select("id,journey_id,expires_at,revoked_at")
+          .eq("id", requestedConnectionId).eq("user_id", user.id).maybeSingle();
+        if (connectionError) throw connectionError;
+        if (!connection || connection.revoked_at || new Date(connection.expires_at).getTime() <= Date.now()) {
+          return json({ error: "connection_not_active" }, 409);
+        }
+        const code = randomPairCode();
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+        await admin.from("telegram_pair_codes").update({ used_at: new Date().toISOString() })
+          .eq("user_id", user.id).is("used_at", null);
+        const { error } = await admin.from("telegram_pair_codes").insert({
+          user_id: user.id,
+          journey_id: connection.journey_id,
+          connection_id: connection.id,
+          code_hash: await sha256(code),
+          expires_at: expiresAt,
+        });
+        if (error) throw error;
+        return json({ pairing: { connectionId: connection.id, code, expiresAt, ...telegramBotInfo() } }, 201);
+      }
+
+      if (payload.action === "telegram-status") {
+        let query = admin.from("telegram_links")
+          .select("id,connection_id,linked_at,last_received_at,revoked_at")
+          .eq("user_id", user.id).is("revoked_at", null).order("linked_at", { ascending: false }).limit(1);
+        if (requestedConnectionId) query = query.eq("connection_id", requestedConnectionId);
+        const { data, error } = await query.maybeSingle();
+        if (error) throw error;
+        if (!data) return json({ link: null });
+        const { data: activeConnection, error: activeConnectionError } = await admin.from("concierge_connections")
+          .select("expires_at,revoked_at").eq("id", data.connection_id).eq("user_id", user.id).maybeSingle();
+        if (activeConnectionError) throw activeConnectionError;
+        if (!activeConnection || activeConnection.revoked_at || new Date(activeConnection.expires_at).getTime() <= Date.now()) {
+          const { error: revokeError } = await admin.rpc("revoke_telegram_connection", { requested_connection_id: data.connection_id });
+          if (revokeError) throw revokeError;
+          return json({ link: null });
+        }
+        const { count, error: countError } = await admin.from("telegram_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("link_id", data.id)
+          .in("status", ["queued", "leased", "awaiting_clarification"]);
+        if (countError) throw countError;
+        return json({ link: {
+          connectionId: data.connection_id,
+          connected: true,
+          linkedAt: data.linked_at,
+          lastReceivedAt: data.last_received_at,
+          queuedCount: count ?? 0,
+          botUsername: telegramBotInfo().botUsername,
+        } });
+      }
+
+      if (!requestedConnectionId) return json({ error: "connection_id_required" }, 400);
+      const { data: owned, error: ownedError } = await admin.from("concierge_connections")
+        .select("id").eq("id", requestedConnectionId).eq("user_id", user.id).maybeSingle();
+      if (ownedError) throw ownedError;
+      if (!owned) return json({ error: "connection_not_found" }, 404);
+      const { error } = await admin.rpc("revoke_telegram_connection", { requested_connection_id: requestedConnectionId });
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
     if (["connections", "revoke", "pull", "ack"].includes(payload.action)) {
       const user = await authenticateUser();
       if (!user) return json({ error: "login_required" }, 401);
@@ -214,6 +319,8 @@ Deno.serve(async (req: Request) => {
         if (typeof payload.connectionId !== "string") return json({ error: "connection_id_required" }, 400);
         const { error } = await admin.from("concierge_connections").update({ revoked_at: new Date().toISOString() }).eq("id", payload.connectionId).eq("user_id", user.id);
         if (error) throw error;
+        const { error: telegramError } = await admin.rpc("revoke_telegram_connection", { requested_connection_id: payload.connectionId });
+        if (telegramError) throw telegramError;
         return json({ ok: true });
       }
       if (payload.action === "pull") {
@@ -234,6 +341,123 @@ Deno.serve(async (req: Request) => {
     if (stateError || !row || !isRecord(row.state)) return json({ error: "state_not_ready" }, 409);
     const journey = isRecord(row.state.journey) ? row.state.journey : {};
     if (journey.id !== connection.journey_id) return json({ error: "journey_mismatch" }, 409);
+
+    if (payload.action === "telegram-claim") {
+      if (!connection.scopes.includes("read_telegram_queue") || !connection.scopes.includes("update_telegram_queue")) {
+        return json({ error: "scope_denied" }, 403);
+      }
+      const leaseId = randomToken().replace("xc_", "tql_");
+      const { data, error } = await admin.rpc("claim_telegram_requests", {
+        requested_connection_id: connection.id,
+        requested_lease_id: leaseId,
+        requested_limit: 20,
+        requested_character_limit: 32000,
+      });
+      if (error) throw error;
+      const requests = (data ?? []).map((item: JsonRecord) => ({
+        requestId: item.request_id,
+        text: item.request_text,
+        receivedAt: item.received_at,
+        parentRequestId: item.parent_request_id ?? undefined,
+      }));
+      return json({
+        telegramBatch: {
+          leaseId: requests.length ? leaseId : null,
+          requests,
+          totalCharacters: requests.reduce((total: number, item: JsonRecord) => total + String(item.text ?? "").length, 0),
+        },
+      });
+    }
+
+    if (["telegram-clarify", "telegram-complete", "telegram-fail"].includes(payload.action)) {
+      if (!connection.scopes.includes("update_telegram_queue")) return json({ error: "scope_denied" }, 403);
+      const leaseId = typeof payload.leaseId === "string" ? payload.leaseId : "";
+      const requestIds = Array.isArray(payload.requestIds)
+        ? payload.requestIds.filter((id) => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)).slice(0, 20)
+        : typeof payload.requestId === "string" && /^[0-9a-f-]{36}$/i.test(payload.requestId) ? [payload.requestId] : [];
+      if (!leaseId || !requestIds.length) return json({ error: "lease_and_request_ids_required" }, 400);
+
+      const { data: linkRows, error: linkError } = await admin.from("telegram_links")
+        .select("id,telegram_chat_id").eq("connection_id", connection.id).is("revoked_at", null);
+      if (linkError) throw linkError;
+      const linkIds = (linkRows ?? []).map((item) => item.id);
+      if (!linkIds.length) return json({ error: "telegram_link_not_active" }, 409);
+      const { data: leasedRows, error: leasedError } = await admin.from("telegram_requests")
+        .select("id,link_id,status,lease_id,result_run_key")
+        .in("id", requestIds).in("link_id", linkIds);
+      if (leasedError) throw leasedError;
+      if (payload.action === "telegram-complete") {
+        const retryRunKey = typeof payload.runKey === "string" ? payload.runKey.trim() : "";
+        if (retryRunKey && (leasedRows ?? []).length === requestIds.length
+          && leasedRows?.every((item) => item.result_run_key === retryRunKey && ["processed", "no_change"].includes(item.status))) {
+          return json({ ok: true, duplicate: true, completed: 0 });
+        }
+      }
+      if ((leasedRows ?? []).length !== requestIds.length || leasedRows?.some((item) => item.status !== "leased" || item.lease_id !== leaseId)) {
+        return json({ error: "lease_mismatch" }, 409);
+      }
+
+      if (payload.action === "telegram-clarify") {
+        if (requestIds.length !== 1) return json({ error: "single_request_required" }, 400);
+        const question = typeof payload.question === "string" ? payload.question.trim() : "";
+        if (!question || question.length > 500) return json({ error: "invalid_question" }, 400);
+        const link = linkRows?.find((item) => item.id === leasedRows?.[0]?.link_id);
+        if (!link) return json({ error: "telegram_link_not_active" }, 409);
+        const messageId = await sendTelegramMessage(String(link.telegram_chat_id), question, true);
+        const { data: updated, error } = await admin.rpc("clarify_telegram_request", {
+          requested_connection_id: connection.id,
+          requested_request_id: requestIds[0],
+          requested_lease_id: leaseId,
+          requested_bot_prompt_message_id: messageId,
+          requested_question: question,
+        });
+        if (error) throw error;
+        if (!updated) return json({ error: "lease_mismatch" }, 409);
+        return json({ ok: true, awaitingReply: true });
+      }
+
+      if (payload.action === "telegram-complete") {
+        const runKey = typeof payload.runKey === "string" ? payload.runKey.trim() : "";
+        const outcome = payload.outcome === "no_change" ? "no_change" : payload.outcome === "processed" ? "processed" : "";
+        const proposalCount = Number(payload.proposalCount);
+        if (!/^run-\d{8}-\d{6}(?:-[a-z0-9]+)*$/.test(runKey) || !outcome || !Number.isInteger(proposalCount) || proposalCount < 0) {
+          return json({ error: "invalid_completion" }, 400);
+        }
+        const companionUrl = telegramSecret("EXCHANGE_COMPANION_URL");
+        const notification = outcome === "no_change"
+          ? "目前手帳已涵蓋，未新增提案。"
+          : `已整理完成，共送出 ${proposalCount} 則待確認提案。\n${companionUrl}`;
+        const chatIds = [...new Set((leasedRows ?? []).map((request) => String(linkRows?.find((link) => link.id === request.link_id)?.telegram_chat_id ?? "")).filter(Boolean))];
+        for (const chatId of chatIds) await sendTelegramMessage(chatId, notification);
+        const { data: changed, error } = await admin.rpc("complete_telegram_requests", {
+          requested_connection_id: connection.id,
+          requested_request_ids: requestIds,
+          requested_lease_id: leaseId,
+          requested_run_key: runKey,
+          requested_outcome: outcome,
+          requested_summary: notification,
+        });
+        if (error) throw error;
+        if (!changed) return json({ error: "lease_mismatch" }, 409);
+        return json({ ok: true, completed: changed });
+      }
+
+      const reason = typeof payload.error === "string" && payload.error.trim() ? payload.error.trim().slice(0, 300) : "processing_failed";
+      const { data: failed, error } = await admin.rpc("fail_telegram_requests", {
+        requested_connection_id: connection.id,
+        requested_request_ids: requestIds,
+        requested_lease_id: leaseId,
+        requested_error: reason,
+      });
+      if (error) throw error;
+      if ((failed ?? []).some((item: JsonRecord) => item.status === "failed")) {
+        const chatIds = [...new Set((leasedRows ?? []).map((request) => String(linkRows?.find((link) => link.id === request.link_id)?.telegram_chat_id ?? "")).filter(Boolean))];
+        for (const chatId of chatIds) {
+          await sendTelegramMessage(chatId, "這批內容連續三次無法完成整理，已停止自動重試。請到手帳重新送出或檢查 Concierge 連結。");
+        }
+      }
+      return json({ ok: true, requests: failed ?? [] });
+    }
 
     if (payload.action === "context") {
       if (!connection.scopes.includes("read_state")) return json({ error: "scope_denied" }, 403);

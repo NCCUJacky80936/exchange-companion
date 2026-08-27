@@ -1,5 +1,6 @@
-import ExchangeCompanion from "./components/ExchangeCompanion";
+import LoadingShell from "./components/LoadingShell";
+import AppEntry from "./components/AppEntry";
 
 export default function Home() {
-  return <ExchangeCompanion />;
+  return <><div className="initial-loading-shell"><LoadingShell /></div><AppEntry /></>;
 }

@@ -353,6 +353,23 @@ export interface ConciergeConnectionFile {
   warning: string;
 }
 
+export interface TelegramPairingInfo {
+  connectionId: string;
+  code: string;
+  expiresAt: string;
+  botUsername: string;
+  botUrl: string;
+}
+
+export interface TelegramLinkInfo {
+  connectionId: string;
+  connected: true;
+  linkedAt: string;
+  lastReceivedAt?: string;
+  queuedCount: number;
+  botUsername: string;
+}
+
 export interface AiInbox {
   lastImportedAt?: string;
   journeyScope?: string;

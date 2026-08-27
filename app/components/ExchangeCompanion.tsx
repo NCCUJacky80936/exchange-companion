@@ -52,6 +52,7 @@ import { exchangeCurrencies, exchangeProfile, exchangeTimeZones } from "../lib/p
 import { limitSidebarNote, notebookCharacterCount, SIDEBAR_NOTE_LIMIT } from "../lib/personalization";
 import { pruneProcessedResourceIntake } from "../lib/resource-intake";
 import type { HomeAgendaTarget } from "../lib/home-dashboard";
+import { markExchangePerformance } from "../lib/performance";
 import { loadState, normalizeImportedState, resetState, saveState, validateImport } from "../lib/storage";
 import { useExchangeCloud, type ExchangeCloudController } from "../lib/useExchangeCloud";
 import AuthGate from "./AuthGate";
@@ -210,12 +211,12 @@ function resourceGroup(category: string): string {
 }
 
 const navItems: Array<{ id: NavSection; label: string; shortLabel: string; doodleIcon: string }> = [
-  { id: "home", label: "我的交換", shortLabel: "首頁", doodleIcon: "/images/doodle-icons-v2/home-notebook.png" },
-  { id: "journey", label: "交換旅程", shortLabel: "旅程", doodleIcon: "/images/doodle-icons-v2/journey-route.png" },
-  { id: "travel", label: "旅行規劃", shortLabel: "旅行", doodleIcon: "/images/doodle-icons-v2/travel-suitcase.png" },
-  { id: "ai", label: "AI 幫我整理", shortLabel: "AI", doodleIcon: "/images/doodle-icons-v2/ai-spark.png" },
-  { id: "resources", label: "重要資源", shortLabel: "資源", doodleIcon: "/images/doodle-icons-v2/resources-book.png" },
-  { id: "settings", label: "設定與備份", shortLabel: "設定", doodleIcon: "/images/doodle-icons-v2/settings-backup.png" },
+  { id: "home", label: "我的交換", shortLabel: "首頁", doodleIcon: "/images/doodle-icons-v2/home-notebook.webp" },
+  { id: "journey", label: "交換旅程", shortLabel: "旅程", doodleIcon: "/images/doodle-icons-v2/journey-route.webp" },
+  { id: "travel", label: "旅行規劃", shortLabel: "旅行", doodleIcon: "/images/doodle-icons-v2/travel-suitcase.webp" },
+  { id: "ai", label: "AI 幫我整理", shortLabel: "AI", doodleIcon: "/images/doodle-icons-v2/ai-spark.webp" },
+  { id: "resources", label: "重要資源", shortLabel: "資源", doodleIcon: "/images/doodle-icons-v2/resources-book.webp" },
+  { id: "settings", label: "設定與備份", shortLabel: "設定", doodleIcon: "/images/doodle-icons-v2/settings-backup.webp" },
 ];
 const validSections = new Set<NavSection>(navItems.map((item) => item.id));
 
@@ -264,13 +265,13 @@ function localOnboardingPreviewEnabled(): boolean {
 }
 
 const templateMeta: Record<TaskTemplateKind, { label: string; icon: string }> = {
-  general: { label: "一般任務", icon: "/images/doodle-icons-v2/ai-spark.png" },
-  flight: { label: "班機", icon: "/images/doodle-icons-v2/travel-suitcase.png" },
-  course: { label: "選課／學業", icon: "/images/doodle-icons-v2/resources-book.png" },
-  visa: { label: "簽證／居留", icon: "/images/doodle-icons-v2/resources-book.png" },
-  housing: { label: "住宿／入住", icon: "/images/doodle-icons-v2/home-notebook.png" },
-  payment: { label: "付款／費用", icon: "/images/doodle-icons-v2/ai-spark.png" },
-  "school-admin": { label: "學校／行政", icon: "/images/doodle-icons-v2/resources-book.png" },
+  general: { label: "一般任務", icon: "/images/doodle-icons-v2/ai-spark.webp" },
+  flight: { label: "班機", icon: "/images/doodle-icons-v2/travel-suitcase.webp" },
+  course: { label: "選課／學業", icon: "/images/doodle-icons-v2/resources-book.webp" },
+  visa: { label: "簽證／居留", icon: "/images/doodle-icons-v2/resources-book.webp" },
+  housing: { label: "住宿／入住", icon: "/images/doodle-icons-v2/home-notebook.webp" },
+  payment: { label: "付款／費用", icon: "/images/doodle-icons-v2/ai-spark.webp" },
+  "school-admin": { label: "學校／行政", icon: "/images/doodle-icons-v2/resources-book.webp" },
 };
 
 const emptyTask: JourneyTask = {
@@ -470,7 +471,7 @@ function TaskModal({
             <textarea name="notes" defaultValue={task.notes} rows={2} />
           </label>
           <div className="form-section-heading compact field-full">
-            <Image src="/images/doodle-icons-v2/resources-book.png" alt="" width={45} height={45} />
+            <Image src="/images/doodle-icons-v2/resources-book.webp" alt="" width={45} height={45} />
             <div><p className="eyebrow">Details</p><h3>聯絡與費用</h3></div>
           </div>
           <label className="field">
@@ -539,7 +540,7 @@ function TaskModal({
             <textarea name="result" defaultValue={task.result} rows={3} placeholder="完成後記下實際結果、踩雷或下次要提醒自己的事。" />
           </label>
           <div className="form-section-heading compact field-full">
-            <Image src="/images/doodle-icons-v2/journey-route.png" alt="" width={45} height={45} />
+            <Image src="/images/doodle-icons-v2/journey-route.webp" alt="" width={45} height={45} />
             <div><p className="eyebrow">Reference</p><h3>查核來源</h3></div>
           </div>
           <label className="field">
@@ -816,12 +817,12 @@ function Dashboard({ state, setState, cloud, navigate, navigateTarget, todayIso,
 
       <section className="quick-modes">
         <button className="mode-card blue" onClick={() => navigate("journey", "progress")}>
-          <span className="mode-icon"><Image src="/images/doodle-icons-v2/home-notebook.png" alt="" width={58} height={58} /></span>
+          <span className="mode-icon"><Image src="/images/doodle-icons-v2/home-notebook.webp" alt="" width={58} height={58} /></span>
           <div><p className="eyebrow">Quick mode</p><h3>抵達 72 小時</h3><p>鑰匙、入住、第一晚補給與 Orientation。</p></div>
           <ArrowRight />
         </button>
         <button className="mode-card terracotta" onClick={() => navigate("journey", "progress")}>
-          <span className="mode-icon"><Image src="/images/doodle-icons-v2/travel-suitcase.png" alt="" width={58} height={58} /></span>
+          <span className="mode-icon"><Image src="/images/doodle-icons-v2/travel-suitcase.webp" alt="" width={58} height={58} /></span>
           <div><p className="eyebrow">Finish well</p><h3>返國收尾模式</h3><p>退租、註銷、押金、成績單一次收好。</p></div>
           <ArrowRight />
         </button>
@@ -1036,7 +1037,7 @@ function PackingPage({ state, setState, embedded = false }: { state: AppState; s
   const strictCheckedLimit = baggageEvaluation.strictCheckedLimitKg;
   const checkedOverLimit = baggageEvaluation.ready && baggageEvaluation.issues.length > 0;
   const categories = [...new Set(filteredItems.map((item) => item.category))];
-  const todayIso = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" });
+  const todayIso = new Date().toLocaleDateString("sv-SE", { timeZone: exchangeProfile.homeTimeZone });
   const baggageIsPast = Boolean(state.journey.startDate && state.journey.startDate < todayIso);
 
   function updateItem(id: string, patch: Partial<PackingItem>) {
@@ -1164,7 +1165,7 @@ function PackingPage({ state, setState, embedded = false }: { state: AppState; s
   const allowanceDisclosure = (
     <details className={`flight-allowance-disclosure paper-card ${checkedOverLimit ? "over-limit" : ""} ${baggageIsPast ? "past" : ""}`} open={!baggageEvaluation.ready && !baggageIsPast}>
       <summary>
-        <Image src="/images/doodle-icons-v2/travel-suitcase.png" alt="" width={58} height={58} />
+        <Image src="/images/doodle-icons-v2/travel-suitcase.webp" alt="" width={58} height={58} />
         <div className="flight-allowance-summary-copy">
           <p className="eyebrow">{baggageEvaluation.ready ? "Confirmed personal allowance" : flightAllowances.length ? "Needs ticket confirmation" : "Waiting for your ticket"}</p>
           <h2>{baggageEvaluation.ready ? "已依本人的機票核對所有行李規則" : flightAllowances.length ? "仍有航段或行李類型待確認" : "尚未從本人的機票確認行李額度"}</h2>
@@ -1626,7 +1627,7 @@ function SettingsPage({ state, setState, cloud, onOpenGuide }: { state: AppState
   );
 }
 
-export default function ExchangeCompanion() {
+export default function ExchangeCompanion({ initialAuthView = "welcome" }: { initialAuthView?: "welcome" | "login" }) {
   const [isHydrated, setIsHydrated] = useState(false);
   const [state, setState] = useState<AppState>(() => loadState(!cloudIsConfigured()));
   const [section, setSection] = useState<NavSection>(initialSection);
@@ -1646,8 +1647,16 @@ export default function ExchangeCompanion() {
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const aiNotificationRef = useRef<HTMLDivElement>(null);
   const aiNotificationButtonRef = useRef<HTMLButtonElement>(null);
+  const homeRenderMarked = useRef(false);
   const cloud = useExchangeCloud(state, setState);
   const localAppPreview = localAppPreviewEnabled();
+
+  useEffect(() => {
+    if (homeRenderMarked.current || !isHydrated || section !== "home" || !state.setupCompleted) return;
+    if (cloud.configured && (!cloud.authReady || !cloud.permanentAccount || !cloud.accountDataReady)) return;
+    homeRenderMarked.current = true;
+    markExchangePerformance("home-render");
+  }, [cloud.accountDataReady, cloud.authReady, cloud.configured, cloud.permanentAccount, isHydrated, section, state.setupCompleted]);
 
   useEffect(() => {
     const alignExpandedDetails = (event: Event) => {
@@ -1764,7 +1773,7 @@ export default function ExchangeCompanion() {
   }
 
   if (!localAppPreview && (!cloud.configured || !cloud.permanentAccount || !cloud.accountDataReady)) {
-    return <AuthGate cloud={cloud} />;
+    return <AuthGate cloud={cloud} initialView={initialAuthView} />;
   }
 
   if (!state.setupCompleted) {
@@ -1823,7 +1832,7 @@ export default function ExchangeCompanion() {
         </header>
 
         <main id="main-content">
-          <AnimatePresence mode="wait">
+          <AnimatePresence initial={false} mode="wait">
             <motion.div key={section} initial={{ opacity: 0, y: 7 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}>
               {section === "home" ? <Dashboard state={state} setState={setState} cloud={cloud} navigate={navigateToSection} navigateTarget={navigateHomeTarget} todayIso={todayIso} forceGuide={homeGuideOpen} onCloseGuide={() => setHomeGuideOpen(false)} /> : null}
               {section === "journey" ? <JourneyPage state={state} setState={setState} view={journeyView} onViewChange={setJourneyView} focusTaskId={focusTaskId} /> : null}

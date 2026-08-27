@@ -22,6 +22,13 @@ test("daily home keeps the interactive month calendar, bulletin, journey, and bu
   assert.match(dashboard, /home-bulletin-empty/);
   assert.match(styles, /grid-template-areas:\s*"bulletin" "agenda"/);
   assert.match(styles, /\.home-bulletin-board\s*\{[^}]*overflow:\s*clip/);
+  assert.match(styles, /clarity pass:[\s\S]*\.home-month-day\.active \.home-calendar-date\s*\{\s*background:\s*rgba\(32, 34, 32, 0\.065\)/);
+  assert.match(styles, /\.home-bulletin-item:nth-child\(3n\)\s*\{\s*background:\s*rgba\(255, 254, 252, 0\.72\)\s*!important/);
+  assert.match(styles, /\.home-inline-month-grid \.home-calendar-date\s*\{\s*border-left:\s*0\s*!important/);
+  assert.match(styles, /\.home-month-day\.today \.home-calendar-date\s*\{[^}]*box-shadow:[^}]*transform:\s*translateY\(-3px\)/);
+  assert.match(styles, /\.home-month-day\.today \.home-calendar-date > strong\s*\{[^}]*border:\s*0[^}]*border-radius:\s*0[^}]*background:\s*transparent/);
+  assert.match(styles, /\.mobile-bottom-nav\s*\{\s*border-top:\s*0\s*!important/);
+  assert.match(styles, /box-shadow:\s*0\s+-8px\s+24px\s+rgba\(48,\s*50,\s*49,\s*0\.1\)/);
 });
 
 test("activation copy separates public skill installation from the private connection file", () => {
@@ -46,4 +53,15 @@ test("installed app uses dedicated Android and Apple home-screen artwork", () =>
 
 test("mobile home completion count stays below the progress bar", () => {
   assert.doesNotMatch(styles, /\.home-status-progress small \{[^}]*margin-top:\s*-\d/);
+});
+
+test("dynamic home grids use their real size on the first render", () => {
+  assert.doesNotMatch(
+    styles,
+    /\.home-daily-grid,\s*\.home-core-grid\s*\{[^}]*content-visibility:\s*auto/s,
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.home-daily-grid,\s*\.home-core-grid\s*\{[^}]*contain-intrinsic-size/s,
+  );
 });

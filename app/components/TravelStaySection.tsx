@@ -4,6 +4,7 @@ import { ExternalLink, Hotel, MapPinned, Pencil, Plus, Sheet, Trash2, X } from "
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { TravelPlan, TravelReference, TravelReferenceKind, TravelStay } from "../lib/types";
 
 const referenceKinds: Record<TravelReferenceKind, { label: string; icon: typeof MapPinned }> = {
@@ -47,10 +48,10 @@ function StayForm({ stay, onSave, onCancel }: { stay?: TravelStay; onSave: (stay
       <label><span>飯店名稱</span><input name="name" defaultValue={stay?.name} required /></label>
       <label><span>入住</span><input type="date" name="checkIn" defaultValue={stay?.checkIn} required /></label>
       <label><span>退房</span><input type="date" name="checkOut" defaultValue={stay?.checkOut} required /></label>
-      <label><span>區域</span><input name="area" defaultValue={stay?.area} placeholder="例如：Sukhumvit／Phaya Thai" /></label>
+      <label><span>區域</span><input name="area" defaultValue={stay?.area} placeholder="例如：市中心／車站附近" /></label>
       <label className="field-wide"><span>地址</span><input name="address" defaultValue={stay?.address} /></label>
       <label className="field-wide"><span>簡介</span><textarea name="summary" defaultValue={stay?.summary} rows={2} placeholder="為什麼選這間、適合哪幾天的行程…" required /></label>
-      <label className="field-wide"><span>重點（以逗號或換行分隔）</span><textarea name="highlights" defaultValue={stay?.highlights.join("、")} rows={2} placeholder="直通 BTS、可寄放行李、附近餐廳多" /></label>
+      <label className="field-wide"><span>重點（以逗號或換行分隔）</span><textarea name="highlights" defaultValue={stay?.highlights.join("、")} rows={2} placeholder="鄰近大眾運輸、可寄放行李、附近餐廳多" /></label>
       <label><span>Google Maps</span><input type="url" name="mapsUrl" defaultValue={stay?.mapsUrl} placeholder="https://maps.app.goo.gl/…" /></label>
       <label><span>官方／訂房來源</span><input type="url" name="sourceUrl" defaultValue={stay?.sourceUrl} placeholder="https://…" /></label>
       <label className="field-wide"><span>照片網址</span><input type="url" name="imageUrl" defaultValue={stay?.imageUrl} placeholder="https://…" /></label>
@@ -85,33 +86,34 @@ function ReferenceForm({ reference, onSave, onCancel }: { reference?: TravelRefe
   );
 }
 
-function TravelEntryModal({ id, eyebrow, title, onClose, children }: { id: string; eyebrow: string; title: string; onClose: () => void; children: ReactNode }) {
+function TravelEntryModal({ id, eyebrow, title, onClose, children, className = "" }: { id: string; eyebrow: string; title: string; onClose: () => void; children: ReactNode; className?: string }) {
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => event.key === "Escape" && onClose();
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <motion.div className="modal-card travel-entry-modal paper-card" role="dialog" aria-modal="true" aria-labelledby={id} initial={{ opacity: 0, y: 18, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.99 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}>
+      <motion.div className={`modal-card travel-entry-modal paper-card ${className}`} role="dialog" aria-modal="true" aria-labelledby={id} initial={{ opacity: 0, y: 18, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.99 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}>
         <div className="modal-heading"><div><p className="eyebrow">{eyebrow}</p><h2 id={id}>{title}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="關閉"><X size={20} /></button></div>
         {children}
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body,
   );
 }
 
 export function TravelStaySection({ plan, onUpdate, readOnly = false }: { plan: TravelPlan; onUpdate: (plan: TravelPlan) => void; readOnly?: boolean }) {
   const stays = plan.stays ?? [];
   const references = plan.references ?? [];
-  const [hoveredId, setHoveredId] = useState("");
-  const [pinnedId, setPinnedId] = useState("");
+  const [detailStayId, setDetailStayId] = useState("");
   const [editingStayId, setEditingStayId] = useState("");
   const [addingStay, setAddingStay] = useState(false);
   const [editingReferenceId, setEditingReferenceId] = useState("");
   const [addingReference, setAddingReference] = useState(false);
   const editingStay = stays.find((stay) => stay.id === editingStayId);
+  const detailStay = stays.find((stay) => stay.id === detailStayId);
   const editingReference = references.find((reference) => reference.id === editingReferenceId);
 
   function saveStay(stay: TravelStay) {
@@ -131,31 +133,18 @@ export function TravelStaySection({ plan, onUpdate, readOnly = false }: { plan: 
   return (
     <section className="travel-base-section" aria-labelledby="travel-stays-title">
       <div className="travel-base-heading">
-        <div><p className="eyebrow">Accommodation</p><h3 id="travel-stays-title">住宿</h3><p>先確認每天從哪間住宿出發。滑鼠移入、鍵盤聚焦，或手機點一下飯店，就能先看照片與摘要。</p></div>
+        <div><p className="eyebrow">Accommodation</p><h3 id="travel-stays-title">住宿</h3><p>先確認每天從哪間住宿出發；點一下飯店，就能在浮動視窗查看照片與摘要。</p></div>
         {readOnly ? null : <button className="mini-add-button" onClick={() => { setAddingStay(true); setEditingStayId(""); }}><Plus size={15} />新增飯店</button>}
       </div>
-      {stays.length ? <div className="travel-stay-grid">{stays.map((stay, index) => {
-        const open = hoveredId === stay.id || pinnedId === stay.id;
-        return (
-          <article className={`travel-stay-card ${open ? "open" : ""}`} key={stay.id} onMouseEnter={() => setHoveredId(stay.id)} onMouseLeave={() => setHoveredId("")}>
-            <button className="travel-stay-summary" type="button" aria-expanded={open} aria-controls={`stay-detail-${stay.id}`} aria-label={open ? `收合 ${stay.name} 詳情` : `查看 ${stay.name} 詳情`} onFocus={() => setHoveredId(stay.id)} onBlur={() => setHoveredId("")} onClick={(event) => { setHoveredId(""); setPinnedId((current) => current === stay.id ? "" : stay.id); event.currentTarget.blur(); }}>
+      {stays.length ? <div className="travel-stay-grid">{stays.map((stay, index) => (
+          <article className="travel-stay-card" key={stay.id}>
+            <button className="travel-stay-summary" type="button" aria-haspopup="dialog" aria-label={`查看 ${stay.name} 詳情`} onClick={() => setDetailStayId(stay.id)}>
               <span className="stay-index">{String.fromCharCode(65 + index)}</span>
               <span><small>{formatStayDate(stay.checkIn)} — {formatStayDate(stay.checkOut)}</small><strong>{stay.name}</strong><em>{stay.area || "區域待補"}</em></span>
               <Plus className="stay-toggle" size={18} aria-hidden="true" />
             </button>
-            <div className="travel-stay-popover" id={`stay-detail-${stay.id}`} aria-hidden={!open}>
-              <div className="stay-photo">
-                {/* Arbitrary official/user-authorized destination images cannot use a build-time host allowlist. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {stay.imageUrl ? <img src={stay.imageUrl} alt={stay.imageAlt || `${stay.name} 飯店照片`} loading="lazy" referrerPolicy="no-referrer" /> : <Image src="/images/doodle-icons-v2/home-notebook.png" alt="" width={150} height={150} />}
-                <span>{index + 1} / {stays.length}</span>
-              </div>
-              <div className="stay-detail-copy"><p className="eyebrow structural-eyebrow">{stay.area || "Accommodation"}</p><h4>{stay.name}</h4><p>{stay.summary}</p>{stay.highlights.length ? <ul>{stay.highlights.map((item) => <li key={item}>{item}</li>)}</ul> : null}{stay.address ? <small>{stay.address}</small> : null}<div className="stay-detail-links">{stay.mapsUrl ? <a href={stay.mapsUrl} target="_blank" rel="noreferrer"><MapPinned size={14} />Google Maps<ExternalLink size={11} /></a> : null}{stay.sourceUrl ? <a href={stay.sourceUrl} target="_blank" rel="noreferrer">官方資訊<ExternalLink size={11} /></a> : null}</div>{stay.notes ? <p className="stay-private-note">{stay.notes}</p> : null}</div>
-              {readOnly ? null : <div className="stay-detail-actions"><button className="icon-button" onClick={() => { setEditingStayId(stay.id); setAddingStay(false); setPinnedId(stay.id); }} aria-label={`編輯 ${stay.name}`}><Pencil size={14} /></button><button className="icon-button danger" onClick={() => onUpdate({ ...plan, stays: stays.filter((item) => item.id !== stay.id), updatedAt: new Date().toISOString() })} aria-label={`刪除 ${stay.name}`}><Trash2 size={14} /></button></div>}
-            </div>
           </article>
-        );
-      })}</div> : <div className="travel-stay-empty"><Image src="/images/doodle-icons-v2/home-notebook.png" alt="" width={70} height={70} /><div><strong>住宿還沒放進這趟旅行</strong><span>先記飯店與入住日期，排每天路線時才不會一直折返。</span></div></div>}
+      ))}</div> : <div className="travel-stay-empty"><Image src="/images/doodle-icons-v2/home-notebook.webp" alt="" width={70} height={70} /><div><strong>住宿還沒放進這趟旅行</strong><span>先記飯店與入住日期，排每天路線時才不會一直折返。</span></div></div>}
 
       <div className="travel-reference-desk">
         <div className="travel-reference-heading"><div><p className="eyebrow">Reference desk</p><h4>旅行參考資料</h4><p>收藏清單與共同表格放在住宿後、每日行程前；規劃時不用離開這趟旅行四處找連結。</p></div>{readOnly ? null : <button className="mini-add-button" onClick={() => { setAddingReference(true); setEditingReferenceId(""); }}><Plus size={15} />新增參考</button>}</div>
@@ -168,6 +157,19 @@ export function TravelStaySection({ plan, onUpdate, readOnly = false }: { plan: 
 
       <AnimatePresence>
         {!readOnly && (addingStay || editingStay) ? <TravelEntryModal id="travel-stay-modal-title" eyebrow="Accommodation" title={editingStay ? "編輯住宿" : "新增住宿"} onClose={() => { setAddingStay(false); setEditingStayId(""); }}><StayForm stay={editingStay} onSave={saveStay} onCancel={() => { setAddingStay(false); setEditingStayId(""); }} /></TravelEntryModal> : null}
+      </AnimatePresence>
+      <AnimatePresence>
+        {detailStay ? <TravelEntryModal id="travel-stay-detail-title" eyebrow={detailStay.area || "Accommodation"} title={detailStay.name} className="travel-stay-detail-modal" onClose={() => setDetailStayId("")}>
+          <div className="travel-stay-detail-modal-body">
+            <div className="stay-photo">
+              {/* Arbitrary official/user-authorized destination images cannot use a build-time host allowlist. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {detailStay.imageUrl ? <img src={detailStay.imageUrl} alt={detailStay.imageAlt || `${detailStay.name} 飯店照片`} loading="lazy" referrerPolicy="no-referrer" /> : <Image src="/images/doodle-icons-v2/home-notebook.webp" alt="" width={150} height={150} />}
+            </div>
+            <div className="stay-detail-copy"><p>{detailStay.summary}</p>{detailStay.highlights.length ? <ul>{detailStay.highlights.map((item) => <li key={item}>{item}</li>)}</ul> : null}{detailStay.address ? <small>{detailStay.address}</small> : null}<div className="stay-detail-links">{detailStay.mapsUrl ? <a href={detailStay.mapsUrl} target="_blank" rel="noreferrer"><MapPinned size={14} />Google Maps<ExternalLink size={11} /></a> : null}{detailStay.sourceUrl ? <a href={detailStay.sourceUrl} target="_blank" rel="noreferrer">官方資訊<ExternalLink size={11} /></a> : null}</div>{detailStay.notes ? <p className="stay-private-note">{detailStay.notes}</p> : null}</div>
+          </div>
+          {readOnly ? null : <div className="modal-actions stay-detail-modal-actions"><button className="button secondary" onClick={() => { setDetailStayId(""); setEditingStayId(detailStay.id); setAddingStay(false); }}><Pencil size={15} />編輯住宿</button><button className="button text-danger" onClick={() => { onUpdate({ ...plan, stays: stays.filter((item) => item.id !== detailStay.id), updatedAt: new Date().toISOString() }); setDetailStayId(""); }}><Trash2 size={15} />刪除住宿</button></div>}
+        </TravelEntryModal> : null}
       </AnimatePresence>
       <AnimatePresence>
         {!readOnly && (addingReference || editingReference) ? <TravelEntryModal id="travel-reference-modal-title" eyebrow="Reference desk" title={editingReference ? "編輯旅行參考" : "新增旅行參考"} onClose={() => { setAddingReference(false); setEditingReferenceId(""); }}><ReferenceForm reference={editingReference} onSave={saveReference} onCancel={() => { setAddingReference(false); setEditingReferenceId(""); }} /></TravelEntryModal> : null}

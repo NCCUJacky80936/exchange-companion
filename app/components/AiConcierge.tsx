@@ -1,13 +1,13 @@
 "use client";
 
-import { Check, CloudDownload, Copy, ExternalLink, FileCheck2, Inbox, Link2, LockKeyhole, Pencil, RefreshCw, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
+import { Check, CloudDownload, Copy, ExternalLink, FileCheck2, Inbox, Link2, LockKeyhole, MessageCircle, Pencil, RefreshCw, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react";
 import { applyAiProposal, canApplyAiProposal, canUndoAiProposal, clearDismissedAiProposals, dismissAiProposal, findAiBundleCollisions, importAiBundle, journeyScopeForState, matchesAiJourneyScope, rebaseAiProposal, sensitiveBundleWarnings, undoAiProposal, validateAiImportBundle } from "../lib/ai-import";
 import { createExchangeConciergeHandoff } from "../lib/concierge-handoff";
 import { buildFirstConciergePrompt } from "../lib/concierge-starter";
 import type { ExchangeCloudController } from "../lib/useExchangeCloud";
-import type { AiProposal, AppState } from "../lib/types";
+import type { AiProposal, AppState, TelegramPairingInfo } from "../lib/types";
 import MotionDialog from "./ui/MotionDialog";
 
 const entityLabel = {
@@ -24,6 +24,15 @@ const entityLabel = {
 };
 
 const confidenceLabel = { high: "高可信", medium: "待確認", low: "線索" };
+
+function safeTelegramBotUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "t.me" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
 
 function proposalTarget(state: AppState, proposal: AiProposal): Record<string, unknown> | undefined {
   const items = proposal.entity === "journey" ? [state.journey]
@@ -78,12 +87,21 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
   const [copiedConnectionPrompt, setCopiedConnectionPrompt] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(openInboxRequest > 0);
   const [editingProposal, setEditingProposal] = useState<AiProposal | null>(null);
+  const [selectedTelegramConnectionId, setSelectedTelegramConnectionId] = useState("");
+  const [telegramPairing, setTelegramPairing] = useState<TelegramPairingInfo | null>(null);
+  const [telegramMessage, setTelegramMessage] = useState("");
   const inbox = state.aiInbox ?? { sources: [], proposals: [] };
   const sourceMap = useMemo(() => new Map(inbox.sources.map((source) => [source.id, source])), [inbox.sources]);
   const pending = inbox.proposals.filter((proposal) => proposal.status === "pending");
   const applied = inbox.proposals.filter((proposal) => proposal.status === "applied");
   const dismissedCount = inbox.proposals.filter((proposal) => proposal.status === "dismissed").length;
   const activeConnections = cloud.conciergeConnections.filter((item) => !item.revokedAt);
+  const linkedTelegramConnectionId = activeConnections.some((item) => item.id === cloud.telegramLink?.connectionId) ? cloud.telegramLink?.connectionId ?? "" : "";
+  const telegramConnectionId = activeConnections.some((item) => item.id === selectedTelegramConnectionId)
+    ? selectedTelegramConnectionId
+    : linkedTelegramConnectionId || (activeConnections.length === 1 ? activeConnections[0].id : "");
+  const selectedTelegramLink = cloud.telegramLink?.connectionId === telegramConnectionId ? cloud.telegramLink : null;
+  const telegramPairingBotUrl = telegramPairing ? safeTelegramBotUrl(telegramPairing.botUrl) : "";
   const pendingByEntity = useMemo(() => pending.reduce<Record<string, number>>((counts, proposal) => ({ ...counts, [proposal.entity]: (counts[proposal.entity] ?? 0) + 1 }), {}), [pending]);
 
   useEffect(() => {
@@ -183,6 +201,50 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
     }
   }
 
+  async function createTelegramPairingCode() {
+    if (!telegramConnectionId) return;
+    try {
+      const pairing = await cloud.createTelegramPairing(telegramConnectionId);
+      setTelegramPairing(pairing);
+      setTelegramMessage("已產生 10 分鐘內有效的一次性配對碼。請在期限內打開 Bot 完成連結。");
+    } catch {
+      setTelegramMessage("目前無法產生 Telegram 配對碼。請確認手帳與 Exchange Concierge 都已連線。");
+    }
+  }
+
+  async function copyTelegramPairingCode() {
+    if (!telegramPairing) return;
+    try {
+      await navigator.clipboard.writeText(telegramPairing.code);
+      setTelegramMessage("配對碼已複製。");
+    } catch {
+      setTelegramMessage("瀏覽器沒有允許複製，請手動輸入配對碼。");
+    }
+  }
+
+  async function refreshTelegramStatus() {
+    if (!telegramConnectionId) return;
+    try {
+      const link = await cloud.refreshTelegramLink(telegramConnectionId);
+      if (link) setTelegramPairing(null);
+      setTelegramMessage(link ? "Telegram 已連結。後續訊息只會進入待處理佇列。" : "這個 Concierge 連線尚未配對 Telegram。");
+    } catch {
+      setTelegramMessage("目前無法查詢 Telegram 連結狀態。");
+    }
+  }
+
+  async function disconnectTelegram() {
+    if (!telegramConnectionId || !selectedTelegramLink) return;
+    if (!window.confirm("撤銷 Telegram 連結後，未處理的原文會立即清除，且無法復原。仍要繼續嗎？")) return;
+    try {
+      await cloud.revokeTelegramLink(telegramConnectionId);
+      setTelegramPairing(null);
+      setTelegramMessage("Telegram 連結已撤銷，未處理原文已清除。");
+    } catch {
+      setTelegramMessage("目前無法撤銷 Telegram 連結；現有連結與佇列沒有變更。");
+    }
+  }
+
   async function refreshCloudInbox() {
     try {
       const count = await cloud.refreshConciergeInbox();
@@ -244,6 +306,26 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
         return <div className="applied-proposal-row" key={proposal.id}><span><Check size={15} /></span><div><strong>{proposal.title}</strong><small>{undo.valid ? (proposal.appliedAt ? new Date(proposal.appliedAt).toLocaleString("zh-TW") : "已套用") : undo.reason}</small></div><button className="button text-button" disabled={!undo.valid} title={undo.reason} onClick={() => { cloud.markNextSaveActor("proposal"); setState((current) => undoAiProposal(current, proposal.id)); }}><Undo2 size={15} />復原</button></div>;
       })}</div></section> : null}</div>
       </details>
+
+      <article className="paper-card ai-telegram-card">
+        <div className="ai-card-heading"><MessageCircle size={24} /><div><p className="eyebrow">Telegram inbox</p><h2>用 Telegram 丟給 AI 整理</h2></div></div>
+        <p>只接收私人一對一文字訊息，並由 Antigravity 每日排程整理成待確認提案。Telegram 不會直接修改手帳。</p>
+        <label className="field"><span>要授權的 Exchange Concierge 連線</span><select value={telegramConnectionId} disabled={!activeConnections.length || cloud.busy} onChange={(event) => {
+          const connectionId = event.currentTarget.value;
+          setSelectedTelegramConnectionId(connectionId);
+          setTelegramPairing(null);
+          setTelegramMessage("");
+          void cloud.refreshTelegramLink(connectionId).catch(() => setTelegramMessage("目前無法查詢這個 Telegram 連結狀態。"));
+        }}>{activeConnections.length ? <>{activeConnections.length > 1 && !telegramConnectionId ? <option value="" disabled>請選擇要授權的連線</option> : null}{activeConnections.map((connection) => <option key={connection.id} value={connection.id}>{connection.label}</option>)}</> : <option value="">請先建立 Exchange Concierge 連線</option>}</select></label>
+        {selectedTelegramLink ? <div className="ai-connections"><span><strong>已連結 @{selectedTelegramLink.botUsername.replace(/^@/, "")}</strong><small>{selectedTelegramLink.lastReceivedAt ? `最後收件：${new Date(selectedTelegramLink.lastReceivedAt).toLocaleString("zh-TW")}` : `連結時間：${new Date(selectedTelegramLink.linkedAt).toLocaleString("zh-TW")}`} · 待處理 {selectedTelegramLink.queuedCount} 則</small></span></div> : null}
+        {telegramPairing?.connectionId === telegramConnectionId ? <div className="ai-connections"><span><strong>配對碼：<code>{telegramPairing.code}</code></strong><small>有效至 {new Date(telegramPairing.expiresAt).toLocaleString("zh-TW")}</small></span><div className="ai-connected-actions"><button type="button" className="button secondary" disabled={cloud.busy} onClick={() => void copyTelegramPairingCode()}><Copy size={16} />複製配對碼</button>{telegramPairingBotUrl ? <a className="button primary" href={telegramPairingBotUrl} target="_blank" rel="noreferrer">打開 @{telegramPairing.botUsername.replace(/^@/, "")}<ExternalLink size={14} /></a> : null}</div></div> : null}
+        <div className="ai-connected-actions">
+          {!selectedTelegramLink ? <button type="button" className="button primary" disabled={!telegramConnectionId || cloud.busy} onClick={() => void createTelegramPairingCode()}><Link2 size={16} />產生 10 分鐘配對碼</button> : null}
+          <button type="button" className="button secondary" disabled={!telegramConnectionId || cloud.busy} onClick={() => void refreshTelegramStatus()}><RefreshCw size={16} />更新狀態</button>
+          {selectedTelegramLink ? <button type="button" className="button text-button danger" disabled={cloud.busy} onClick={() => void disconnectTelegram()}><X size={16} />撤銷 Telegram</button> : null}
+        </div>
+        {telegramMessage ? <p className="settings-message" role="status">{telegramMessage}</p> : null}
+      </article>
 
       <section className={`ai-workflow-grid ${activeConnections.length ? "has-connection" : ""}`}>
         {activeConnections.length ? <article className="paper-card ai-connected-card">

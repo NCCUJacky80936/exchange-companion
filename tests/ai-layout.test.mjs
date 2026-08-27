@@ -26,6 +26,8 @@ test("proposal inbox refreshes with account lifecycle events instead of tab-boun
   assert.match(ai, /你在 Codex 新增狀態時則立即推送/);
   assert.match(ai, /對話中新狀態立即產生待審提案/);
   assert.match(ai, /修改後接受/);
+  assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.proposal-actions\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.proposal-actions \.button\.primary\s*\{[^}]*grid-column:\s*1 \/ -1[^}]*grid-row:\s*1/);
 });
 
 test("manual resource entry and AI URL intake share one modal", () => {

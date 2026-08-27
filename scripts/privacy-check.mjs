@@ -10,7 +10,10 @@ const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclud
 
 const forbiddenNames = [
   /^credentials(?:\.[^.]+)?\.json$/i,
+  /^(?:service-account|oauth|client-secret)(?:\.[^.]+)?\.json$/i,
   /^token(?:_[^.]+)?\.json$/i,
+  /^exchange-concierge-connection\.json$/i,
+  /^exchange-companion-handoff(?:\.[^.]+)?\.json$/i,
   /^\.env(?:\..+)?$/i,
   /\.(?:pem|p12|pfx|key)$/i,
 ];
@@ -18,8 +21,15 @@ const forbiddenPaths = [/(?:^|\/)(?:passport|visa-document|bank-statement)(?:\/|
 const secretPatterns = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
   /\bsb_secret_[A-Za-z0-9_-]{12,}\b/,
+  /\bsb_publishable_[A-Za-z0-9_-]{12,}\b/,
   /\b(?:ghp|gho|github_pat)_[A-Za-z0-9_]{20,}\b/,
+  /\b\d{8,12}:[A-Za-z0-9_-]{30,}\b/,
+  /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/,
+  /\bAKIA[0-9A-Z]{16}\b/,
+  /\bAIza[0-9A-Za-z_-]{20,}\b/,
+  /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/,
   /\beyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b/,
+  /https:\/\/[a-z0-9]{15,}\.supabase\.co\b/i,
   /"project_id"\s*:\s*"appgprj_[^"]+"/,
   /https:\/\/exchange-companion-tw\.[^\s"']+\.chatgpt\.site/,
   /\/Users\/[A-Za-z0-9._-]+\//,

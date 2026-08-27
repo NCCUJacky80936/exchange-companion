@@ -423,3 +423,9 @@ entrypoint = "./functions/exchange-concierge-sync/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/exchange-concierge-sync/*.html" ]
+
+[functions.telegram-concierge-webhook]
+enabled = true
+verify_jwt = false
+import_map = "./functions/telegram-concierge-webhook/deno.json"
+entrypoint = "./functions/telegram-concierge-webhook/index.ts"

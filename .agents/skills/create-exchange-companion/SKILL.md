@@ -13,7 +13,16 @@ Turn this template into one person's exchange website while keeping every manual
 2. Read `AGENTS.md`, `README.md`, the current profile, and `docs/PRIVACY.md` before changing files.
 3. Never scan a parent directory, mail account, drive, or calendar without explicit user authorization for the exact source and scope.
 4. Never commit `.env*`, tokens, credentials, source emails, uploaded documents, passport or visa scans, financial records, exact housing identifiers, or personal photos.
-5. Treat the checked-in Germany profile and artwork as demonstration content only. Replace them for another journey; do not infer that the new user is going to Germany.
+5. Treat the checked-in profile and artwork as template placeholders only. Replace them for the current journey; do not infer a destination, school, or country from repository history.
+
+## Mandatory deployment routing
+
+Before any provider command, inspect `.openai/hosting.json`:
+
+- If it contains a non-empty `project_id`, the existing Codex Sites project is the canonical production target. Use the Sites building/hosting workflow and reuse that binding for ordinary releases.
+- Do not use Wrangler, `deploy:preflight`, or `deploy:cloudflare` for a normal update while that binding exists. The npm scripts are guarded and will stop on this route.
+- Cloudflare Workers is an explicit exception only when the user requests a Worker migration or separate Worker deployment. That command must set `ALLOW_CLOUDFLARE_WORKERS_DEPLOY=1`; never persist the override.
+- Cloudflare agent skill/MCP installation is independent of hosting selection and must not reroute an existing Sites project.
 
 ## Choose the operating mode
 

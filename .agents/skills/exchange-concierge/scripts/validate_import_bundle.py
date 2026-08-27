@@ -59,7 +59,7 @@ ALLOWED_FIELDS = {
     "bag": {"id", "name", "kind", "limitKg", "limitSource"},
     "flight-allowance": {"id", "label", "airline", "segment", "checkedMode", "checkedPieceCount", "checkedPieceWeightKg", "checkedTotalWeightKg", "carryOnMode", "carryOnPieceCount", "carryOnPieceWeightKg", "personalItemMode", "personalItemPieceCount", "personalItemPieceWeightKg", "provenance", "confirmed", "sourceLabel", "verifiedAt", "notes"},
     "budget-item": {"id", "name", "category", "amount", "currency", "cadence", "basis", "paid", "notes", "sourceLabel", "verifiedAt"},
-    "study-event": {"id", "title", "kind", "startDate", "endDate", "startTime", "repeatWeekly", "mandatory", "notes"},
+    "study-event": {"id", "title", "kind", "startDate", "endDate", "startTime", "endTime", "location", "repeatWeekly", "mandatory", "notes"},
     "travel-plan": {"id", "kind", "title", "destinations", "startDate", "endDate", "travelers", "budget", "currency", "notes", "days", "stays", "references", "travelNotes", "packingItems", "createdAt", "updatedAt"},
 }
 SECRET_PATTERNS = (
@@ -420,8 +420,10 @@ def validate_field(entity: str, key: str, value: object) -> bool:
             return value in {"class", "exam", "deadline", "orientation", "personal"}
         if key in {"startDate", "endDate"}:
             return valid_date(value)
-        if key == "startTime":
+        if key in {"startTime", "endTime"}:
             return valid_clock(value)
+        if key == "location":
+            return isinstance(value, str) and len(value) <= 500
         if key in {"repeatWeekly", "mandatory"}:
             return isinstance(value, bool)
         if key == "notes":

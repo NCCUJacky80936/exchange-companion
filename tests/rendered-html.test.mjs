@@ -23,21 +23,27 @@ test("server-renders the exchange companion shell", async () => {
   assert.match(html, new RegExp(`<title>${profile.appName}｜AI 優先的交換生旅程控制台<\\/title>`, "i"));
   assert.match(html, new RegExp(`property="og:image" content="https:\\/\\/exchange-companion\\.example${profile.visual.socialImage.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`, "i"));
   assert.match(html, new RegExp(profile.appName));
+  assert.match(html, /initial-loading-shell/);
+  assert.match(html, /loading-brand/);
+  assert.match(html, /正在打開你的交換手帳/);
   assert.match(html, /我的交換|正在打開/);
   assert.doesNotMatch(html, /Repository Student|Personal Buddy|Private Coordinator/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
 test("keeps private parent files outside the app bundle", async () => {
-  const [page, component, defaultData, travelPlanner, travelPanels, packageJson] = await Promise.all([
+  const [page, entry, component, defaultData, travelPlanner, travelPanels, cloudHook, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/AppEntry.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/ExchangeCompanion.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/default-data.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/components/TravelPlanner.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/TravelTripPanels.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/useExchangeCloud.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
-  assert.match(page, /ExchangeCompanion/);
+  assert.match(page, /AppEntry/);
+  assert.match(entry, /import\("\.\/ExchangeCompanion"\)/);
   assert.match(component, /localStorage|loadState/);
   assert.match(component, /downloadIcs/);
   assert.match(component, /交給 AI 辨識的網址/);
@@ -48,6 +54,8 @@ test("keeps private parent files outside the app bundle", async () => {
   assert.match(travelPlanner, /Google Maps 分享連結/);
   assert.match(travelPanels, /mapsUrlForActivity/);
   assert.match(travelPanels, /TravelNotesPanel/);
+  assert.match(cloudHook, /網站目前無法啟用雲端登入/);
+  assert.doesNotMatch(cloudHook, /本機尚未連接雲端/);
   assert.match(travelPanels, /TravelPackingPanel/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.doesNotMatch(`${component}\n${travelPlanner}\n${travelPanels}`, /credentials\.json|private_token|passport-scan|private-room-number/i);

@@ -22,12 +22,16 @@ test("mobile modal height uses the dynamic iOS viewport", () => {
   assert.doesNotMatch(css, /body\s*\{[^}]*overflow-x:\s*hidden/);
 });
 
-test("hotel details become an inline touch panel on phones", () => {
-  assert.match(css, /\.travel-stay-popover[^}]*position:\s*static[^}]*display:\s*none/);
-  assert.match(css, /\.travel-stay-card\.open\s+\.travel-stay-popover\s*\{[^}]*display:\s*grid/);
-  assert.match(staySection, /setHoveredId\(""\);\s*setPinnedId/);
-  assert.match(staySection, /event\.currentTarget\.blur\(\)/);
-  assert.match(staySection, /aria-label=\{open \? `收合/);
+test("hotel details open in a floating dialog without pushing the itinerary", () => {
+  assert.match(staySection, /aria-haspopup="dialog"/);
+  assert.match(staySection, /setDetailStayId\(stay\.id\)/);
+  assert.match(staySection, /className="travel-stay-detail-modal"/);
+  assert.match(staySection, /className="modal-backdrop"/);
+  assert.match(staySection, /createPortal\([\s\S]*document\.body/);
+  assert.doesNotMatch(staySection, /className="travel-stay-popover"/);
+  assert.doesNotMatch(staySection, /setPinnedId|setHoveredId/);
+  assert.match(css, /\.modal-backdrop\s*\{[^}]*position:\s*fixed/);
+  assert.match(css, /\.travel-stay-detail-modal-body\s*\{[^}]*display:\s*grid/);
 });
 
 test("the hotel section uses straightforward accommodation labels", () => {
@@ -49,6 +53,9 @@ test("course schedule uses a Monday to Friday weekly timetable without dropping 
   assert.match(css, /\.course-timetable-scroll\s*\{[^}]*overflow-x:\s*auto/);
   assert.match(css, /\.course-timetable\s*\{[^}]*min-width:\s*760px/);
   assert.match(css, /\.course-day-columns\s*\{[^}]*grid-template-columns:\s*repeat\(5,/);
+  assert.match(css, /@media \(max-width:\s*820px\)[\s\S]*\.course-timetable\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0/);
+  assert.match(css, /@media \(max-width:\s*820px\)[\s\S]*\.course-timetable-header\s*\{[^}]*grid-template-columns:\s*32px repeat\(5,/);
+  assert.match(planner, /className="course-slot-more"/);
 });
 
 test("travel entries use a vertical accordion and reference actions stay at the top right", () => {
@@ -71,14 +78,46 @@ test("expanded accordion reads as one paper sheet instead of nested heavy cards"
   assert.match(css, /\.conflict-panel\s*\{[^}]*width:\s*auto[^}]*max-width:\s*760px[^}]*border:\s*0[^}]*border-block:[^}]*box-shadow:\s*none/);
 });
 
-test("mobile trip actions use a dedicated row instead of squeezing the title", () => {
-  assert.match(css, /\.travel-overview\s*\{\s*padding:\s*58px\s+10px\s+18px/);
-  assert.match(css, /\.travel-overview-top\s*>\s*div:nth-child\(2\)\s*\{\s*padding-right:\s*0/);
-  assert.match(css, /\.travel-overview-actions\s*\{\s*top:\s*-42px;\s*right:\s*0/);
+test("expanded travel content replaces the ticket face and keeps location with actions", () => {
+  assert.match(planner, /!expanded \? <motion\.button/);
+  assert.match(planner, /mode="popLayout"/);
+  assert.match(planner, /layout="position"/);
+  assert.doesNotMatch(planner, /mode="wait"/);
+  assert.match(planner, /className="travel-overview-toolbar"/);
+  assert.match(planner, /className="destination-route"[\s\S]*className="travel-overview-actions trip-cover-actions"/);
+  assert.match(css, /\.travel-overview-toolbar\s*\{[^}]*display:\s*flex[^}]*justify-content:\s*space-between/);
+  assert.match(css, /\.trip-accordion-item\.expanded \.trip-cover-actions\s*\{[^}]*position:\s*static/);
+  assert.doesNotMatch(planner, /className="travel-overview-top"/);
+  assert.match(planner, /<h2>\{selectedPlan\.title\}<\/h2>/);
+});
+
+test("collapsed travel entries use the taped paper-card language from the home dashboard", () => {
+  assert.match(planner, /className=\{`trip-accordion-item paper-card/);
+  assert.match(css, /\.trip-card-list\s*\{[^}]*gap:\s*16px[^}]*border-block:\s*0\s*!important/);
+  assert.match(css, /\.trip-accordion-item\.collapsed\s*\{[^}]*border-top:\s*3px solid color-mix/);
+  assert.match(css, /\.trip-accordion-item\.collapsed::before\s*\{[^}]*background:\s*color-mix[^}]*content:\s*""/);
+  assert.match(css, /\.trip-accordion-item\.collapsed::after\s*\{[^}]*background:\s*linear-gradient/);
+  assert.match(css, /\.trip-accordion-item\.collapsed \.trip-ticket,[\s\S]*background:\s*transparent\s*!important/);
+});
+
+test("collapsed travel cards rotate the home palette through borders and tape", () => {
+  for (const color of ["yellow", "blue", "pink", "sage"]) {
+    assert.match(css, new RegExp(`--trip-card-accent:\\s*var\\(--${color}\\)`));
+  }
+  assert.match(css, /border-top:\s*3px solid color-mix\(in srgb,\s*var\(--trip-card-accent\)\s*76%,\s*var\(--ink\)\)/);
+  assert.match(css, /background:\s*color-mix\(in srgb,\s*var\(--trip-card-accent\)\s*56%,\s*transparent\)/);
+});
+
+test("travel titles stay complete on one line and new edits are limited to ten characters", () => {
+  assert.match(planner, /name="title"[\s\S]*maxLength=\{10\}/);
+  assert.match(planner, /Array\.from\(event\.target\.value\)\.slice\(0, 10\)\.join\(""\)/);
+  assert.match(planner, /\{titleLength\}\/10 個字，會完整顯示在旅行車票上/);
+  assert.match(css, /\.travel-overview-title h2\s*\{[^}]*overflow:\s*visible[^}]*text-overflow:\s*clip[^}]*white-space:\s*nowrap/);
+  assert.doesNotMatch(css, /\.travel-overview-title h2\s*\{[^}]*text-overflow:\s*ellipsis/);
 });
 
 test("travel creation forms open in modal dialogs instead of extending the accordion", () => {
-  assert.match(staySection, /className="modal-card travel-entry-modal paper-card"/);
+  assert.match(staySection, /className=\{`modal-card travel-entry-modal paper-card/);
   assert.match(staySection, />新增飯店</);
   assert.match(staySection, />新增參考</);
   assert.doesNotMatch(staySection, /addingStay \? <StayForm/);

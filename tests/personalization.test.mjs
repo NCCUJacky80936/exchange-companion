@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const component = await readFile(new URL("../app/components/ExchangeCompanion.tsx", import.meta.url), "utf8");
-const auth = await readFile(new URL("../app/components/AuthGate.tsx", import.meta.url), "utf8");
+const welcome = await readFile(new URL("../app/components/PublicWelcome.tsx", import.meta.url), "utf8");
 const storage = await readFile(new URL("../app/lib/storage.ts", import.meta.url), "utf8");
 
 test("the notebook quote and avatar are editable private state", () => {
@@ -32,6 +32,6 @@ test("avatar imports accept only bounded raster data URLs", () => {
 });
 
 test("the introduction leads with the AI-assisted exchange message", () => {
-  assert.match(auth, /讓 AI 幫你輕鬆記錄<br \/>交換大小事/);
-  assert.doesNotMatch(auth, /交換很複雜/);
+  assert.match(welcome, /讓 AI 幫你輕鬆記錄<br \/>交換大小事/);
+  assert.doesNotMatch(welcome, /交換很複雜/);
 });

@@ -91,7 +91,69 @@ test("exports a self-describing handoff with first-use setup locked for routine 
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("days[].activities[].mapsUrl"), true);
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("stays[]"), true);
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("references[]"), true);
+  assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "study-events")?.fields.includes("endTime"), true);
+  assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "study-events")?.fields.includes("location"), true);
   assert.equal(handoff.state, state);
+});
+
+test("accepts study events with an end time and location", () => {
+  const bundle = validResourceBundle();
+  bundle.proposals[0] = {
+    ...bundle.proposals[0],
+    id: "proposal-study-event-with-location-2027-01-15",
+    entity: "study-event",
+    action: "add",
+    value: {
+      id: "study-event-with-location",
+      title: "Pre-arrival briefing",
+      kind: "orientation",
+      startDate: "2027-03-02",
+      endDate: "2027-03-02",
+      startTime: "21:00",
+      endTime: "22:00",
+      location: "Zoom",
+      mandatory: false,
+      notes: "One of two backup holds.",
+    },
+    privacy: "private",
+  };
+  assert.equal(validateAiImportBundle(bundle), true);
+});
+
+test("keeps only the richer pending add proposal for the same study event", () => {
+  const firstBundle = validResourceBundle();
+  firstBundle.proposals[0] = {
+    ...firstBundle.proposals[0],
+    id: "proposal-study-event-basic-2027-01-15",
+    entity: "study-event",
+    action: "add",
+    value: {
+      id: "study-event-briefing",
+      title: "Pre-arrival briefing",
+      kind: "orientation",
+      startDate: "2027-03-02",
+      startTime: "21:00",
+      mandatory: false,
+      notes: "Calendar hold.",
+    },
+    privacy: "private",
+  };
+  const secondBundle = structuredClone(firstBundle);
+  secondBundle.generatedAt = "2027-01-15T13:00:00+01:00";
+  secondBundle.sources[0].id = "source-school-briefing-richer-2027-01-15";
+  secondBundle.proposals[0] = {
+    ...secondBundle.proposals[0],
+    id: "proposal-study-event-richer-2027-01-15",
+    value: { ...secondBundle.proposals[0].value, endTime: "22:00", location: "Zoom" },
+    evidenceIds: [secondBundle.sources[0].id],
+  };
+
+  const afterFirst = importAiBundle(cleanState(), firstBundle, "run-basic");
+  const afterSecond = importAiBundle(afterFirst, secondBundle, "run-richer");
+  assert.deepEqual(afterSecond.aiInbox?.proposals.map(({ id, status }) => ({ id, status })), [
+    { id: "proposal-study-event-basic-2027-01-15", status: "dismissed" },
+    { id: "proposal-study-event-richer-2027-01-15", status: "pending" },
+  ]);
 });
 
 test("keeps journey identity stable while editable destination facts change", () => {
@@ -397,9 +459,9 @@ test("accepts reviewed hotel bases and trip references but rejects hidden nested
     ...bundle.proposals[0],
     entity: "travel-plan",
     action: "update",
-    targetId: "travel-bangkok",
+    targetId: "travel-example",
     value: {
-      stays: [{ id: "stay-bangkok", name: "Bangkok Hotel", checkIn: "2026-09-26", checkOut: "2026-09-29", area: "Sukhumvit", address: "", mapsUrl: "https://maps.example/hotel", sourceUrl: "https://hotel.example", imageUrl: "https://hotel.example/photo.jpg", imageAlt: "Hotel", summary: "Convenient travel base.", highlights: ["Near transit"], notes: "" }],
+      stays: [{ id: "stay-example", name: "Example Hotel", checkIn: "2027-03-01", checkOut: "2027-03-04", area: "Central District", address: "", mapsUrl: "https://maps.example/hotel", sourceUrl: "https://hotel.example", imageUrl: "https://hotel.example/photo.jpg", imageAlt: "Hotel", summary: "Convenient travel base.", highlights: ["Near transit"], notes: "" }],
       references: [{ id: "reference-map", label: "Shared map", kind: "map-list", url: "https://maps.example/list", description: "Trip planning list." }],
     },
   };

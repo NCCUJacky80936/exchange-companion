@@ -192,11 +192,11 @@ function ShareTravelModal({ plan, cloud, onPlanPublished, onClose }: { plan: Tra
 }
 
 const activityMeta: Record<TravelActivityKind, { label: string; icon: string; color: string }> = {
-  place: { label: "景點", icon: "/images/doodle-icons-v2/journey-route.png", color: "terracotta" },
-  food: { label: "餐廳", icon: "/images/doodle-icons-v2/home-notebook.png", color: "yellow" },
-  transport: { label: "交通", icon: "/images/doodle-icons-v2/travel-suitcase.png", color: "blue" },
-  stay: { label: "住宿", icon: "/images/doodle-icons-v2/home-notebook.png", color: "sage" },
-  note: { label: "備忘", icon: "/images/doodle-icons-v2/resources-book.png", color: "gray" },
+  place: { label: "景點", icon: "/images/doodle-icons-v2/journey-route.webp", color: "terracotta" },
+  food: { label: "餐廳", icon: "/images/doodle-icons-v2/home-notebook.webp", color: "yellow" },
+  transport: { label: "交通", icon: "/images/doodle-icons-v2/travel-suitcase.webp", color: "blue" },
+  stay: { label: "住宿", icon: "/images/doodle-icons-v2/home-notebook.webp", color: "sage" },
+  note: { label: "備忘", icon: "/images/doodle-icons-v2/resources-book.webp", color: "gray" },
 };
 
 const studyEventMeta: Record<StudyEventKind, { label: string; className: string }> = {
@@ -250,10 +250,6 @@ function overlaps(startDate: string, endDate: string, event: StudyEvent): boolea
     .some((date) => new Date(`${date}T12:00:00`).getDay() === weekday);
 }
 
-function travelDuration(plan: TravelPlan): number {
-  return enumerateDates(plan.startDate, plan.endDate).length;
-}
-
 function commitmentKey(event: StudyEvent): string {
   const title = event.title.toLowerCase();
   if (title.includes("orientation")) return `${event.startDate}-orientation`;
@@ -273,17 +269,20 @@ function downloadTravel(plan: TravelPlan): void {
 }
 
 function TravelModal({ plan, onClose, onSave }: { plan: TravelPlan | null; onClose: () => void; onSave: (plan: TravelPlan) => void }) {
+  const [title, setTitle] = useState(plan?.title ?? "");
+  const titleLength = Array.from(title).length;
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const startDate = form.get("startDate")?.toString() ?? "";
     const endDate = form.get("endDate")?.toString() ?? "";
-    if (!startDate || !endDate || endDate < startDate) return;
+    if (!title.trim() || titleLength > 10 || !startDate || !endDate || endDate < startDate) return;
     const now = new Date().toISOString();
     onSave({
       id: plan?.id ?? `travel-${Date.now()}`,
       kind: "travel",
-      title: form.get("title")?.toString().trim() ?? "",
+      title: title.trim(),
       destinations: (form.get("destinations")?.toString() ?? "").split(/[、,，]/).map((item) => item.trim()).filter(Boolean),
       startDate,
       endDate,
@@ -309,7 +308,7 @@ function TravelModal({ plan, onClose, onSave }: { plan: TravelPlan | null; onClo
           <button className="icon-button" type="button" onClick={onClose} aria-label="關閉"><X size={20} /></button>
         </div>
         <form className="form-grid" onSubmit={submit}>
-          <label className="field field-full"><span>旅行名稱</span><input name="title" defaultValue={plan?.title} placeholder="例如：聖誕假期去布拉格" required /></label>
+          <label className="field field-full"><span>旅行名稱</span><input name="title" value={title} maxLength={10} aria-describedby="travel-title-limit" aria-invalid={titleLength > 10} onChange={(event) => setTitle(Array.from(event.target.value).slice(0, 10).join(""))} placeholder="例如：聖誕假期去布拉格" required /><small id="travel-title-limit">{titleLength}/10 個字，會完整顯示在旅行車票上。</small></label>
           <label className="field field-full"><span>城市／國家</span><input name="destinations" defaultValue={plan?.destinations.join("、")} placeholder="可輸入多個：Prague、Vienna" required /><small>先丟進想去的城市，之後再慢慢補細節。</small></label>
           <label className="field"><span>開始日期</span><input type="date" name="startDate" defaultValue={plan?.startDate} required /></label>
           <label className="field"><span>結束日期</span><input type="date" name="endDate" defaultValue={plan?.endDate} required /></label>
@@ -317,7 +316,7 @@ function TravelModal({ plan, onClose, onSave }: { plan: TravelPlan | null; onClo
           <div className="field"><span>旅行預算</span><div className="inline-fields"><input aria-label="旅行預算金額" name="budget" type="number" min="0" step="1" defaultValue={plan?.budget ?? 0} /><select name="currency" defaultValue={plan?.currency ?? exchangeProfile.primaryCurrency} aria-label="旅行預算幣別">{exchangeCurrencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}</select></div></div>
           <label className="field field-full"><span>旅行想法</span><textarea name="notes" rows={3} defaultValue={plan?.notes} placeholder="想做什麼、從哪裡看到的靈感、一定要吃什麼…" /></label>
           <div className="travel-modal-note field-full"><GraduationCap size={19} /><span>儲存後會自動比對上課、考試、Orientation 與交換期限。</span></div>
-          <div className="modal-actions field-full"><button type="button" className="button secondary" onClick={onClose}>取消</button><button className="button primary" type="submit"><Check size={17} />{plan ? "儲存變更" : "建立旅行"}</button></div>
+          <div className="modal-actions field-full"><button type="button" className="button secondary" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={!title.trim() || titleLength > 10}><Check size={17} />{plan ? "儲存變更" : "建立旅行"}</button></div>
         </form>
       </motion.div>
     </motion.div>
@@ -400,15 +399,15 @@ function StudyEventDialog({ event, course, onSave, onClose }: { event?: StudyEve
   }
   return <MotionDialog id="study-event-dialog-title" eyebrow={course ? "Course schedule" : "Do not overlap"} title={event ? (course ? "編輯課程" : "編輯不可撞期事項") : (course ? "新增課程" : "新增不可撞期事項")} onClose={onClose} className="study-event-dialog">
     <form className="form-grid study-event-modal-form" onSubmit={submit}>
-      <label className="field field-full"><span>{course ? "課程名稱" : "事項名稱"}</span><input name="title" defaultValue={event?.title} placeholder={course ? "例如：Integrated Product Design" : "課程、考試或重要期限"} required /></label>
+      <label className="field field-full"><span>{course ? "課程名稱" : "事項名稱"}</span><input name="title" defaultValue={event?.title} placeholder={course ? "例如：交換課程名稱" : "課程、考試或重要期限"} required /></label>
       {!course ? <label className="field"><span>類型</span><select name="kind" defaultValue={event?.kind ?? "deadline"}>{Object.entries(studyEventMeta).filter(([id]) => id !== "class").map(([id, meta]) => <option value={id} key={id}>{meta.label}</option>)}</select></label> : null}
       {course ? <label className="field"><span>每週星期</span><select name="weekday" defaultValue={event?.weekday ?? ""} required><option value="" disabled>選擇星期</option>{["一", "二", "三", "四", "五"].map((day, index) => <option value={index + 1} key={day}>星期{day}</option>)}</select></label> : null}
-      <label className="field"><span>{course ? "Semester / Term" : "學期／期間（選填）"}</span><input name="semester" defaultValue={event?.semester} placeholder="WiSe 2026/27" /></label>
+      <label className="field"><span>{course ? "Semester / Term" : "學期／期間（選填）"}</span><input name="semester" defaultValue={event?.semester} placeholder="例如：Fall 2027" /></label>
       <label className="field"><span>開始日期</span><input type="date" name="startDate" defaultValue={event?.startDate} required /></label>
       <label className="field"><span>結束日期</span><input type="date" name="endDate" defaultValue={event?.endDate} /></label>
       <label className="field"><span>開始時間</span><input type="time" name="startTime" defaultValue={event?.startTime} required={course} /></label>
       <label className="field"><span>結束時間</span><input type="time" name="endTime" defaultValue={event?.endTime} required={course} /></label>
-      {course ? <><label className="field"><span>地點</span><input name="location" defaultValue={event?.location} placeholder="HdM Nobelstraße" /></label><label className="field"><span>教室</span><input name="classroom" defaultValue={event?.classroom} /></label><label className="field"><span>教師</span><input name="teacher" defaultValue={event?.teacher} /></label></> : null}
+      {course ? <><label className="field"><span>地點</span><input name="location" defaultValue={event?.location} placeholder="交換學校校區" /></label><label className="field"><span>教室</span><input name="classroom" defaultValue={event?.classroom} /></label><label className="field"><span>教師</span><input name="teacher" defaultValue={event?.teacher} /></label></> : null}
       <label className="field field-full"><span>備註</span><textarea name="notes" rows={3} defaultValue={event?.notes} /></label>
       <label className="field confirmation-field"><input type="checkbox" name="mandatory" defaultChecked={event?.mandatory ?? true} /><span>一定不能撞期</span></label>
       {!course ? <label className="field confirmation-field"><input type="checkbox" name="repeatWeekly" defaultChecked={event?.repeatWeekly} /><span>每週重複</span></label> : null}
@@ -429,6 +428,7 @@ function timeToMinutes(value?: string): number | null {
 }
 
 function CourseTimetable({ events, onEdit, onDelete }: { events: StudyEvent[]; onEdit: (event: StudyEvent) => void; onDelete: (event: StudyEvent) => void }) {
+  const [activeCourseId, setActiveCourseId] = useState("");
   const placed = events.filter((event) => event.weekday && timeToMinutes(event.startTime) !== null);
   const unplaced = events.filter((event) => !event.weekday || timeToMinutes(event.startTime) === null);
   const hourCount = courseGridEndHour - courseGridStartHour;
@@ -442,13 +442,14 @@ function CourseTimetable({ events, onEdit, onDelete }: { events: StudyEvent[]; o
           <div className="course-time-axis" aria-hidden="true">{Array.from({ length: hourCount + 1 }, (_, index) => <span key={index}>{String(courseGridStartHour + index).padStart(2, "0")}:00</span>)}</div>
           <div className="course-day-columns">
             {courseWeekdays.map((day, dayIndex) => <div className="course-day-column" aria-label={`星期${day}`} key={day}>
-              {placed.filter((event) => event.weekday === dayIndex + 1).map((event) => {
+              {placed.filter((event) => event.weekday === dayIndex + 1).map((event, courseIndex) => {
                 const start = timeToMinutes(event.startTime) ?? courseGridStartHour * 60;
                 const end = timeToMinutes(event.endTime) ?? start + 60;
                 const top = Math.max(0, (start - courseGridStartHour * 60) / 60 * courseHourHeight);
                 const height = Math.max(44, (Math.max(end, start + 30) - start) / 60 * courseHourHeight);
-                return <article className="course-slot" style={{ top, height }} key={event.id}>
+                return <article className={`course-slot tone-${(dayIndex + courseIndex) % 4} ${activeCourseId === event.id ? "actions-open" : ""}`} style={{ top, height }} key={event.id}>
                   <div><strong>{event.title}</strong><small>{event.startTime}–{event.endTime || "未定"}{event.classroom ? ` · ${event.classroom}` : event.location ? ` · ${event.location}` : ""}</small></div>
+                  <button className="course-slot-more" onClick={() => setActiveCourseId((current) => current === event.id ? "" : event.id)} aria-label={`${activeCourseId === event.id ? "收合" : "開啟"} ${event.title} 操作`} aria-expanded={activeCourseId === event.id}><MoreHorizontal size={14} /></button>
                   <div className="course-slot-actions"><button className="icon-button" onClick={() => onEdit(event)} aria-label={`編輯 ${event.title}`} title="編輯"><Pencil size={13} /></button><button className="icon-button danger" onClick={() => onDelete(event)} aria-label={`刪除 ${event.title}`} title="刪除"><Trash2 size={13} /></button></div>
                 </article>;
               })}
@@ -659,7 +660,7 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
       {plans.length === 0 ? (
         <div className="travel-empty-layout travel-empty-layout-single">
           <motion.section className="travel-empty paper-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="empty-route-art"><Image src="/images/doodle-icons-v2/travel-suitcase.png" alt="手繪旅行行李圖示" width={180} height={180} /></div>
+            <div className="empty-route-art"><Image src="/images/doodle-icons-v2/travel-suitcase.webp" alt="手繪旅行行李圖示" width={180} height={180} /></div>
             <p className="eyebrow">An empty page is a good start</p>
             <h2>還沒有旅行，先留一張空白車票</h2>
             <p>只要先決定「想去哪」和「哪幾天」，住宿、交通、景點與預算都可以之後再補。</p>
@@ -678,25 +679,28 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
                 const temporalStatus = travelTemporalStatus(plan, today);
                 const expanded = selectedPlan.id === plan.id && expandedTripId === plan.id;
                 return (
-                  <motion.article layout="position" id={`trip-${plan.id}`} key={plan.id} className={`trip-accordion-item ${temporalStatus} ${expanded ? "expanded" : "collapsed"} ${spotlightTripId === plan.id ? "trip-attention" : ""}`}>
-                  <motion.button
+                  <motion.article layout="position" transition={{ layout: { duration: reduceMotion ? 0 : 0.28, ease: [0.22, 1, 0.36, 1] } }} id={`trip-${plan.id}`} key={plan.id} className={`trip-accordion-item paper-card ${temporalStatus} ${expanded ? "expanded" : "collapsed"} ${spotlightTripId === plan.id ? "trip-attention" : ""}`}>
+                  <AnimatePresence initial={false} mode="popLayout">
+                  {!expanded ? <motion.button
+                    key={`trip-cover-${plan.id}`}
                     className={`trip-ticket ${expanded ? "active" : ""}`}
                     aria-expanded={expanded}
                     aria-controls={`trip-panel-${plan.id}`}
+                    initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, transition: { duration: 0 } }}
                     whileTap={reduceMotion ? undefined : { y: 2, scale: 0.995 }}
-                    transition={{ type: "spring", stiffness: 520, damping: 32 }}
+                    transition={reduceMotion ? { duration: 0 } : { duration: 0.06, ease: "easeOut" }}
                     onClick={() => toggleTrip(plan)}
                   >
                     <span className="trip-ticket-index">0{index + 1}</span>
-                    <div><strong>{plan.title}</strong><small>{formatDateRange(plan.startDate, plan.endDate)}</small><em>{plan.destinations.join(" · ")}</em></div>
+                    <div className="trip-ticket-copy"><strong>{plan.title}</strong><small>{formatDateRange(plan.startDate, plan.endDate)}</small><em>{plan.destinations.join(" · ")}</em></div>
                     <span className="trip-ticket-end"><span className="trip-time-label">{temporalStatus === "past" ? "已結束" : temporalStatus === "ongoing" ? "旅途中" : "即將出發"}</span>{planConflicts.length ? <span className="trip-conflict-count"><AlertTriangle size={13} />{planConflicts.length}</span> : <span className="trip-safe"><Check size={13} /></span>}<span className="trip-accordion-chevron"><ChevronDown size={19} /></span></span>
-                  </motion.button>
-                  <AnimatePresence initial={false}>
-                  {expanded ? <motion.div id={`trip-panel-${plan.id}`} className="trip-accordion-panel" initial={reduceMotion ? false : { height: 0, opacity: 0, y: -8 }} animate={{ height: "auto", opacity: 1, y: 0 }} exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0, y: -5 }} transition={reduceMotion ? { duration: 0 } : { height: { duration: 0.32, ease: [0.22, 1, 0.36, 1] }, opacity: { duration: 0.2 }, y: { type: "spring", stiffness: 430, damping: 34 } }}>
+                  </motion.button> : <motion.div key={`trip-content-${plan.id}`} id={`trip-panel-${plan.id}`} className="trip-accordion-panel" role="region" aria-label={`${plan.title}旅行內容`} initial={reduceMotion ? false : { height: 0, opacity: 1 }} animate={{ height: "auto", opacity: 1 }} exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0, transition: { opacity: { duration: 0 }, height: { duration: 0.24, ease: [0.4, 0, 1, 1] } } }} transition={reduceMotion ? { duration: 0 } : { height: { duration: 0.32, ease: [0.22, 1, 0.36, 1] }, opacity: { duration: 0 } }}>
                   <div className="travel-main">
             <section className="travel-overview paper-card">
-              <div className="travel-overview-top"><span className="trip-stamp">TRIP<br />{new Date(selectedPlan.startDate).getFullYear()}</span><div><p className="eyebrow">{travelDuration(selectedPlan)} days · {selectedPlan.travelers || "traveler not set"}</p><h2>{selectedPlan.title}</h2><p>{formatDateRange(selectedPlan.startDate, selectedPlan.endDate)}{selectedPlan.cloud?.published ? ` · ${selectedPlan.cloud.permission === "viewer" ? "唯讀共編" : selectedPlan.cloud.permission === "editor" ? "共同編輯" : "雲端旅行"}` : ""}</p></div><div className="travel-overview-actions"><div className="travel-action-menu" ref={tripActionsRef}><button className={`icon-button ${tripActionsOpen ? "active" : ""}`} onClick={() => setTripActionsOpen((open) => !open)} aria-expanded={tripActionsOpen} aria-haspopup="menu" aria-controls={`travel-actions-${selectedPlan.id}`} aria-label="更多旅行操作"><MoreHorizontal size={18} /></button>{tripActionsOpen ? <div id={`travel-actions-${selectedPlan.id}`} className="travel-action-popover paper-card" role="menu"><button role="menuitem" onClick={() => { void copySummary(); setTripActionsOpen(false); }}><Copy size={15} />{copied ? "已複製摘要" : "複製摘要"}</button><button role="menuitem" onClick={() => { downloadTravel(selectedPlan); setTripActionsOpen(false); }}><Download size={15} />匯出旅行</button><button role="menuitem" onClick={() => { setSharing(true); setTripActionsOpen(false); }}><Share2 size={15} />分享與共編</button></div> : null}</div>{editable ? <><button className="icon-button" onClick={() => setEditingPlan(selectedPlan)} aria-label="編輯旅行"><Pencil size={16} /></button><button className="icon-button danger" onClick={() => setDeleteConfirmId(selectedPlan.id)} aria-label="刪除旅行"><Trash2 size={16} /></button></> : null}</div></div>
-              <div className="destination-route">{selectedPlan.destinations.map((destination, index) => <span key={`${destination}-${index}`}><MapPin size={15} /><strong>{destination}</strong>{index < selectedPlan.destinations.length - 1 ? <i /> : null}</span>)}</div>
+              <div className="travel-overview-heading"><div className="travel-overview-title"><h2>{selectedPlan.title}</h2><small>{formatDateRange(selectedPlan.startDate, selectedPlan.endDate)}</small></div><motion.button className="trip-panel-toggle" type="button" aria-expanded="true" aria-controls={`trip-panel-${plan.id}`} aria-label={`收合 ${selectedPlan.title}`} whileTap={reduceMotion ? undefined : { y: 2, scale: 0.96 }} onClick={() => toggleTrip(plan)}><ChevronDown size={20} /></motion.button></div>
+              <div className="travel-overview-toolbar"><div className="destination-route">{selectedPlan.destinations.map((destination, index) => <span key={`${destination}-${index}`}><MapPin size={15} /><strong>{destination}</strong>{index < selectedPlan.destinations.length - 1 ? <i /> : null}</span>)}</div><div className="travel-overview-actions trip-cover-actions"><div className="travel-action-menu" ref={tripActionsRef}><button className={`icon-button ${tripActionsOpen ? "active" : ""}`} onClick={() => setTripActionsOpen((open) => !open)} aria-expanded={tripActionsOpen} aria-haspopup="menu" aria-controls={`travel-actions-${selectedPlan.id}`} aria-label="更多旅行操作"><MoreHorizontal size={18} /></button>{tripActionsOpen ? <div id={`travel-actions-${selectedPlan.id}`} className="travel-action-popover paper-card" role="menu"><button role="menuitem" onClick={() => { void copySummary(); setTripActionsOpen(false); }}><Copy size={15} />{copied ? "已複製摘要" : "複製摘要"}</button><button role="menuitem" onClick={() => { downloadTravel(selectedPlan); setTripActionsOpen(false); }}><Download size={15} />匯出旅行</button><button role="menuitem" onClick={() => { setSharing(true); setTripActionsOpen(false); }}><Share2 size={15} />分享與共編</button></div> : null}</div>{editable ? <><button className="icon-button" onClick={() => setEditingPlan(selectedPlan)} aria-label="編輯旅行"><Pencil size={16} /></button><button className="icon-button danger" onClick={() => setDeleteConfirmId(selectedPlan.id)} aria-label="刪除旅行"><Trash2 size={16} /></button></> : null}</div></div>
               {selectedPlan.notes ? <p className="travel-note">“{selectedPlan.notes}”</p> : null}
               <div className="travel-metrics"><div><span>預算</span><strong>{selectedPlan.currency} {selectedPlan.budget.toLocaleString()}</strong></div><div><span>已排費用</span><strong>{selectedPlan.currency} {plannedCost.toLocaleString()}</strong></div><div><span>已排景點</span><strong>{selectedPlan.days.reduce((sum, day) => sum + day.activities.length, 0)}</strong></div></div>
             </section>
@@ -714,9 +718,9 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
             <section className="itinerary-board paper-card">
               <div className="itinerary-heading"><div><p className="eyebrow">Trip handbook</p><h2>{tripView === "itinerary" ? "行程與地圖" : tripView === "notes" ? "注意事項" : "旅行行李"}</h2></div></div>
               <div className="trip-section-tabs" role="tablist" aria-label="旅行手冊內容">
-                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "itinerary"} className={tripView === "itinerary" ? "active" : ""} onClick={() => setTripView("itinerary")}><Image src="/images/doodle-icons-v2/journey-route.png" alt="" width={28} height={28} /><span>行程與地圖</span><small>{selectedPlan.days.reduce((sum, day) => sum + day.activities.length, 0)} 個地點</small></motion.button>
-                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "notes"} className={tripView === "notes" ? "active" : ""} onClick={() => setTripView("notes")}><Image src="/images/doodle-icons-v2/resources-book.png" alt="" width={28} height={28} /><span>注意事項</span><small>{selectedPlan.travelNotes.length} 則提醒</small></motion.button>
-                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "packing"} className={tripView === "packing" ? "active" : ""} onClick={() => setTripView("packing")}><Image src="/images/doodle-icons-v2/travel-suitcase.png" alt="" width={28} height={28} /><span>旅行行李</span><small>{selectedPlan.packingItems.filter((item) => item.packed).length}/{selectedPlan.packingItems.length} 已裝</small></motion.button>
+                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "itinerary"} className={tripView === "itinerary" ? "active" : ""} onClick={() => setTripView("itinerary")}><Image src="/images/doodle-icons-v2/journey-route.webp" alt="" width={28} height={28} /><span>行程與地圖</span><small>{selectedPlan.days.reduce((sum, day) => sum + day.activities.length, 0)} 個地點</small></motion.button>
+                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "notes"} className={tripView === "notes" ? "active" : ""} onClick={() => setTripView("notes")}><Image src="/images/doodle-icons-v2/resources-book.webp" alt="" width={28} height={28} /><span>注意事項</span><small>{selectedPlan.travelNotes.length} 則提醒</small></motion.button>
+                <motion.button whileTap={reduceMotion ? undefined : { y: 2 }} role="tab" aria-selected={tripView === "packing"} className={tripView === "packing" ? "active" : ""} onClick={() => setTripView("packing")}><Image src="/images/doodle-icons-v2/travel-suitcase.webp" alt="" width={28} height={28} /><span>旅行行李</span><small>{selectedPlan.packingItems.filter((item) => item.packed).length}/{selectedPlan.packingItems.length} 已裝</small></motion.button>
               </div>
               {tripView === "itinerary" ? <>
               <TravelStaySection plan={selectedPlan} readOnly={!editable} onUpdate={(plan) => updatePlan(plan.id, () => plan)} />
@@ -753,7 +757,7 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
               <div className="travel-sharing-note"><Sparkles size={16} /><span>這裡匯出的只有旅行內容，不包含簽證、帳戶、住宿合約或私人交換進度。</span></div>
             </section>
           </div>
-                  </motion.div> : null}
+                  </motion.div>}
                   </AnimatePresence>
                   </motion.article>
                 );

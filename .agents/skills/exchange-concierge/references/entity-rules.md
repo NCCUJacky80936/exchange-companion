@@ -8,7 +8,7 @@ If the handoff contains placeholder journey fields, or authorized evidence prove
 
 ## Resources and pasted URLs
 
-- A new person's resource library begins empty. Never inherit another person's Germany, Stuttgart, HdM, or travel bookmarks.
+- A new person's resource library begins empty. Never inherit another person's destination, school, city, or travel bookmarks.
 - Authorized upload/message resources use `origin: user-upload`, remain `private`, and cite a concise label without revealing a private link or source contents.
 - Web research uses `origin: ai-research` and must match the actual nationality, destination, school, dates, or explicit user need.
 - Give each resource a self-contained `description` and substantive `details`: who it applies to, preparation, steps, deadlines, and what must be rechecked. Add 4–12 de-identified `searchTags` using likely queries and synonyms.

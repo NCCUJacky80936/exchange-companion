@@ -117,6 +117,59 @@ def canonical_hash(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def telegram_run_key(moment: datetime | None = None) -> str:
+    current = moment or datetime.now().astimezone()
+    digest = hashlib.sha256(current.isoformat().encode("utf-8")).hexdigest()[:8]
+    return f"run-{current.strftime('%Y%m%d-%H%M%S')}-telegram-{digest}"
+
+
+def safe_telegram_batch(batch: dict[str, Any]) -> tuple[str | None, list[dict[str, str]]]:
+    lease_id = batch.get("leaseId")
+    raw_requests = batch.get("requests")
+    if lease_id is not None and (not isinstance(lease_id, str) or not lease_id.startswith("tql_")):
+        raise ValueError("Telegram claim returned an invalid lease")
+    if not isinstance(raw_requests, list) or len(raw_requests) > 20:
+        raise ValueError("Telegram claim returned an invalid request list")
+    requests: list[dict[str, str]] = []
+    total_characters = 0
+    request_ids: set[str] = set()
+    for item in raw_requests:
+        if not isinstance(item, dict):
+            raise ValueError("Telegram claim returned an invalid request")
+        request_id = item.get("requestId")
+        text = item.get("text")
+        received_at = item.get("receivedAt")
+        parent_request_id = item.get("parentRequestId")
+        if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f-]{36}", request_id, re.IGNORECASE):
+            raise ValueError("Telegram claim returned an invalid request ID")
+        if request_id in request_ids or not isinstance(text, str) or not text or len(text) > 4096 or not isinstance(received_at, str):
+            raise ValueError("Telegram claim returned invalid request content")
+        if parent_request_id is not None and (not isinstance(parent_request_id, str) or not re.fullmatch(r"[0-9a-f-]{36}", parent_request_id, re.IGNORECASE)):
+            raise ValueError("Telegram claim returned an invalid parent request ID")
+        request = {"requestId": request_id, "text": text, "receivedAt": received_at}
+        if parent_request_id is not None:
+            request["parentRequestId"] = parent_request_id
+        requests.append(request)
+        request_ids.add(request_id)
+        total_characters += len(text)
+    if total_characters > 32_000 or (requests and not lease_id) or (not requests and lease_id):
+        raise ValueError("Telegram claim returned inconsistent lease metadata")
+    return lease_id, requests
+
+
+def active_telegram_lease(run_state: dict[str, Any]) -> tuple[str, list[str]] | None:
+    telegram = run_state.get("telegram")
+    if not isinstance(telegram, dict):
+        return None
+    lease_id = telegram.get("leaseId")
+    request_ids = telegram.get("requestIds")
+    if not isinstance(lease_id, str) or not lease_id.startswith("tql_") or not isinstance(request_ids, list) or not request_ids:
+        return None
+    if any(not isinstance(item, str) or not re.fullmatch(r"[0-9a-f-]{36}", item, re.IGNORECASE) for item in request_ids):
+        raise ValueError("Prepared Telegram run state is invalid")
+    return lease_id, request_ids
+
+
 def handoff_state(handoff: dict[str, Any]) -> dict[str, Any]:
     if handoff.get("kind") != "exchange-companion-handoff" or handoff.get("schemaVersion") != 1:
         raise ValueError("Handoff must be exchange-companion-handoff schemaVersion 1")
@@ -269,6 +322,8 @@ def prepare(args: argparse.Namespace) -> None:
     bundle_path = repo_path(args.bundle)
     coverage_path = repo_path(args.coverage)
 
+    if args.include_telegram and args.no_pull:
+        raise ValueError("Telegram claims require a fresh cloud pull; remove --no-pull")
     if not args.no_pull:
         if not connection.exists():
             raise ValueError(f"Cloud connection is missing: {connection}")
@@ -281,6 +336,22 @@ def prepare(args: argparse.Namespace) -> None:
             "--output",
             str(handoff_path),
         ])
+    telegram_lease_id: str | None = None
+    telegram_requests: list[dict[str, str]] = []
+    if args.include_telegram:
+        context_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="telegram-claim-", dir=context_path.parent) as directory:
+            claim_path = Path(directory) / "batch.json"
+            run_checked([
+                sys.executable,
+                str(SCRIPT_DIR / "concierge_cloud_sync.py"),
+                "--connection",
+                str(connection),
+                "claim",
+                "--output",
+                str(claim_path),
+            ])
+            telegram_lease_id, telegram_requests = safe_telegram_batch(read_object(claim_path))
     if not handoff_path.exists():
         raise ValueError(f"Handoff is missing: {handoff_path}")
 
@@ -388,6 +459,11 @@ def prepare(args: argparse.Namespace) -> None:
             "A full weekly run audits every authorized evidence category; a targeted run follows only the current event plus its cross-surface dependencies.",
         ],
     }
+    if args.include_telegram:
+        context["telegramRequests"] = telegram_requests
+        context["instructions"].append(
+            "Telegram requests are de-identified private evidence. Use only their requestId, text, receivedAt, and parentRequestId fields."
+        )
     atomic_write_json(context_path, context, compact=True)
 
     run_state = {
@@ -401,14 +477,22 @@ def prepare(args: argparse.Namespace) -> None:
         "fileFingerprints": file_fingerprints,
         "scanRoot": str(scan_root) if scan_root else checkpoint.get("scanRoot"),
     }
+    if telegram_lease_id:
+        run_state["runKey"] = telegram_run_key()
+        run_state["telegram"] = {
+            "leaseId": telegram_lease_id,
+            "requestIds": [item["requestId"] for item in telegram_requests],
+        }
     atomic_write_json(run_state_path, run_state)
     context_chars = len(json.dumps(context, ensure_ascii=False))
     reported_changes = context["entityChangesSinceCheckpoint"]
     changed_entities = sum(len(values[kind]) for values in reported_changes.values() for kind in ("added", "modified", "removed"))
     matched_entities = sum(len(items) for items in matches.values())
+    telegram_report = f" telegram_requests={len(telegram_requests)}" if args.include_telegram else ""
     print(
         f"PREPARED mode={args.mode} revision={handoff.get('baseRevision')} context_chars={context_chars} "
         f"matches={matched_entities} changed_entities={changed_entities} changed_files={file_change_summary['total']}"
+        f"{telegram_report}"
     )
 
 
@@ -443,6 +527,89 @@ def validate_noop(bundle: dict[str, Any], coverage: dict[str, Any]) -> None:
         raise ValueError("A no-proposal run requires every surface to be no-new-evidence")
 
 
+def update_telegram_run_state(run_state_path: Path, run_state: dict[str, Any], **updates: Any) -> None:
+    telegram = run_state.get("telegram")
+    if not isinstance(telegram, dict):
+        raise ValueError("Prepared run has no active Telegram lease")
+    telegram.update(updates)
+    run_state["telegram"] = telegram
+    atomic_write_json(run_state_path, run_state)
+
+
+def clarify_telegram(args: argparse.Namespace) -> None:
+    run_state_path = repo_path(args.run_state)
+    run_state = read_object(run_state_path)
+    lease = active_telegram_lease(run_state)
+    if not lease:
+        raise ValueError("Prepared run has no active Telegram lease")
+    lease_id, request_ids = lease
+    request_id = args.request_id
+    if request_id is None:
+        if len(request_ids) != 1:
+            raise ValueError("Use --request-id when the run contains more than one Telegram request")
+        request_id = request_ids[0]
+    if request_id not in request_ids:
+        raise ValueError("Telegram request is not part of the current lease")
+    connection_path = repo_path(args.connection)
+    if not connection_path.exists():
+        raise ValueError(f"Cloud connection is missing: {connection_path}")
+    run_checked([
+        sys.executable,
+        str(SCRIPT_DIR / "concierge_cloud_sync.py"),
+        "--connection",
+        str(connection_path),
+        "clarify",
+        "--lease-id",
+        lease_id,
+        "--request-id",
+        request_id,
+        "--question",
+        args.question,
+    ])
+    remaining = [item for item in request_ids if item != request_id]
+    update_telegram_run_state(
+        run_state_path,
+        run_state,
+        leaseId=lease_id if remaining else None,
+        requestIds=remaining,
+        clarifiedRequestIds=sorted(set(run_state.get("telegram", {}).get("clarifiedRequestIds", [])) | {request_id}),
+    )
+    print(f"CLARIFIED request={request_id}")
+
+
+def fail_telegram(args: argparse.Namespace) -> None:
+    run_state_path = repo_path(args.run_state)
+    run_state = read_object(run_state_path)
+    lease = active_telegram_lease(run_state)
+    if not lease:
+        raise ValueError("Prepared run has no active Telegram lease")
+    lease_id, request_ids = lease
+    connection_path = repo_path(args.connection)
+    if not connection_path.exists():
+        raise ValueError(f"Cloud connection is missing: {connection_path}")
+    run_checked([
+        sys.executable,
+        str(SCRIPT_DIR / "concierge_cloud_sync.py"),
+        "--connection",
+        str(connection_path),
+        "fail",
+        "--lease-id",
+        lease_id,
+        *[argument for request_id in request_ids for argument in ("--request-id", request_id)],
+        "--error",
+        args.error,
+    ])
+    update_telegram_run_state(
+        run_state_path,
+        run_state,
+        leaseId=None,
+        requestIds=[],
+        failedAt=now_iso(),
+        failureReason=args.error,
+    )
+    print(f"FAILED_TELEGRAM requests={len(request_ids)}")
+
+
 def finalize(args: argparse.Namespace) -> None:
     handoff_path = repo_path(args.handoff)
     bundle_path = repo_path(args.bundle)
@@ -456,6 +623,7 @@ def finalize(args: argparse.Namespace) -> None:
     bundle = read_object(bundle_path)
     coverage = read_object(coverage_path)
     run_state = read_object(run_state_path)
+    telegram_lease = active_telegram_lease(run_state)
     if run_state.get("journeyScope") != handoff.get("journeyScope") or run_state.get("baseRevision") != handoff.get("baseRevision"):
         raise ValueError("Prepared run state does not match the current handoff")
     validate_noop(bundle, coverage)
@@ -478,18 +646,58 @@ def finalize(args: argparse.Namespace) -> None:
     sources = bundle.get("sources") if isinstance(bundle.get("sources"), list) else []
     push_output = ""
     pushed = False
+    delivery_run_key = run_state.get("runKey") if isinstance(run_state.get("runKey"), str) else ""
+    if telegram_lease and not re.fullmatch(r"run-\d{8}-\d{6}(?:-[a-z0-9]+)*", delivery_run_key):
+        raise ValueError("Prepared Telegram run is missing a valid run key")
     if args.push and proposals:
         if not connection_path.exists():
             raise ValueError(f"Cloud connection is missing: {connection_path}")
-        push_output = run_checked([
+        push_command = [
             sys.executable,
             str(SCRIPT_DIR / "concierge_cloud_sync.py"),
             "--connection",
             str(connection_path),
             "push",
             str(bundle_path),
-        ])
+        ]
+        if delivery_run_key:
+            push_command.extend(["--run-key", delivery_run_key])
+        push_output = run_checked(push_command)
         pushed = True
+
+    telegram_completed = False
+    telegram_complete_output = ""
+    if telegram_lease and args.push:
+        if not connection_path.exists():
+            raise ValueError(f"Cloud connection is missing: {connection_path}")
+        lease_id, request_ids = telegram_lease
+        outcome = "processed" if proposals else "no_change"
+        telegram_complete_output = run_checked([
+            sys.executable,
+            str(SCRIPT_DIR / "concierge_cloud_sync.py"),
+            "--connection",
+            str(connection_path),
+            "complete",
+            "--lease-id",
+            lease_id,
+            *[argument for request_id in request_ids for argument in ("--request-id", request_id)],
+            "--run-key",
+            delivery_run_key,
+            "--proposal-count",
+            str(len(proposals)),
+            "--outcome",
+            outcome,
+        ])
+        telegram_completed = True
+        update_telegram_run_state(
+            run_state_path,
+            run_state,
+            leaseId=None,
+            requestIds=[],
+            completedAt=now_iso(),
+            outcome=outcome,
+            proposalCount=len(proposals),
+        )
 
     changes = [
         {
@@ -523,10 +731,12 @@ def finalize(args: argparse.Namespace) -> None:
         "coverageAudit": coverage_output,
         "pushed": pushed,
         "pushResult": push_output,
+        "telegramCompleted": telegram_completed,
+        "telegramResult": telegram_complete_output,
     }
     atomic_write_json(summary_path, summary)
 
-    successful_delivery = pushed or not proposals or args.record_success
+    successful_delivery = telegram_completed if telegram_lease else pushed or not proposals or args.record_success
     if successful_delivery:
         checkpoint = {
             "schemaVersion": 1,
@@ -559,6 +769,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_parser.add_argument("--scan-root")
     prepare_parser.add_argument("--scan-extension", action="append", default=[])
     prepare_parser.add_argument("--no-pull", action="store_true")
+    prepare_parser.add_argument("--include-telegram", action="store_true")
     prepare_parser.add_argument("--connection", default=str(DEFAULT_CONNECTION))
     prepare_parser.add_argument("--handoff", default=str(DEFAULT_HANDOFF))
     prepare_parser.add_argument("--context", default=str(DEFAULT_CONTEXT))
@@ -585,6 +796,17 @@ def build_parser() -> argparse.ArgumentParser:
     finalize_parser.add_argument("--bundle", default=str(DEFAULT_BUNDLE))
     finalize_parser.add_argument("--coverage", default=str(DEFAULT_COVERAGE))
     finalize_parser.add_argument("--summary", default=str(DEFAULT_SUMMARY))
+
+    clarify_parser = subcommands.add_parser("clarify", help="ask a Force Reply question for a request in the current Telegram lease")
+    clarify_parser.add_argument("--connection", default=str(DEFAULT_CONNECTION))
+    clarify_parser.add_argument("--run-state", default=str(DEFAULT_RUN_STATE))
+    clarify_parser.add_argument("--request-id")
+    clarify_parser.add_argument("--question", required=True)
+
+    fail_parser = subcommands.add_parser("fail", help="record a processing failure for the current Telegram lease")
+    fail_parser.add_argument("--connection", default=str(DEFAULT_CONNECTION))
+    fail_parser.add_argument("--run-state", default=str(DEFAULT_RUN_STATE))
+    fail_parser.add_argument("--error", default="processing_failed")
     return parser
 
 
@@ -595,8 +817,12 @@ def main() -> int:
             prepare(args)
         elif args.command == "inspect":
             inspect_entities(args)
-        else:
+        elif args.command == "finalize":
             finalize(args)
+        elif args.command == "clarify":
+            clarify_telegram(args)
+        else:
+            fail_telegram(args)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 1

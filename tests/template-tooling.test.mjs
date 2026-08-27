@@ -17,23 +17,74 @@ test("validates the reusable profile, skills, and privacy boundary", () => {
   assert.match(run(process.execPath, ["scripts/privacy-check.mjs"]), /隱私檢查通過/);
 });
 
-test("installed app fetches the current notebook before using an offline fallback", async () => {
-  const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
-  const networkFetch = worker.indexOf("event.preloadResponse || fetch(request)");
-  const fallbackLookup = worker.indexOf("caches.match(NAVIGATION_FALLBACK)");
-  assert.ok(networkFetch >= 0 && fallbackLookup > networkFetch);
-  assert.doesNotMatch(worker, /caches\.match\("\/"\)/);
-  assert.match(worker, /exchange-companion-v2-8/);
-  assert.match(worker, /navigationPreload\?\.enable\(\)/);
+test("keeps public runtime defaults generic and profile-driven", async () => {
+  const [profile, companion, travelPlanner, travelStay, entityRules, creationSkill] = await Promise.all([
+    readFile(new URL("../config/exchange-profile.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../app/components/ExchangeCompanion.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/TravelPlanner.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/TravelStaySection.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../.agents/skills/exchange-concierge/references/entity-rules.md", import.meta.url), "utf8"),
+    readFile(new URL("../.agents/skills/create-exchange-companion/SKILL.md", import.meta.url), "utf8"),
+  ]);
+  assert.equal(profile.ownerName, "交換生");
+  assert.equal(profile.homeCity, "出發城市");
+  assert.equal(profile.hostCity, "交換城市");
+  assert.equal(profile.hostSchool, "交換學校");
+  assert.match(companion, /timeZone: exchangeProfile\.homeTimeZone/);
+  assert.doesNotMatch(companion, /timeZone:\s*"Asia\/Taipei"/);
+  assert.match(travelPlanner, /placeholder="交換學校校區"/);
+  assert.match(travelStay, /placeholder="例如：市中心／車站附近"/);
+  assert.match(entityRules, /destination, school, city, or travel bookmarks/);
+  assert.match(creationSkill, /template placeholders only/);
 });
 
-test("an existing PWA reopens itself once when the repaired worker takes control", async () => {
+test("builds a clean template clone without a personal Sites binding", async () => {
+  const viteConfig = await readFile(new URL("../vite.config.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(viteConfig, /import hostingConfig from/);
+  assert.match(viteConfig, /\.openai\/hosting\.json/);
+  assert.match(viteConfig, /code === "ENOENT"/);
+});
+
+test("concierge routes only bounded mechanical work to a low-cost model", async () => {
+  const skill = await readFile(new URL("../.agents/skills/exchange-concierge/SKILL.md", import.meta.url), "utf8");
+  assert.match(skill, /gpt-5\.6-luna/);
+  assert.match(skill, /provided deterministic scripts/);
+  assert.match(skill, /primary model must review every delegated result/);
+  assert.match(skill, /Do not delegate when copying enough context would cost more tokens/);
+});
+
+test("installed app fetches the current notebook before using an offline fallback", async () => {
+  const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
+  const networkFetch = worker.indexOf("const preloadResponse = await event.preloadResponse");
+  const fallbackLookup = worker.indexOf("caches.match(NAVIGATION_FALLBACK)");
+  assert.ok(networkFetch >= 0 && fallbackLookup > networkFetch);
+  assert.match(worker, /preloadResponse \?\? await fetch\(request\)/);
+  assert.doesNotMatch(worker, /event\.preloadResponse \|\| fetch\(request\)/);
+  assert.doesNotMatch(worker, /caches\.match\("\/"\)/);
+  assert.match(worker, /exchange-companion-v2-10/);
+  assert.match(worker, /navigationPreload\?\.enable\(\)/);
+  assert.match(worker, /if \(!immutableAsset && !refreshableAsset\) return/);
+});
+
+test("a worker update takes control without forcibly navigating open tabs", async () => {
   const register = await readFile(new URL("../app/components/PwaRegister.tsx", import.meta.url), "utf8");
   const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
   assert.match(register, /updateViaCache:\s*"none"/);
-  assert.match(worker, /hadOlderNotebookCache/);
-  assert.match(worker, /clients\.matchAll\(\{ type: "window" \}\)/);
-  assert.match(worker, /client\.navigate\(client\.url\)/);
+  assert.match(register, /readyState === "complete"/);
+  assert.match(register, /addEventListener\("load", register/);
+  assert.match(register, /requestIdleCallback/);
+  assert.match(register, /setTimeout\(update, 2_500\)/);
+  assert.match(worker, /self\.clients\.claim\(\)/);
+  assert.doesNotMatch(worker, /clients\.matchAll/);
+  assert.doesNotMatch(worker, /client\.navigate/);
+});
+
+test("travel realtime subscriptions do not reuse an already subscribed channel", async () => {
+  const cloud = await readFile(new URL("../app/lib/cloud.ts", import.meta.url), "utf8");
+  const hook = await readFile(new URL("../app/lib/useExchangeCloud.ts", import.meta.url), "utf8");
+  assert.match(cloud, /travel-plan:\$\{planId\}:\$\{travelSubscriptionSequence\}/);
+  assert.match(hook, /const sharedPlanIdsKey = sharedPlanIds\.join\(","\)/);
+  assert.match(hook, /sharedPlanIdsKey\.split\(","\)/);
 });
 
 test("mobile navigation keeps its controls above the iPhone home indicator", async () => {
@@ -112,7 +163,7 @@ test("validates a reviewable concierge import bundle", async () => {
       summary: "學校已公布日期，等待使用者確認。",
       entity: "study-event",
       action: "add",
-      value: { id: "orientation-2027", title: "Orientation", kind: "orientation", startDate: "2027-03-02", mandatory: true, notes: "" },
+      value: { id: "orientation-2027", title: "Orientation", kind: "orientation", startDate: "2027-03-02", startTime: "09:00", endTime: "10:00", location: "Online", mandatory: true, notes: "" },
       confidence: "high",
       privacy: "private",
       evidenceIds: ["source-school-2027-01-15"],
@@ -212,9 +263,9 @@ test("initializes a fresh import shell from the exact handoff instead of stale o
   const directory = await mkdtemp(join(tmpdir(), "exchange-companion-bound-import-"));
   const handoffPath = join(directory, "handoff.json");
   const outputPath = join(directory, "bundle.json");
-  const scope = "exchange:journey-hdm";
+  const scope = "exchange:journey-example";
   const state = {
-    journey: { id: "journey-hdm", hostSchool: "Hochschule der Medien Stuttgart (HdM)", hostCity: "Stuttgart", destinations: ["Germany"], startDate: "2026-10-01", endDate: "2027-08-31" },
+    journey: { id: "journey-example", hostSchool: "Example University", hostCity: "Example City", destinations: ["Example Country"], startDate: "2027-01-01", endDate: "2027-12-31" },
   };
   await writeFile(handoffPath, JSON.stringify({
     schemaVersion: 1,
@@ -242,7 +293,7 @@ test("prepares compact targeted context and checkpoints a validated no-op run", 
   const bundlePath = join(directory, "bundle.json");
   const coveragePath = join(directory, "coverage.json");
   const summaryPath = join(directory, "summary.json");
-  const scope = "exchange:journey-hdm";
+  const scope = "exchange:journey-example";
   const surfaces = [
     ["journey", "journey"],
     ["tasks", "task"],
@@ -256,7 +307,7 @@ test("prepares compact targeted context and checkpoints a validated no-op run", 
     ["travel-plans", "travel-plan"],
   ].map(([id, proposalEntity]) => ({ id, proposalEntity }));
   const state = {
-    journey: { id: "journey-hdm", title: "Germany exchange", hostSchool: "HdM", hostCity: "Stuttgart", destinations: ["Germany"], startDate: "2026-10-01", endDate: "2027-08-31" },
+    journey: { id: "journey-example", title: "Example exchange", hostSchool: "Example University", hostCity: "Example City", destinations: ["Example Country"], startDate: "2027-01-01", endDate: "2027-12-31" },
     tasks: [{ id: "international-driving-permit", title: "Apply for international driving permit", status: "not-started", phase: "before-departure", priority: "medium", dueDate: "2026-09-20" }],
     resources: [],
     resourceIntake: [],

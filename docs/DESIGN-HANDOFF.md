@@ -44,13 +44,13 @@
 
 | 資產 | 角色 |
 |---|---|
-| `public/images/exchange-hero-clean.png` | welcome、onboarding、首頁旅行主圖 |
-| `public/images/doodle-icons-v2/home-notebook.png` | 首頁、住宿 |
-| `public/images/doodle-icons-v2/journey-route.png` | 旅程、地圖 |
-| `public/images/doodle-icons-v2/travel-suitcase.png` | 旅行、行李 |
-| `public/images/doodle-icons-v2/ai-spark.png` | AI、一般任務 |
-| `public/images/doodle-icons-v2/resources-book.png` | 資源、提醒 |
-| `public/images/doodle-icons-v2/settings-backup.png` | 設定與備份 |
+| `public/images/exchange-hero-clean.webp` | welcome、onboarding、首頁旅行主圖；保留 PNG 原稿供重新轉檔 |
+| `public/images/doodle-icons-v2/home-notebook.webp` | 首頁、住宿 |
+| `public/images/doodle-icons-v2/journey-route.webp` | 旅程、地圖 |
+| `public/images/doodle-icons-v2/travel-suitcase.webp` | 旅行、行李 |
+| `public/images/doodle-icons-v2/ai-spark.webp` | AI、一般任務 |
+| `public/images/doodle-icons-v2/resources-book.webp` | 資源、提醒 |
+| `public/images/doodle-icons-v2/settings-backup.webp` | 設定與備份 |
 
 規則：
 

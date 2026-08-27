@@ -313,7 +313,8 @@ function validatesEntityField(entity: AiProposalEntity, key: string, value: unkn
     if (key === "kind") return new Set(["class", "exam", "deadline", "orientation", "personal"]).has(String(value));
     if (key === "startDate") return isDate(value);
     if (key === "endDate") return isOptionalDate(value);
-    if (key === "startTime") return value === undefined || isClockTime(value);
+    if (key === "startTime" || key === "endTime") return value === undefined || isClockTime(value);
+    if (key === "location") return isOptionalText(value, 500);
     if (key === "repeatWeekly" || key === "mandatory") return isBoolean(value);
     if (key === "notes") return typeof value === "string" && value.length <= 4_000;
     return false;
@@ -418,6 +419,14 @@ export function importAiBundle(state: AppState, bundle: AiImportBundle, cloudRun
   const existingProposals = new Map((state.aiInbox?.proposals ?? []).map((proposal) => [proposal.id, proposal]));
   bundle.proposals.forEach((proposal) => {
     if (existingProposals.has(proposal.id)) return;
+    if (proposal.action === "add" && isRecord(proposal.value) && typeof proposal.value.id === "string") {
+      existingProposals.forEach((existing, id) => {
+        if (existing.status !== "pending" || existing.entity !== proposal.entity || existing.action !== "add" || !isRecord(existing.value) || existing.value.id !== proposal.value.id) return;
+        const isStrictSuperset = Object.keys(existing.value).every((key) => Object.prototype.hasOwnProperty.call(proposal.value, key) && JSON.stringify(proposal.value[key]) === JSON.stringify(existing.value[key]))
+          && Object.keys(proposal.value).length > Object.keys(existing.value).length;
+        if (isStrictSuperset) existingProposals.set(id, { ...existing, status: "dismissed" });
+      });
+    }
     const target = proposal.action === "update" && proposal.targetId
       ? entityItems(state, proposal.entity).find((item) => item.id === proposal.targetId) as Record<string, unknown> | undefined
       : undefined;
