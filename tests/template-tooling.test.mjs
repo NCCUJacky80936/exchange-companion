@@ -47,6 +47,14 @@ test("a worker update takes control without forcibly navigating open tabs", asyn
   assert.doesNotMatch(worker, /client\.navigate/);
 });
 
+test("travel realtime subscriptions do not reuse an already subscribed channel", async () => {
+  const cloud = await readFile(new URL("../app/lib/cloud.ts", import.meta.url), "utf8");
+  const hook = await readFile(new URL("../app/lib/useExchangeCloud.ts", import.meta.url), "utf8");
+  assert.match(cloud, /travel-plan:\$\{planId\}:\$\{travelSubscriptionSequence\}/);
+  assert.match(hook, /const sharedPlanIdsKey = sharedPlanIds\.join\(","\)/);
+  assert.match(hook, /sharedPlanIdsKey\.split\(","\)/);
+});
+
 test("mobile navigation keeps its controls above the iPhone home indicator", async () => {
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(styles, /height: calc\(78px \+ env\(safe-area-inset-bottom\)\)/);

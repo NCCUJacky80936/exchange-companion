@@ -116,6 +116,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   const sharedPlanIds = useMemo(() => (state.travelPlans ?? [])
     .filter((plan) => plan.cloud?.published)
     .map((plan) => plan.cloud?.cloudPlanId ?? plan.id), [state.travelPlans]);
+  const sharedPlanIdsKey = sharedPlanIds.join(",");
   const sharedPlanPermission = useMemo(() => (state.travelPlans ?? [])
     .find((plan) => plan.id === sharedPlanId)?.cloud?.permission, [sharedPlanId, state.travelPlans]);
 
@@ -258,7 +259,8 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
 
   useEffect(() => {
     if (!configured || !session) return;
-    const channels = sharedPlanIds.map((planId) => subscribeToTravelPlan(planId, (incoming) => {
+    const activePlanIds = sharedPlanIdsKey ? sharedPlanIdsKey.split(",") : [];
+    const channels = activePlanIds.map((planId) => subscribeToTravelPlan(planId, (incoming) => {
       setState((current) => {
         const existing = (current.travelPlans ?? []).find((item) => item.id === incoming.id);
         if (existing && (incoming.updatedAt === existing.updatedAt || matchesPublicTravelPayload(incoming, existing))) return current;
@@ -272,7 +274,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
       });
     }));
     return () => { channels.forEach((channel) => void removeTravelSubscription(channel)); };
-  }, [configured, session, setState, sharedPlanIds]);
+  }, [configured, session, setState, sharedPlanIdsKey]);
 
   useEffect(() => {
     if (!configured || !session) return;

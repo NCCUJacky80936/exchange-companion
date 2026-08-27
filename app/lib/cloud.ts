@@ -9,6 +9,7 @@ const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
 
 let browserClient: SupabaseClient | null = null;
 let browserClientPromise: Promise<SupabaseClient | null> | null = null;
+let travelSubscriptionSequence = 0;
 
 export function cloudIsConfigured(): boolean {
   return Boolean(url && publishableKey);
@@ -475,7 +476,8 @@ export async function restoreOwnedTravelPermissions(state: AppState, currentSess
 export function subscribeToTravelPlan(planId: string, onChange: (plan: TravelPlan) => void): RealtimeChannel | null {
   const client = browserClient;
   if (!client) return null;
-  return client.channel(`travel-plan:${planId}`)
+  travelSubscriptionSequence += 1;
+  return client.channel(`travel-plan:${planId}:${travelSubscriptionSequence}`)
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "travel_plans", filter: `id=eq.${planId}` }, (event) => {
       const row = event.new as { payload: TravelPlan; owner_id: string; updated_at: string };
       onChange({
