@@ -1,5 +1,5 @@
-import ExchangeCompanion from "./components/ExchangeCompanion";
+import AppEntry from "./components/AppEntry";
 
 export default function Home() {
-  return <ExchangeCompanion />;
+  return <AppEntry />;
 }

@@ -1626,7 +1626,7 @@ function SettingsPage({ state, setState, cloud, onOpenGuide }: { state: AppState
   );
 }
 
-export default function ExchangeCompanion() {
+export default function ExchangeCompanion({ initialAuthView = "welcome" }: { initialAuthView?: "welcome" | "login" }) {
   const [isHydrated, setIsHydrated] = useState(false);
   const [state, setState] = useState<AppState>(() => loadState(!cloudIsConfigured()));
   const [section, setSection] = useState<NavSection>(initialSection);
@@ -1765,7 +1765,7 @@ export default function ExchangeCompanion() {
   }
 
   if (!localAppPreview && (!cloud.configured || !cloud.permanentAccount || !cloud.accountDataReady)) {
-    return <AuthGate cloud={cloud} />;
+    return <AuthGate cloud={cloud} initialView={initialAuthView} />;
   }
 
   if (!state.setupCompleted) {

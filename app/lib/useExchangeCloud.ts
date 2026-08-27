@@ -39,8 +39,8 @@ import { findAiBundleCollisions, importAiBundle, matchesAiJourneyScope, validate
 import { normalizeImportedState, resetState } from "./storage";
 import { matchesPublicTravelPayload, publicTravelPayload } from "./travel-cloud";
 import type { AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TelegramLinkInfo, TelegramPairingInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
+import { PRIVATE_SYNC_KEY } from "./cloud-session";
 
-const PRIVATE_SYNC_KEY = "exchange-companion:private-cloud-sync";
 export type ShareRedemptionStatus = "none" | "loading" | "active" | "login-required" | "invalid";
 
 export interface ExchangeCloudController {

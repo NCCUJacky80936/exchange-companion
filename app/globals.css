@@ -124,6 +124,12 @@ textarea:focus-visible {
   text-align: center;
 }
 
+.boot-shell,
+.welcome-shell,
+.auth-shell {
+  font-family: system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+}
+
 .boot-shell strong {
   font-family: var(--font-hand-zh), serif;
   font-size: 28px;
@@ -3775,7 +3781,7 @@ h2 { line-height: 1.25; }
 
 .brand-stamp {
   border: 0;
-  background: url("/icons/exchange-192.png") center / cover no-repeat;
+  background: url("/icons/exchange-mark-96.webp") center / cover no-repeat;
   box-shadow: none;
 }
 

@@ -12,7 +12,21 @@ const notoSans = Noto_Sans_TC({
   variable: "--font-body",
   subsets: ["latin"],
   display: "swap",
+  preload: false,
 });
+
+const instantBootStyle = `
+html{background:#f7f3eb;color:#303231}
+body{margin:0;background:#f7f3eb;color:#303231}
+.app-entry-boot{display:none}
+html[data-private-notebook="true"] .app-entry-public{display:none}
+html[data-private-notebook="true"] .app-entry-boot{display:block}
+.instant-boot{display:grid;min-height:100vh;min-height:100svh;place-content:center;justify-items:center;gap:10px;background:#f7f3eb;font-family:system-ui,-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;text-align:center}
+.instant-boot span{display:grid;width:54px;height:54px;place-items:center;border-radius:16px;background:#efd47a;color:#303231;font-size:21px;font-weight:800}
+.instant-boot strong{font-size:24px}.instant-boot p{margin:0;color:#7c7f79;font-size:14px}
+`;
+
+const restoreHintScript = `try{const p=new URLSearchParams(location.search);if(localStorage.getItem("exchange-companion:private-cloud-sync")==="on"||p.has("share")||p.get("auth")==="login")document.documentElement.dataset.privateNotebook="true"}catch{}`;
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -68,8 +82,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang={exchangeProfile.language}>
-      <body className={notoSans.variable}>
+    <html lang={exchangeProfile.language} suppressHydrationWarning>
+      <head><style dangerouslySetInnerHTML={{ __html: instantBootStyle }} /><script dangerouslySetInnerHTML={{ __html: restoreHintScript }} /></head>
+      <body className={notoSans.variable} style={{ backgroundColor: "#f7f3eb", color: "#303231" }}>
         {children}
         <PwaRegister />
       </body>

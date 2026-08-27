@@ -27,21 +27,24 @@ test("concierge routes only bounded mechanical work to a low-cost model", async 
 
 test("installed app fetches the current notebook before using an offline fallback", async () => {
   const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
-  const networkFetch = worker.indexOf("event.preloadResponse || fetch(request)");
+  const networkFetch = worker.indexOf("const preloadResponse = await event.preloadResponse");
   const fallbackLookup = worker.indexOf("caches.match(NAVIGATION_FALLBACK)");
   assert.ok(networkFetch >= 0 && fallbackLookup > networkFetch);
+  assert.match(worker, /preloadResponse \?\? await fetch\(request\)/);
+  assert.doesNotMatch(worker, /event\.preloadResponse \|\| fetch\(request\)/);
   assert.doesNotMatch(worker, /caches\.match\("\/"\)/);
-  assert.match(worker, /exchange-companion-v2-9/);
+  assert.match(worker, /exchange-companion-v2-10/);
   assert.match(worker, /navigationPreload\?\.enable\(\)/);
+  assert.match(worker, /if \(!immutableAsset && !refreshableAsset\) return/);
 });
 
-test("an existing PWA reopens itself once when the repaired worker takes control", async () => {
+test("a worker update takes control without forcibly navigating open tabs", async () => {
   const register = await readFile(new URL("../app/components/PwaRegister.tsx", import.meta.url), "utf8");
   const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
   assert.match(register, /updateViaCache:\s*"none"/);
-  assert.match(worker, /hadOlderNotebookCache/);
-  assert.match(worker, /clients\.matchAll\(\{ type: "window" \}\)/);
-  assert.match(worker, /client\.navigate\(client\.url\)/);
+  assert.match(worker, /self\.clients\.claim\(\)/);
+  assert.doesNotMatch(worker, /clients\.matchAll/);
+  assert.doesNotMatch(worker, /client\.navigate/);
 });
 
 test("mobile navigation keeps its controls above the iPhone home indicator", async () => {

@@ -29,8 +29,9 @@ test("server-renders the exchange companion shell", async () => {
 });
 
 test("keeps private parent files outside the app bundle", async () => {
-  const [page, component, defaultData, travelPlanner, travelPanels, cloudHook, packageJson] = await Promise.all([
+  const [page, entry, component, defaultData, travelPlanner, travelPanels, cloudHook, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/AppEntry.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/ExchangeCompanion.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/default-data.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/components/TravelPlanner.tsx", import.meta.url), "utf8"),
@@ -38,7 +39,8 @@ test("keeps private parent files outside the app bundle", async () => {
     readFile(new URL("../app/lib/useExchangeCloud.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
-  assert.match(page, /ExchangeCompanion/);
+  assert.match(page, /AppEntry/);
+  assert.match(entry, /import\("\.\/ExchangeCompanion"\)/);
   assert.match(component, /localStorage|loadState/);
   assert.match(component, /downloadIcs/);
   assert.match(component, /交給 AI 辨識的網址/);
