@@ -89,6 +89,8 @@ test("exports a self-describing handoff with first-use setup locked for routine 
   assert.equal(handoff.setupSnapshot.lockedForRoutineReconciliation, true);
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "base-budget")?.proposalEntity, "budget-item");
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("days[].activities[].mapsUrl"), true);
+  assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("days[].activities[].imageSourceUrl"), true);
+  assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "resource-intake")?.fields.includes("targetTravelPlanId"), true);
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("stays[]"), true);
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "travel-plans")?.fields.includes("references[]"), true);
   assert.equal(handoff.editableSurfaces.find((surface) => surface.id === "study-events")?.fields.includes("endTime"), true);

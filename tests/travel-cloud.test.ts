@@ -51,7 +51,7 @@ test("shared payload uses an explicit travel-only whitelist", () => {
         id: "day-1",
         date: "2026-09-01",
         title: "Day 1",
-        activities: [{ id: "activity-1", time: "09:00", title: "Museum", kind: "place", location: "City", mapsUrl: "", durationMinutes: 60, cost: 10, booked: false, notes: "", privateBookingCode: "secret" } as TravelPlan["days"][number]["activities"][number] & { privateBookingCode: string }],
+        activities: [{ id: "activity-1", time: "09:00", title: "Museum", kind: "place", location: "City", mapsUrl: "", durationMinutes: 60, cost: 10, booked: false, notes: "", imageUrl: "https://images.example/museum.jpg", imageAlt: "Museum", imageSourceLabel: "Photo source", imageSourceUrl: "https://images.example/source", privateBookingCode: "secret" } as TravelPlan["days"][number]["activities"][number] & { privateBookingCode: string }],
       }],
     }),
     cloud: { published: true, cloudPlanId: "cloud-id", ownerId: "owner", permission: "owner" as const },
@@ -62,6 +62,7 @@ test("shared payload uses an explicit travel-only whitelist", () => {
   assert.equal("privateExchangeState" in payload, false);
   assert.deepEqual(Object.keys(payload).sort(), ["budget", "createdAt", "currency", "days", "destinations", "endDate", "id", "kind", "notes", "packingItems", "references", "startDate", "stays", "title", "travelNotes", "travelers", "updatedAt"].sort());
   assert.equal("privateBookingCode" in payload.days[0].activities[0], false);
+  assert.equal(payload.days[0].activities[0].imageSourceLabel, "Photo source");
   assert.equal("privateBookingCode" in (payload.stays?.[0] ?? {}), false);
   assert.equal("rawAccountData" in (payload.references?.[0] ?? {}), false);
 });

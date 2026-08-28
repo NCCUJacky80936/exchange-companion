@@ -8,6 +8,7 @@ import {
   Copy,
   Download,
   ExternalLink,
+  FileUp,
   GraduationCap,
   MapPin,
   MoreHorizontal,
@@ -17,6 +18,7 @@ import {
   Share2,
   Sparkles,
   Trash2,
+  WandSparkles,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -34,6 +36,15 @@ import type {
   TravelSharingSettings,
 } from "../lib/types";
 import { exchangeCurrencies, exchangeProfile } from "../lib/profile";
+import {
+  createTravelTransferBundle,
+  isSafeTravelUrl,
+  parseTravelTransferText,
+  previewTravelMerge,
+  travelAiPrompt,
+  travelUrlConciergePrompt,
+  type TravelMergePreview,
+} from "../lib/travel-transfer";
 import { localDateKey, sortTravelPlansForDisplay, travelTemporalStatus } from "../lib/travel-sort";
 import { DayMapPanel, mapsUrlForActivity, TravelNotesPanel, TravelPackingPanel } from "./TravelTripPanels";
 import { TravelStaySection } from "./TravelStaySection";
@@ -258,14 +269,98 @@ function commitmentKey(event: StudyEvent): string {
   return `${event.startDate}-${title.replace(/[^\p{L}\p{N}]+/gu, "-")}`;
 }
 
-function downloadTravel(plan: TravelPlan): void {
-  const blob = new Blob([JSON.stringify(plan, null, 2)], { type: "application/json" });
+function travelFilename(plan: TravelPlan): string {
+  return `${plan.title.replaceAll(/[^\p{L}\p{N}]+/gu, "-") || "travel-plan"}.json`;
+}
+
+function downloadTravel(plan: TravelPlan): string {
+  const filename = travelFilename(plan);
+  const blob = new Blob([JSON.stringify(createTravelTransferBundle(plan), null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${plan.title.replaceAll(/[^\p{L}\p{N}]+/gu, "-") || "travel-plan"}.json`;
+  anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+  return filename;
+}
+
+const mergeGroupLabels: Record<keyof TravelMergePreview["summary"], string> = {
+  basic: "基本資料",
+  activities: "每日活動",
+  stays: "住宿",
+  references: "參考資料",
+  notes: "提醒",
+  packing: "旅行行李",
+};
+
+function TravelImportDialog({ plans, selectedPlan, initialMode, onApply, onQueueUrl, onClose }: {
+  plans: TravelPlan[];
+  selectedPlan: TravelPlan | null;
+  initialMode: "file" | "url";
+  onApply: (preview: TravelMergePreview) => void;
+  onQueueUrl: (url: string, note: string) => string;
+  onClose: () => void;
+}) {
+  const [mode, setMode] = useState(initialMode);
+  const [preview, setPreview] = useState<TravelMergePreview | null>(null);
+  const [error, setError] = useState("");
+  const [url, setUrl] = useState("");
+  const [note, setNote] = useState("");
+  const [queued, setQueued] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function readFile(file?: File) {
+    if (!file) return;
+    setError("");
+    setPreview(null);
+    try {
+      const parsed = parseTravelTransferText(await file.text());
+      if (!parsed.valid) { setError(parsed.reason); return; }
+      setPreview(previewTravelMerge(parsed.trip, plans));
+    } catch {
+      setError("無法讀取這個檔案。");
+    }
+  }
+
+  async function queueUrl(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedPlan) { setError("請先建立或匯入一趟旅行，再讓 AI 整理網址。"); return; }
+    if (!isSafeTravelUrl(url, false)) {
+      setError("請使用不含 token、key、簽章或帳密的一般 HTTP(S) 網址。");
+      return;
+    }
+    const prompt = onQueueUrl(url, note);
+    try { await navigator.clipboard.writeText(prompt); } catch { /* The request remains queued even if clipboard access is denied. */ }
+    setQueued("網址已進入這趟旅行的 AI 待處理佇列；若瀏覽器允許，Codex 指令也已複製。");
+    setError("");
+  }
+
+  return <MotionDialog id="travel-import-dialog-title" eyebrow="Portable travel" title="匯入與 AI 協作" onClose={onClose} className="travel-import-dialog">
+    <div className="travel-import-tabs" role="tablist" aria-label="旅行匯入方式">
+      <button className={mode === "file" ? "active" : ""} role="tab" aria-selected={mode === "file"} onClick={() => { setMode("file"); setError(""); }}><FileUp size={16} />JSON 匯入</button>
+      <button className={mode === "url" ? "active" : ""} role="tab" aria-selected={mode === "url"} disabled={!selectedPlan} title={selectedPlan ? undefined : "請先建立或匯入一趟旅行"} onClick={() => { setMode("url"); setError(""); }}><WandSparkles size={16} />網址請 AI 整理</button>
+    </div>
+    {mode === "file" ? <div className="travel-import-file-panel">
+      <p>支援新版旅行交換檔與舊版單趟旅行 JSON。系統會先預覽合併，不會直接覆蓋。</p>
+      <input ref={inputRef} className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void readFile(event.target.files?.[0])} />
+      <button className="button secondary" type="button" onClick={() => inputRef.current?.click()}><FileUp size={16} />選擇 JSON 檔案</button>
+      {preview ? <div className="travel-merge-preview">
+        <div className="travel-merge-heading"><div><strong>{preview.plan.title}</strong><span>{preview.match === "new" ? "會建立新旅行" : `合併至既有旅行（${preview.match === "id" ? "ID 相同" : "日期與目的地相同"}）`}</span></div><small>{preview.plan.startDate} — {preview.plan.endDate}</small></div>
+        <div className="travel-merge-grid">{Object.entries(preview.summary).map(([group, stat]) => <article key={group}><strong>{mergeGroupLabels[group as keyof typeof mergeGroupLabels]}</strong><span>新增 {stat.added}</span><span>保留 {stat.kept}</span>{stat.conflicts ? <span className="conflict">衝突 {stat.conflicts}</span> : null}{stat.ignored ? <span>略過 {stat.ignored}</span> : null}</article>)}</div>
+        <div className="travel-import-warning"><AlertTriangle size={16} /><span>本地非空白欄位與已有項目優先；外部圖片只儲存網址與來源。</span></div>
+        <button className="button primary" type="button" onClick={() => onApply(preview)}><Check size={16} />確認合併</button>
+      </div> : null}
+    </div> : <form className="travel-url-import-form" onSubmit={queueUrl}>
+      <p>網址會只授權給 Exchange Concierge 更新「{selectedPlan?.title}」，處理後仍要到 AI 收件匣審核。</p>
+      <label><span>公開行程網址</span><input type="url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://…" required /></label>
+      <label><span>希望 AI 特別注意（選填）</span><textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="例如：保留所有 Maps 與雨天備案" /></label>
+      <div className="travel-import-warning"><Sparkles size={16} /><span>這不會在瀏覽器內即時呼叫付費模型；會進入私人待處理佇列。</span></div>
+      <button className="button primary" type="submit" disabled={!url.trim()}><WandSparkles size={16} />加入佇列並複製 Codex 指令</button>
+      {queued ? <p className="travel-import-success"><Check size={16} />{queued}</p> : null}
+    </form>}
+    {error ? <p className="travel-import-error" role="alert">{error}</p> : null}
+  </MotionDialog>;
 }
 
 function TravelModal({ plan, onClose, onSave }: { plan: TravelPlan | null; onClose: () => void; onSave: (plan: TravelPlan) => void }) {
@@ -338,6 +433,10 @@ function ActivityForm({ activity, onSave, onCancel }: { activity?: TravelActivit
       cost: Math.max(0, Number(form.get("cost")) || 0),
       booked: activity?.booked ?? false,
       notes: form.get("notes")?.toString().trim() ?? "",
+      imageUrl: activity?.imageUrl,
+      imageAlt: activity?.imageAlt,
+      imageSourceLabel: activity?.imageSourceLabel,
+      imageSourceUrl: activity?.imageSourceUrl,
     });
     if (!activity) event.currentTarget.reset();
   }
@@ -495,6 +594,8 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
   const [sharing, setSharing] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState("");
   const [tripActionsOpen, setTripActionsOpen] = useState(false);
+  const [importing, setImporting] = useState<"file" | "url" | null>(null);
+  const [aiExported, setAiExported] = useState(false);
   const [spotlightTripId, setSpotlightTripId] = useState("");
   const tripActionsRef = useRef<HTMLDivElement>(null);
   const accordionScrollTimer = useRef(0);
@@ -580,6 +681,53 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
     setEditingPlan(null);
   }
 
+  function applyImportedPlan(preview: TravelMergePreview) {
+    cloud.markNextSaveActor("manual");
+    setState((current) => ({
+      ...current,
+      travelPlans: (current.travelPlans ?? []).some((plan) => plan.id === preview.plan.id)
+        ? (current.travelPlans ?? []).map((plan) => plan.id === preview.plan.id ? preview.plan : plan)
+        : [...(current.travelPlans ?? []), preview.plan],
+    }));
+    setSelectedTripId(preview.plan.id);
+    setSelectedDate(preview.plan.days[0]?.date ?? "");
+    setExpandedTripId(preview.plan.id);
+    setImporting(null);
+  }
+
+  function queueTravelUrl(url: string, note: string): string {
+    if (!selectedPlan) return "";
+    const normalizedUrl = new URL(url).toString();
+    cloud.markNextSaveActor("manual");
+    setState((current) => {
+      const items = current.resourceIntake ?? [];
+      const duplicate = items.some((item) => item.status === "pending" && item.intent === "travel-import"
+        && item.targetTravelPlanId === selectedPlan.id && item.url === normalizedUrl);
+      if (duplicate) return current;
+      return {
+        ...current,
+        resourceIntake: [...items, {
+          id: `resource-intake-travel-${Date.now()}`,
+          url: normalizedUrl,
+          note: note.trim() || `整理至旅行「${selectedPlan.title}」；保留現有人工內容，只提出待審更新。`,
+          status: "pending",
+          createdAt: new Date().toISOString(),
+          intent: "travel-import",
+          targetTravelPlanId: selectedPlan.id,
+        }],
+      };
+    });
+    return travelUrlConciergePrompt(normalizedUrl, selectedPlan);
+  }
+
+  async function exportForAi() {
+    if (!selectedPlan) return;
+    const filename = downloadTravel(selectedPlan);
+    try { await navigator.clipboard.writeText(travelAiPrompt(filename)); } catch { /* The JSON download still succeeds. */ }
+    setAiExported(true);
+    window.setTimeout(() => setAiExported(false), 2200);
+  }
+
   function updatePlan(planId: string, update: (plan: TravelPlan) => TravelPlan) {
     if (!editable) return;
     setState((current) => ({ ...current, travelPlans: (current.travelPlans ?? []).map((plan) => plan.id === planId ? update(plan) : plan) }));
@@ -654,7 +802,7 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
     <div className="page-stack travel-page">
       <header className="page-header travel-header">
         <div><p className="eyebrow">Trips around the exchange year</p><h1>旅行規劃</h1><p>先把想去的地方全部丟進來，再慢慢排成每天的路線；系統會先替你守住上課、考試與交換期限。</p></div>
-        {sharedView ? null : <button className="button primary travel-add-button" onClick={() => setEditingPlan("new")} aria-label="新增旅行"><Plus size={19} /></button>}
+        {sharedView ? null : <div className="travel-header-actions"><button className="button secondary" onClick={() => setImporting("file")}><FileUp size={17} />匯入旅行</button><button className="button primary travel-add-button" onClick={() => setEditingPlan("new")} aria-label="新增旅行"><Plus size={19} /></button></div>}
       </header>
 
       {plans.length === 0 ? (
@@ -700,7 +848,7 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
                   <div className="travel-main">
             <section className="travel-overview paper-card">
               <div className="travel-overview-heading"><div className="travel-overview-title"><h2>{selectedPlan.title}</h2><small>{formatDateRange(selectedPlan.startDate, selectedPlan.endDate)}</small></div><motion.button className="trip-panel-toggle" type="button" aria-expanded="true" aria-controls={`trip-panel-${plan.id}`} aria-label={`收合 ${selectedPlan.title}`} whileTap={reduceMotion ? undefined : { y: 2, scale: 0.96 }} onClick={() => toggleTrip(plan)}><ChevronDown size={20} /></motion.button></div>
-              <div className="travel-overview-toolbar"><div className="destination-route">{selectedPlan.destinations.map((destination, index) => <span key={`${destination}-${index}`}><MapPin size={15} /><strong>{destination}</strong>{index < selectedPlan.destinations.length - 1 ? <i /> : null}</span>)}</div><div className="travel-overview-actions trip-cover-actions"><div className="travel-action-menu" ref={tripActionsRef}><button className={`icon-button ${tripActionsOpen ? "active" : ""}`} onClick={() => setTripActionsOpen((open) => !open)} aria-expanded={tripActionsOpen} aria-haspopup="menu" aria-controls={`travel-actions-${selectedPlan.id}`} aria-label="更多旅行操作"><MoreHorizontal size={18} /></button>{tripActionsOpen ? <div id={`travel-actions-${selectedPlan.id}`} className="travel-action-popover paper-card" role="menu"><button role="menuitem" onClick={() => { void copySummary(); setTripActionsOpen(false); }}><Copy size={15} />{copied ? "已複製摘要" : "複製摘要"}</button><button role="menuitem" onClick={() => { downloadTravel(selectedPlan); setTripActionsOpen(false); }}><Download size={15} />匯出旅行</button><button role="menuitem" onClick={() => { setSharing(true); setTripActionsOpen(false); }}><Share2 size={15} />分享與共編</button></div> : null}</div>{editable ? <><button className="icon-button" onClick={() => setEditingPlan(selectedPlan)} aria-label="編輯旅行"><Pencil size={16} /></button><button className="icon-button danger" onClick={() => setDeleteConfirmId(selectedPlan.id)} aria-label="刪除旅行"><Trash2 size={16} /></button></> : null}</div></div>
+              <div className="travel-overview-toolbar"><div className="destination-route">{selectedPlan.destinations.map((destination, index) => <span key={`${destination}-${index}`}><MapPin size={15} /><strong>{destination}</strong>{index < selectedPlan.destinations.length - 1 ? <i /> : null}</span>)}</div><div className="travel-overview-actions trip-cover-actions"><div className="travel-action-menu" ref={tripActionsRef}><button className={`icon-button ${tripActionsOpen ? "active" : ""}`} onClick={() => setTripActionsOpen((open) => !open)} aria-expanded={tripActionsOpen} aria-haspopup="menu" aria-controls={`travel-actions-${selectedPlan.id}`} aria-label="更多旅行操作"><MoreHorizontal size={18} /></button>{tripActionsOpen ? <div id={`travel-actions-${selectedPlan.id}`} className="travel-action-popover paper-card" role="menu"><button role="menuitem" onClick={() => { void copySummary(); setTripActionsOpen(false); }}><Copy size={15} />{copied ? "已複製摘要" : "複製摘要"}</button><button role="menuitem" onClick={() => { downloadTravel(selectedPlan); setTripActionsOpen(false); }}><Download size={15} />匯出旅行</button>{editable && !sharedView ? <><button role="menuitem" onClick={() => { setImporting("file"); setTripActionsOpen(false); }}><FileUp size={15} />匯入旅行</button><button role="menuitem" onClick={() => { setImporting("url"); setTripActionsOpen(false); }}><WandSparkles size={15} />從網址請 AI 整理</button><button role="menuitem" onClick={() => void exportForAi()}><Sparkles size={15} />{aiExported ? "已下載並複製指令" : "交給 AI 編輯"}</button></> : null}<button role="menuitem" onClick={() => { setSharing(true); setTripActionsOpen(false); }}><Share2 size={15} />分享與共編</button></div> : null}</div>{editable ? <><button className="icon-button" onClick={() => setEditingPlan(selectedPlan)} aria-label="編輯旅行"><Pencil size={16} /></button><button className="icon-button danger" onClick={() => setDeleteConfirmId(selectedPlan.id)} aria-label="刪除旅行"><Trash2 size={16} /></button></> : null}</div></div>
               {selectedPlan.notes ? <p className="travel-note">“{selectedPlan.notes}”</p> : null}
               <div className="travel-metrics"><div><span>預算</span><strong>{selectedPlan.currency} {selectedPlan.budget.toLocaleString()}</strong></div><div><span>已排費用</span><strong>{selectedPlan.currency} {plannedCost.toLocaleString()}</strong></div><div><span>已排景點</span><strong>{selectedPlan.days.reduce((sum, day) => sum + day.activities.length, 0)}</strong></div></div>
             </section>
@@ -739,7 +887,11 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
                           <div className={`activity-marker ${meta.color}`}><span>{index + 1}</span><Image src={meta.icon} alt="" width={34} height={34} /></div>
                           <>
                             <div className="activity-time"><strong>{activity.time}</strong><span>{activity.durationMinutes ? `${activity.durationMinutes} min` : "時間未定"}</span></div>
-                            <div className="activity-content"><div className="activity-title-row"><h4>{activity.title}</h4><span className={`activity-kind ${meta.color}`}>{meta.label}</span></div>{activity.location ? <p><MapPin size={13} />{activity.location}</p> : null}{activity.notes ? <small>{activity.notes}</small> : null}<a className="activity-map-link" href={mapsUrlForActivity(activity, selectedPlan.destinations)} target="_blank" rel="noreferrer"><MapPin size={13} />Google Maps<ExternalLink size={11} /></a></div>
+                            <div className="activity-content">{activity.imageUrl ? <figure className="activity-media">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={activity.imageUrl} alt={activity.imageAlt || `${activity.title} 照片`} loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.closest("figure")?.classList.add("image-failed"); }} />
+                              <div className="activity-image-fallback" aria-hidden="true"><Image src="/images/doodle-icons-v2/journey-route.webp" alt="" width={54} height={54} /></div>{activity.imageSourceUrl ? <a href={activity.imageSourceUrl} target="_blank" rel="noreferrer">圖片來源：{activity.imageSourceLabel || "外部網站"}<ExternalLink size={11} /></a> : activity.imageSourceLabel ? <figcaption>圖片來源：{activity.imageSourceLabel}</figcaption> : null}
+                            </figure> : null}<div className="activity-title-row"><h4>{activity.title}</h4><span className={`activity-kind ${meta.color}`}>{meta.label}</span></div>{activity.location ? <p><MapPin size={13} />{activity.location}</p> : null}{activity.notes ? <small>{activity.notes}</small> : null}<a className="activity-map-link" href={mapsUrlForActivity(activity, selectedPlan.destinations)} target="_blank" rel="noreferrer"><MapPin size={13} />Google Maps<ExternalLink size={11} /></a></div>
                             <div className="activity-cost"><span>{activity.cost ? `${selectedPlan.currency} ${activity.cost.toLocaleString()}` : "—"}</span><label><input type="checkbox" checked={activity.booked} disabled={!editable} onChange={(event) => saveActivity({ ...activity, booked: event.target.checked })} />{activity.booked ? "已訂" : "待確認"}</label></div>
                             {editable ? <div className="activity-actions"><button className="icon-button" onClick={() => setEditingActivityId(activity.id)} aria-label={`編輯 ${activity.title}`}><Pencil size={15} /></button><button className="icon-button danger" onClick={() => deleteActivity(activity.id)} aria-label={`刪除 ${activity.title}`}><Trash2 size={15} /></button></div> : null}
                           </>
@@ -776,6 +928,7 @@ export default function TravelPlanner({ state, setState, cloud, focusTripId = ""
       <AnimatePresence>{editingPlan ? <TravelModal plan={editingPlan === "new" ? null : editingPlan} onClose={() => setEditingPlan(null)} onSave={savePlan} /> : null}</AnimatePresence>
       <AnimatePresence>{(addingActivity || editingActivityId) && selectedDay ? <ActivityModal day={selectedDay} activity={selectedDay.activities.find((item) => item.id === editingActivityId)} onSave={saveActivity} onClose={() => { setAddingActivity(false); setEditingActivityId(""); }} /> : null}</AnimatePresence>
       <AnimatePresence>{sharing && selectedPlan ? <ShareTravelModal plan={selectedPlan} cloud={cloud} onPlanPublished={(plan) => setState((current) => ({ ...current, travelPlans: (current.travelPlans ?? []).map((item) => item.id === plan.id ? plan : item) }))} onClose={() => setSharing(false)} /> : null}</AnimatePresence>
+      <AnimatePresence>{importing && !sharedView ? <TravelImportDialog plans={plans} selectedPlan={selectedPlan} initialMode={importing} onApply={applyImportedPlan} onQueueUrl={queueTravelUrl} onClose={() => setImporting(null)} /> : null}</AnimatePresence>
       <AnimatePresence>{deleteConfirmId && selectedPlan?.id === deleteConfirmId ? <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => event.target === event.currentTarget && setDeleteConfirmId("")}><motion.div className="modal-card delete-travel-modal paper-card" role="alertdialog" aria-modal="true" aria-labelledby="delete-travel-title" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}><p className="eyebrow">Remove this ticket</p><h2 id="delete-travel-title">刪除「{selectedPlan.title}」？</h2><p>這只會刪除這趟旅行，不會影響交換任務或其他人的個人課表。</p><div className="modal-actions"><button className="button secondary" onClick={() => setDeleteConfirmId("")}>保留旅行</button><button className="button text-danger" onClick={() => deletePlan(selectedPlan.id)}><Trash2 size={16} />確認刪除</button></div></motion.div></motion.div> : null}</AnimatePresence>
     </div>
   );

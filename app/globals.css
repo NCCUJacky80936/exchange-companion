@@ -1395,7 +1395,7 @@ h3 {
 .travel-overview-actions { position: absolute; top: 0; right: 0; z-index: 3; display: flex; gap: 6px; }
 .travel-action-menu { position: relative; }
 .travel-action-menu > .icon-button.active { background: var(--yellow-soft); box-shadow: 0 3px 0 rgba(46, 58, 52, 0.18); transform: translateY(-1px); }
-.travel-action-popover { position: absolute; top: calc(100% + 7px); right: 0; z-index: 50; display: grid; width: 176px; overflow: hidden; border: 1.5px solid var(--ink); border-radius: 8px; background: var(--paper); padding: 5px; box-shadow: 5px 6px 0 rgba(46, 58, 52, 0.18); }
+.travel-action-popover { position: absolute; top: calc(100% + 7px); right: 0; z-index: 50; display: grid; width: 214px; max-width: min(214px, calc(100vw - 28px)); overflow: hidden; border: 1.5px solid var(--ink); border-radius: 8px; background: var(--paper); padding: 5px; box-shadow: 5px 6px 0 rgba(46, 58, 52, 0.18); }
 .travel-action-popover button { display: flex; width: 100%; min-height: 37px; cursor: pointer; align-items: center; gap: 8px; border: 0; border-bottom: 1px dashed rgba(46, 58, 52, 0.2); background: transparent; padding: 8px 9px; color: var(--ink); font: inherit; font-size: 12px; font-weight: 800; text-align: left; }
 .travel-action-popover button:last-child { border-bottom: 0; }
 .travel-action-popover button:hover, .travel-action-popover button:focus-visible { background: var(--yellow-soft); outline: none; }
@@ -5660,6 +5660,60 @@ img[src*="/images/doodle-icons-v2/"] {
   .ai-import-card > .button {
     width: fit-content;
   }
+}
+
+/* Travel transfer, scoped AI intake, and externally attributed activity media. */
+.travel-header-actions { display: flex; position: relative; z-index: 2; align-items: center; gap: 8px; }
+.travel-import-dialog { width: min(840px, 100%); }
+.travel-import-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 18px; }
+.travel-import-tabs button { display: flex; min-height: 44px; cursor: pointer; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(46, 58, 52, 0.26); border-radius: 10px; background: rgba(255, 255, 255, 0.55); color: var(--ink); font: inherit; font-weight: 800; }
+.travel-import-tabs button.active { border-color: var(--ink); background: var(--yellow-soft); box-shadow: 2px 3px 0 rgba(46, 58, 52, 0.15); }
+.travel-import-tabs button:disabled { cursor: not-allowed; opacity: 0.45; }
+.travel-import-file-panel,
+.travel-url-import-form { display: grid; gap: 14px; }
+.travel-import-file-panel > p,
+.travel-url-import-form > p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.travel-url-import-form label { display: grid; gap: 6px; color: var(--ink); font-size: 12px; font-weight: 800; }
+.travel-url-import-form input,
+.travel-url-import-form textarea { width: 100%; box-sizing: border-box; border: 1px solid rgba(46, 58, 52, 0.28); border-radius: 8px; background: rgba(255, 255, 255, 0.78); padding: 11px 12px; color: var(--ink); font: inherit; }
+.travel-merge-preview { display: grid; gap: 14px; border: 1px dashed rgba(46, 58, 52, 0.35); border-radius: 12px; background: rgba(255, 253, 245, 0.82); padding: 15px; }
+.travel-merge-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.travel-merge-heading > div { display: grid; gap: 3px; }
+.travel-merge-heading span,
+.travel-merge-heading small { color: var(--muted); font-size: 11px; }
+.travel-merge-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.travel-merge-grid article { display: flex; flex-wrap: wrap; gap: 5px 8px; border: 1px solid rgba(46, 58, 52, 0.17); border-radius: 8px; background: rgba(255, 255, 255, 0.62); padding: 9px; }
+.travel-merge-grid article strong { width: 100%; font-size: 12px; }
+.travel-merge-grid article span { color: var(--muted); font-size: 10px; }
+.travel-merge-grid article .conflict { color: var(--red); font-weight: 800; }
+.travel-import-warning { display: flex; align-items: flex-start; gap: 8px; border-radius: 8px; background: rgba(219, 238, 250, 0.54); padding: 10px 11px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.travel-import-warning svg { flex: 0 0 auto; margin-top: 1px; }
+.travel-import-error,
+.travel-import-success { display: flex; align-items: center; gap: 7px; margin: 0; border-radius: 8px; padding: 10px 11px; font-size: 12px; font-weight: 800; }
+.travel-import-error { background: rgba(240, 166, 166, 0.2); color: var(--red); }
+.travel-import-success { background: rgba(203, 230, 208, 0.45); color: var(--ink); }
+.activity-media { position: relative; overflow: hidden; width: min(100%, 520px); aspect-ratio: 16 / 8.5; margin: 0 0 10px; border: 1px solid rgba(46, 58, 52, 0.2); border-radius: 8px; background: var(--cream); }
+.activity-media > img { width: 100%; height: 100%; object-fit: cover; }
+.activity-image-fallback { display: none; position: absolute; inset: 0; place-items: center; background: var(--cream); }
+.activity-media.image-failed > img { display: none; }
+.activity-media.image-failed .activity-image-fallback { display: grid; }
+.activity-media a,
+.activity-media figcaption { position: absolute; right: 6px; bottom: 6px; display: inline-flex; align-items: center; gap: 4px; max-width: calc(100% - 12px); border-radius: 999px; background: rgba(255, 255, 255, 0.9); padding: 4px 7px; color: var(--ink); font-size: 9px; font-weight: 800; text-decoration: none; }
+
+@media (max-width: 820px) {
+  .travel-header-actions { align-items: flex-end; flex-direction: column-reverse; }
+  .travel-header-actions .button.secondary { min-height: 38px; padding: 8px 10px; font-size: 11px; }
+  .travel-merge-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 520px) {
+  .travel-header { padding-right: 0; }
+  .travel-header-actions { align-items: stretch; position: static; grid-column: 1 / -1; flex-direction: row; margin-top: 10px; }
+  .travel-header .travel-add-button { position: static; }
+  .travel-import-tabs,
+  .travel-merge-grid { grid-template-columns: 1fr; }
+  .travel-merge-heading { flex-direction: column; gap: 4px; }
+  .activity-media { aspect-ratio: 4 / 3; }
 }
 
 /* Match every page opening to the compact resource-library title rhythm. */

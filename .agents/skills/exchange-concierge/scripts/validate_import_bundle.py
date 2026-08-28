@@ -20,7 +20,7 @@ SOURCE_FIELDS = {"id", "label", "kind", "evidenceType", "url", "capturedAt", "no
 PROPOSAL_FIELDS = {"id", "title", "summary", "entity", "action", "targetId", "value", "confidence", "privacy", "evidenceIds", "status"}
 CHECKLIST_FIELDS = {"id", "label", "done"}
 RECORD_FIELDS = {"id", "date", "note"}
-ACTIVITY_FIELDS = {"id", "time", "title", "kind", "location", "mapsUrl", "durationMinutes", "cost", "booked", "notes"}
+ACTIVITY_FIELDS = {"id", "time", "title", "kind", "location", "mapsUrl", "durationMinutes", "cost", "booked", "notes", "imageUrl", "imageAlt", "imageSourceLabel", "imageSourceUrl"}
 TRAVEL_DAY_FIELDS = {"id", "date", "title", "activities"}
 TRAVEL_NOTE_FIELDS = {"id", "title", "details", "category", "important"}
 TRAVEL_PACKING_FIELDS = {"id", "name", "category", "quantity", "packed", "notes"}
@@ -54,7 +54,7 @@ ALLOWED_FIELDS = {
     "journey": {"title", "ownerName", "homeCity", "hostCity", "hostSchool", "program", "startDate", "endDate", "orientationDate", "destinations"},
     "task": {"id", "title", "description", "phase", "status", "priority", "dueDate", "predecessorIds", "notes", "sourceLabel", "sourceUrl", "verifiedAt", "templateKind", "scheduledAt", "timeZone", "location", "contactName", "contactInfo", "referenceNumber", "cost", "currency", "checklist", "records", "result"},
     "resource": {"id", "title", "description", "details", "category", "type", "url", "verifiedAt", "region", "origin", "privacy", "sourceLabel", "searchTags"},
-    "resource-intake": {"id", "url", "note", "status", "createdAt"},
+    "resource-intake": {"id", "url", "note", "status", "createdAt", "intent", "targetTravelPlanId"},
     "packing-item": {"id", "name", "category", "decision", "bagId", "quantity", "weightKg", "packed", "warning"},
     "bag": {"id", "name", "kind", "limitKg", "limitSource"},
     "flight-allowance": {"id", "label", "airline", "segment", "checkedMode", "checkedPieceCount", "checkedPieceWeightKg", "checkedTotalWeightKg", "carryOnMode", "carryOnPieceCount", "carryOnPieceWeightKg", "personalItemMode", "personalItemPieceCount", "personalItemPieceWeightKg", "provenance", "confirmed", "sourceLabel", "verifiedAt", "notes"},
@@ -156,6 +156,10 @@ def valid_travel_activities(value: object) -> bool:
         and nonnegative_number(item.get("cost"))
         and isinstance(item.get("booked"), bool)
         and isinstance(item.get("notes"), str)
+        and (item.get("imageUrl") in {None, ""} or valid_http_url(item.get("imageUrl")))
+        and (item.get("imageAlt") is None or isinstance(item.get("imageAlt"), str) and len(item["imageAlt"]) <= 500)
+        and (item.get("imageSourceLabel") is None or isinstance(item.get("imageSourceLabel"), str) and len(item["imageSourceLabel"]) <= 300)
+        and (item.get("imageSourceUrl") in {None, ""} or valid_http_url(item.get("imageSourceUrl")))
         for item in value
     )
 
@@ -353,6 +357,10 @@ def validate_field(entity: str, key: str, value: object) -> bool:
             return value in {"pending", "processed"}
         if key == "createdAt":
             return valid_timestamp(value)
+        if key == "intent":
+            return value in {"resource", "travel-import"}
+        if key == "targetTravelPlanId":
+            return nonempty_text(value, 160)
     if entity == "packing-item":
         if key in {"name", "category"}:
             return nonempty_text(value, 200)

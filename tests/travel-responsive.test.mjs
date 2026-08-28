@@ -71,6 +71,29 @@ test("travel entries use a vertical accordion and reference actions stay at the 
   assert.ok(planner.indexOf("複製摘要") < planner.indexOf("itinerary-heading"));
 });
 
+test("travel import, portable AI handoff, and scoped URL intake stay reviewable", () => {
+  assert.match(planner, />匯入旅行</);
+  assert.match(planner, />從網址請 AI 整理</);
+  assert.match(planner, /交給 AI 編輯/);
+  assert.match(planner, /parseTravelTransferText/);
+  assert.match(planner, /previewTravelMerge/);
+  assert.match(planner, /intent:\s*"travel-import"/);
+  assert.match(planner, /targetTravelPlanId:\s*selectedPlan\.id/);
+  assert.match(planner, /editable && !sharedView/);
+  assert.match(css, /\.travel-import-dialog\s*\{[^}]*width:\s*min\(840px,\s*100%\)/);
+  assert.match(css, /@media \(max-width:\s*520px\)[\s\S]*\.travel-import-tabs,[\s\S]*grid-template-columns:\s*1fr/);
+});
+
+test("attributed external activity photos are lazy, reversible, and responsive", () => {
+  assert.match(planner, /loading="lazy"/);
+  assert.match(planner, /referrerPolicy="no-referrer"/);
+  assert.match(planner, /imageSourceLabel/);
+  assert.match(planner, /imageSourceUrl/);
+  assert.match(planner, /classList\.add\("image-failed"\)/);
+  assert.match(css, /\.activity-media\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*8\.5/);
+  assert.match(css, /\.activity-media\.image-failed \.activity-image-fallback\s*\{[^}]*display:\s*grid/);
+});
+
 test("expanded accordion reads as one paper sheet instead of nested heavy cards", () => {
   assert.match(css, /\.trip-accordion-panel\s*\{[^}]*repeating-linear-gradient[^}]*box-shadow:\s*0\s+6px\s+0/);
   assert.match(css, /\.travel-overview\s*\{[^}]*border:\s*0[^}]*border-bottom:[^}]*background:\s*transparent[^}]*box-shadow:\s*none/);

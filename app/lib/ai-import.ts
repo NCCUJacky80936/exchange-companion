@@ -27,7 +27,7 @@ const SOURCE_FIELDS = new Set(["id", "label", "kind", "evidenceType", "url", "ca
 const PROPOSAL_FIELDS = new Set(["id", "title", "summary", "entity", "action", "targetId", "value", "confidence", "privacy", "evidenceIds", "status"]);
 const CHECKLIST_FIELDS = new Set(["id", "label", "done"]);
 const RECORD_FIELDS = new Set(["id", "date", "note"]);
-const ACTIVITY_FIELDS = new Set(["id", "time", "title", "kind", "location", "mapsUrl", "durationMinutes", "cost", "booked", "notes"]);
+const ACTIVITY_FIELDS = new Set(["id", "time", "title", "kind", "location", "mapsUrl", "durationMinutes", "cost", "booked", "notes", "imageUrl", "imageAlt", "imageSourceLabel", "imageSourceUrl"]);
 const TRAVEL_DAY_FIELDS = new Set(["id", "date", "title", "activities"]);
 const TRAVEL_NOTE_FIELDS = new Set(["id", "title", "details", "category", "important"]);
 const TRAVEL_PACKING_FIELDS = new Set(["id", "name", "category", "quantity", "packed", "notes"]);
@@ -141,7 +141,10 @@ function validActivities(value: unknown): boolean {
     && isText(item.id, 160) && isClockTime(item.time)
     && isText(item.title, 200) && kinds.has(String(item.kind)) && typeof item.location === "string"
     && (item.mapsUrl === undefined || item.mapsUrl === "" || isHttpUrl(item.mapsUrl)) && isNumber(item.durationMinutes)
-    && isNumber(item.cost) && isBoolean(item.booked) && typeof item.notes === "string");
+    && isNumber(item.cost) && isBoolean(item.booked) && typeof item.notes === "string"
+    && (item.imageUrl === undefined || item.imageUrl === "" || isHttpUrl(item.imageUrl))
+    && isOptionalText(item.imageAlt, 500) && isOptionalText(item.imageSourceLabel, 300)
+    && (item.imageSourceUrl === undefined || item.imageSourceUrl === "" || isHttpUrl(item.imageSourceUrl)));
 }
 
 function validTravelDays(value: unknown, startDate?: string, endDate?: string): boolean {
@@ -261,6 +264,8 @@ function validatesEntityField(entity: AiProposalEntity, key: string, value: unkn
     if (key === "note") return typeof value === "string" && value.length <= 1_000;
     if (key === "status") return new Set(["pending", "processed"]).has(String(value));
     if (key === "createdAt") return isTimestamp(value);
+    if (key === "intent") return new Set(["resource", "travel-import"]).has(String(value));
+    if (key === "targetTravelPlanId") return isText(value, 160);
     return false;
   }
   if (entity === "packing-item") {

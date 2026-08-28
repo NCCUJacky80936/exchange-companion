@@ -48,7 +48,7 @@ INDEX_FIELDS = {
     "journey": ("id", "title", "ownerName", "homeCity", "hostCity", "hostSchool", "program", "startDate", "endDate", "orientationDate", "destinations"),
     "tasks": ("id", "title", "status", "phase", "priority", "dueDate", "verifiedAt", "templateKind"),
     "resources": ("id", "title", "category", "type", "region", "verifiedAt", "privacy", "origin"),
-    "resource-intake": ("id", "note", "status", "createdAt"),
+    "resource-intake": ("id", "note", "status", "createdAt", "intent", "targetTravelPlanId"),
     "packing": ("id", "name", "category", "decision", "bagId", "packed"),
     "bags": ("id", "name", "kind", "limitKg", "limitSource"),
     "flight-allowances": ("id", "label", "airline", "segment", "confirmed", "verifiedAt"),

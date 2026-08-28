@@ -131,6 +131,8 @@ export interface ResourceIntake {
   note: string;
   status: "pending" | "processed";
   createdAt: string;
+  intent?: "resource" | "travel-import";
+  targetTravelPlanId?: string;
   /** Website-owned timestamp used to remove completed URL intake records after 48 hours. */
   processedAt?: string;
 }
@@ -162,6 +164,10 @@ export interface TravelActivity {
   cost: number;
   booked: boolean;
   notes: string;
+  imageUrl?: string;
+  imageAlt?: string;
+  imageSourceLabel?: string;
+  imageSourceUrl?: string;
 }
 
 export interface TravelDay {
@@ -237,6 +243,13 @@ export interface TravelPlan {
   createdAt: string;
   updatedAt: string;
   cloud?: TravelCloudMeta;
+}
+
+export interface TravelTransferBundle {
+  schemaVersion: 1;
+  kind: "exchange-companion-travel-transfer";
+  exportedAt: string;
+  trip: TravelPlan;
 }
 
 export type TravelPermission = "viewer" | "editor" | "owner";
