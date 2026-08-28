@@ -31,9 +31,13 @@ test("installed app fetches the current notebook before using an offline fallbac
   const fallbackLookup = worker.indexOf("caches.match(NAVIGATION_FALLBACK)");
   assert.ok(networkFetch >= 0 && fallbackLookup > networkFetch);
   assert.match(worker, /preloadResponse \?\? await fetch\(request\)/);
+  assert.match(worker, /NAVIGATION_NETWORK_TIMEOUT_MS = 1_500/);
+  assert.match(worker, /Promise\.race\(\[networkResponse\.catch/);
+  assert.match(worker, /credentials: "omit"/);
+  assert.match(worker, /cache\.put\(NAVIGATION_FALLBACK, shellResponse\)/);
   assert.doesNotMatch(worker, /event\.preloadResponse \|\| fetch\(request\)/);
   assert.doesNotMatch(worker, /caches\.match\("\/"\)/);
-  assert.match(worker, /exchange-companion-v2-10/);
+  assert.match(worker, /exchange-companion-v2-11/);
   assert.match(worker, /navigationPreload\?\.enable\(\)/);
   assert.match(worker, /if \(!immutableAsset && !refreshableAsset\) return/);
 });
@@ -42,8 +46,10 @@ test("a worker update takes control without forcibly navigating open tabs", asyn
   const register = await readFile(new URL("../app/components/PwaRegister.tsx", import.meta.url), "utf8");
   const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
   assert.match(register, /updateViaCache:\s*"none"/);
-  assert.match(register, /readyState === "complete"/);
-  assert.match(register, /addEventListener\("load", register/);
+  assert.match(register, /requestAnimationFrame\(register\)/);
+  assert.match(register, /display-mode: standalone/);
+  assert.match(register, /setTimeout\(update, 250\)/);
+  assert.doesNotMatch(register, /addEventListener\("load", register/);
   assert.match(register, /requestIdleCallback/);
   assert.match(register, /setTimeout\(update, 2_500\)/);
   assert.match(worker, /self\.clients\.claim\(\)/);

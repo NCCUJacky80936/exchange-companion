@@ -88,7 +88,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang={exchangeProfile.language} suppressHydrationWarning>
-      <head><style dangerouslySetInnerHTML={{ __html: instantBootStyle }} /><script dangerouslySetInnerHTML={{ __html: restoreHintScript }} /></head>
+      <head>
+        <link rel="apple-touch-startup-image" href="/icons/apple-touch-startup.png" />
+        <style dangerouslySetInnerHTML={{ __html: instantBootStyle }} />
+        <script dangerouslySetInnerHTML={{ __html: restoreHintScript }} />
+      </head>
       <body className={notoSans.variable} style={{ backgroundColor: "#f7f3eb", color: "#303231" }}>
         {children}
         <PwaRegister />

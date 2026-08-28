@@ -48,7 +48,10 @@ test("installed app uses dedicated Android and Apple home-screen artwork", () =>
   assert.match(manifest, /exchange-192\.png/);
   assert.match(manifest, /exchange-512\.png/);
   assert.match(manifest, /purpose: "maskable"/);
+  assert.match(manifest, /background_color: "#F7F3EB"/);
   assert.match(layout, /apple-touch-icon\.png/);
+  assert.match(layout, /apple-touch-startup-image/);
+  assert.match(layout, /apple-touch-startup\.png/);
 });
 
 test("mobile home completion count stays below the progress bar", () => {

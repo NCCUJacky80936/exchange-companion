@@ -37,7 +37,8 @@ test("public first paint defers the private notebook bundle and cloud runtime", 
   assert.match(cloudHook, /markExchangePerformance\("private-state-ready"\)/);
   assert.match(companion, /markExchangePerformance\("home-render"\)/);
   assert.match(performance, /process\.env\.NODE_ENV === "production"/);
-  assert.match(pwa, /addEventListener\("load", register/);
+  assert.match(pwa, /requestAnimationFrame\(register\)/);
+  assert.doesNotMatch(pwa, /addEventListener\("load", register/);
   assert.match(pwa, /requestIdleCallback/);
   assert.match(entry, /dataset\.appEntryReady/);
   assert.match(page, /initial-loading-shell/);
