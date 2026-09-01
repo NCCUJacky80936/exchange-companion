@@ -27,16 +27,16 @@ function readHostingBindings(): HostingBindings {
   }
 
   const { d1, r2 } = parsed as Record<string, unknown>;
-  if (d1 !== undefined && typeof d1 !== "string") {
+  if (d1 !== undefined && d1 !== null && typeof d1 !== "string") {
     throw new Error(".openai/hosting.json d1 must be a string");
   }
-  if (r2 !== undefined && typeof r2 !== "string") {
+  if (r2 !== undefined && r2 !== null && typeof r2 !== "string") {
     throw new Error(".openai/hosting.json r2 must be a string");
   }
 
   return {
-    d1: d1?.trim() || undefined,
-    r2: r2?.trim() || undefined,
+    d1: typeof d1 === "string" ? d1.trim() || undefined : undefined,
+    r2: typeof r2 === "string" ? r2.trim() || undefined : undefined,
   };
 }
 
