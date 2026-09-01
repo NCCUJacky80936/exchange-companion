@@ -29,6 +29,7 @@ test("Telegram card is a pending-only intake and never claims it can apply noteb
 test("Telegram starts from a one-tap pairing link and keeps a persistent button menu", () => {
   assert.match(telegramCard, /產生安全配對連結/);
   assert.match(telegramCard, /打開 Telegram 並配對/);
+  assert.match(ai, /searchParams\.set\("start", pairingCode\)/);
   assert.match(sync, /searchParams\.set\("start", code\)/);
   assert.match(webhook, /is_persistent: true/);
   assert.match(webhook, /TELEGRAM_MENU_LABELS\.capture/);

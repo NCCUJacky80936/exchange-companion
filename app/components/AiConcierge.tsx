@@ -25,10 +25,12 @@ const entityLabel = {
 
 const confidenceLabel = { high: "高可信", medium: "待確認", low: "線索" };
 
-function safeTelegramBotUrl(value: string): string {
+function safeTelegramBotUrl(value: string, pairingCode: string): string {
   try {
     const url = new URL(value);
-    return url.protocol === "https:" && url.hostname === "t.me" ? url.toString() : "";
+    if (url.protocol !== "https:" || url.hostname !== "t.me" || !/^[A-Za-z0-9_-]{1,64}$/.test(pairingCode)) return "";
+    url.searchParams.set("start", pairingCode);
+    return url.toString();
   } catch {
     return "";
   }
@@ -101,7 +103,7 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
     ? selectedTelegramConnectionId
     : linkedTelegramConnectionId || (activeConnections.length === 1 ? activeConnections[0].id : "");
   const selectedTelegramLink = cloud.telegramLink?.connectionId === telegramConnectionId ? cloud.telegramLink : null;
-  const telegramPairingBotUrl = telegramPairing ? safeTelegramBotUrl(telegramPairing.botUrl) : "";
+  const telegramPairingBotUrl = telegramPairing ? safeTelegramBotUrl(telegramPairing.botUrl, telegramPairing.code) : "";
   const pendingByEntity = useMemo(() => pending.reduce<Record<string, number>>((counts, proposal) => ({ ...counts, [proposal.entity]: (counts[proposal.entity] ?? 0) + 1 }), {}), [pending]);
 
   useEffect(() => {
