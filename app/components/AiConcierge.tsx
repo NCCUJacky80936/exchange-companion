@@ -206,7 +206,7 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
     try {
       const pairing = await cloud.createTelegramPairing(telegramConnectionId);
       setTelegramPairing(pairing);
-      setTelegramMessage("已產生 10 分鐘內有效的一次性配對碼。請在期限內打開 Bot 完成連結。");
+      setTelegramMessage("安全配對連結已產生，10 分鐘內有效。打開 Telegram 後按下 Start 即可完成連結。");
     } catch {
       setTelegramMessage("目前無法產生 Telegram 配對碼。請確認手帳與 Exchange Concierge 都已連線。");
     }
@@ -308,8 +308,13 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
       </details>
 
       <article className="paper-card ai-telegram-card">
-        <div className="ai-card-heading"><MessageCircle size={24} /><div><p className="eyebrow">Telegram inbox</p><h2>用 Telegram 丟給 AI 整理</h2></div></div>
-        <p>只接收私人一對一文字訊息。輸入 <code>/recipe</code> 可立即從私人食譜庫抽一道，<code>/recipe 雞肉</code> 可加關鍵字；一般文字則由排程中的 Codex 或 Antigravity 整理成待確認提案。Telegram 不會直接修改手帳。</p>
+        <div className="ai-card-heading"><MessageCircle size={24} /><div><p className="eyebrow">Telegram quick access</p><h2>把交換手帳帶進 Telegram</h2></div></div>
+        <p>不用記指令。連結後可以直接輸入一件交換事項，或用固定按鈕找重要資源、抽食譜與查看連線。所有變更仍會先進入待確認提案，Telegram 不會直接修改手帳。</p>
+        <div className="telegram-shortcuts" aria-label="Telegram 可用功能">
+          <span><strong>整理一件事</strong><small>直接傳一句話，先收進整理佇列</small></span>
+          <span><strong>找重要資源</strong><small>按分類找，也能輸入自然關鍵字</small></span>
+          <span><strong>隨機食譜</strong><small>從自己的食譜庫快速抽一道</small></span>
+        </div>
         <label className="field"><span>要授權的 Exchange Concierge 連線</span><select value={telegramConnectionId} disabled={!activeConnections.length || cloud.busy} onChange={(event) => {
           const connectionId = event.currentTarget.value;
           setSelectedTelegramConnectionId(connectionId);
@@ -318,9 +323,9 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
           void cloud.refreshTelegramLink(connectionId).catch(() => setTelegramMessage("目前無法查詢這個 Telegram 連結狀態。"));
         }}>{activeConnections.length ? <>{activeConnections.length > 1 && !telegramConnectionId ? <option value="" disabled>請選擇要授權的連線</option> : null}{activeConnections.map((connection) => <option key={connection.id} value={connection.id}>{connection.label}</option>)}</> : <option value="">請先建立 Exchange Concierge 連線</option>}</select></label>
         {selectedTelegramLink ? <div className="ai-connections"><span><strong>已連結 @{selectedTelegramLink.botUsername.replace(/^@/, "")}</strong><small>{selectedTelegramLink.lastReceivedAt ? `最後收件：${new Date(selectedTelegramLink.lastReceivedAt).toLocaleString("zh-TW")}` : `連結時間：${new Date(selectedTelegramLink.linkedAt).toLocaleString("zh-TW")}`} · 待處理 {selectedTelegramLink.queuedCount} 則</small></span></div> : null}
-        {telegramPairing?.connectionId === telegramConnectionId ? <div className="ai-connections"><span><strong>配對碼：<code>{telegramPairing.code}</code></strong><small>有效至 {new Date(telegramPairing.expiresAt).toLocaleString("zh-TW")}</small></span><div className="ai-connected-actions"><button type="button" className="button secondary" disabled={cloud.busy} onClick={() => void copyTelegramPairingCode()}><Copy size={16} />複製配對碼</button>{telegramPairingBotUrl ? <a className="button primary" href={telegramPairingBotUrl} target="_blank" rel="noreferrer">打開 @{telegramPairing.botUsername.replace(/^@/, "")}<ExternalLink size={14} /></a> : null}</div></div> : null}
+        {telegramPairing?.connectionId === telegramConnectionId ? <div className="ai-connections"><span><strong>備用配對碼：<code>{telegramPairing.code}</code></strong><small>安全連結有效至 {new Date(telegramPairing.expiresAt).toLocaleString("zh-TW")}</small></span><div className="ai-connected-actions"><button type="button" className="button secondary" disabled={cloud.busy} onClick={() => void copyTelegramPairingCode()}><Copy size={16} />複製備用碼</button>{telegramPairingBotUrl ? <a className="button primary" href={telegramPairingBotUrl} target="_blank" rel="noreferrer">打開 Telegram 並配對<ExternalLink size={14} /></a> : null}</div></div> : null}
         <div className="ai-connected-actions">
-          {!selectedTelegramLink ? <button type="button" className="button primary" disabled={!telegramConnectionId || cloud.busy} onClick={() => void createTelegramPairingCode()}><Link2 size={16} />產生 10 分鐘配對碼</button> : null}
+          {!selectedTelegramLink ? <button type="button" className="button primary" disabled={!telegramConnectionId || cloud.busy} onClick={() => void createTelegramPairingCode()}><Link2 size={16} />產生安全配對連結</button> : null}
           <button type="button" className="button secondary" disabled={!telegramConnectionId || cloud.busy} onClick={() => void refreshTelegramStatus()}><RefreshCw size={16} />更新狀態</button>
           {selectedTelegramLink ? <button type="button" className="button text-button danger" disabled={cloud.busy} onClick={() => void disconnectTelegram()}><X size={16} />撤銷 Telegram</button> : null}
         </div>

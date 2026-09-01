@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [ai, cloud, types] = await Promise.all([
+const [ai, cloud, types, sync, webhook] = await Promise.all([
   readFile(new URL("../app/components/AiConcierge.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/lib/cloud.ts", import.meta.url), "utf8"),
   readFile(new URL("../app/lib/types.ts", import.meta.url), "utf8"),
+  readFile(new URL("../supabase/functions/exchange-concierge-sync/index.ts", import.meta.url), "utf8"),
+  readFile(new URL("../supabase/functions/telegram-concierge-webhook/index.ts", import.meta.url), "utf8"),
 ]);
 
 const telegramCard = ai.slice(
@@ -18,10 +20,20 @@ const telegramTypes = types.slice(
 );
 
 test("Telegram card is a pending-only intake and never claims it can apply notebook changes", () => {
-  assert.match(telegramCard, /只接收私人一對一文字訊息/);
+  assert.match(telegramCard, /不用記指令/);
   assert.match(telegramCard, /待確認提案/);
   assert.match(telegramCard, /Telegram 不會直接修改手帳/);
   assert.doesNotMatch(telegramCard, /自動套用|直接套用|自動修改手帳/);
+});
+
+test("Telegram starts from a one-tap pairing link and keeps a persistent button menu", () => {
+  assert.match(telegramCard, /產生安全配對連結/);
+  assert.match(telegramCard, /打開 Telegram 並配對/);
+  assert.match(sync, /searchParams\.set\("start", code\)/);
+  assert.match(webhook, /is_persistent: true/);
+  assert.match(webhook, /TELEGRAM_MENU_LABELS\.capture/);
+  assert.match(webhook, /TELEGRAM_MENU_LABELS\.resources/);
+  assert.match(webhook, /TELEGRAM_MENU_LABELS\.recipe/);
 });
 
 test("Telegram pairing is scoped through an explicitly selected Concierge connection", () => {
@@ -47,4 +59,3 @@ test("browser-facing Telegram state contains no Telegram account IDs or bot toke
   assert.match(telegramTypes, /connectionId: string/);
   assert.match(telegramTypes, /botUsername: string/);
 });
-

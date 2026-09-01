@@ -3,11 +3,15 @@ import { createClient } from "npm:@supabase/supabase-js@2.112.2";
 import {
   constantTimeEqual,
   normalizePairCode,
+  parseTelegramMenuAction,
   parseTelegramUpdate,
   readJsonBodyWithLimit,
   sha256Hex,
+  TELEGRAM_MENU_LABELS,
+  TELEGRAM_RESOURCE_GROUPS,
 } from "../_shared/telegram.ts";
 import { formatTelegramRecipe, isActiveRecipeConnection, pickTelegramRecipe, recipesFromAppState } from "../_shared/recipe.ts";
+import { formatTelegramResources, resourcesFromAppState } from "../_shared/resource.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -47,7 +51,46 @@ function inboxUrl(baseUrl: string): string {
   return url.toString();
 }
 
-async function sendTelegramMessage(token: string, chatId: number, text: string): Promise<void> {
+function resourcesUrl(baseUrl: string): string {
+  const url = new URL(baseUrl);
+  url.searchParams.set("section", "resources");
+  return url.toString();
+}
+
+type TelegramReplyKeyboard = {
+  keyboard: Array<Array<{ text: string }>>;
+  resize_keyboard: true;
+  is_persistent: true;
+  input_field_placeholder: string;
+};
+
+function telegramMainMenu(): TelegramReplyKeyboard {
+  return {
+    keyboard: [
+      [{ text: TELEGRAM_MENU_LABELS.capture }, { text: TELEGRAM_MENU_LABELS.recipe }],
+      [{ text: TELEGRAM_MENU_LABELS.resources }, { text: TELEGRAM_MENU_LABELS.status }],
+      [{ text: TELEGRAM_MENU_LABELS.notebook }, { text: TELEGRAM_MENU_LABELS.help }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+    input_field_placeholder: "直接輸入一件交換事項…",
+  };
+}
+
+function telegramResourceMenu(): TelegramReplyKeyboard {
+  return {
+    keyboard: [
+      TELEGRAM_RESOURCE_GROUPS.slice(0, 2).map((item) => ({ text: item.label })),
+      TELEGRAM_RESOURCE_GROUPS.slice(2, 4).map((item) => ({ text: item.label })),
+      [{ text: TELEGRAM_RESOURCE_GROUPS[4].label }, { text: TELEGRAM_MENU_LABELS.home }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+    input_field_placeholder: "選一個分類，或輸入「找資源 德鐵」…",
+  };
+}
+
+async function sendTelegramMessage(token: string, chatId: number, text: string, replyMarkup: TelegramReplyKeyboard): Promise<void> {
   const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -55,6 +98,7 @@ async function sendTelegramMessage(token: string, chatId: number, text: string):
       chat_id: chatId,
       text,
       link_preview_options: { is_disabled: true },
+      reply_markup: replyMarkup,
     }),
   });
   if (!response.ok) throw new Error("telegram_send_failed");
@@ -92,25 +136,24 @@ export async function handler(request: Request): Promise<Response> {
     const admin = createClient(supabaseUrl, secretKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+    const mainMenu = telegramMainMenu();
+    const sendMain = (text: string) => sendTelegramMessage(botToken, update.chatId, text, mainMenu);
 
     if (update.text === null) {
-      await sendTelegramMessage(botToken, update.chatId, "目前只接受私人一對一的文字訊息；語音、照片與附件尚未支援。");
+      await sendMain("目前支援私人一對一文字訊息。語音、照片與附件還不能整理，你可以改用文字描述，或用下方按鈕操作。");
       return json({ ok: true });
     }
 
-    if (update.command?.name === "help") {
-      await sendTelegramMessage(
-        botToken,
-        update.chatId,
-        "直接傳送文字，我會先安全收件，並交給 Exchange Companion 排程整理成待審提案。\n\n可用指令：\n/start <配對碼>\n/recipe [關鍵字]\n/random_recipe [關鍵字]\n/status\n/disconnect\n/help\n\n隨機食譜會即時從你的私人資源庫抽取；提案只能在手帳網站審核與套用。",
-      );
-      return json({ ok: true });
-    }
+    const menuAction = parseTelegramMenuAction(update.text);
 
     if (update.command?.name === "start") {
+      if (!update.command.argument) {
+        await sendMain("這裡是「交換手帳」的 Telegram 快捷入口。若還沒連結，請先到網站的「AI 幫我整理」產生安全配對連結；完成後就能直接打字或使用下方按鈕，不用背指令。");
+        return json({ ok: true });
+      }
       const pairCode = normalizePairCode(update.command.argument);
       if (!pairCode) {
-        await sendTelegramMessage(botToken, update.chatId, "配對碼格式不正確。請回到手帳 AI 頁重新產生配對碼，再輸入 /start <配對碼>。");
+        await sendMain("這個配對連結無法使用。請回到網站的「AI 幫我整理」重新產生，再從新連結打開 Telegram。");
         return json({ ok: true });
       }
       const { data, error } = await admin.rpc("consume_telegram_pair_code", {
@@ -120,14 +163,29 @@ export async function handler(request: Request): Promise<Response> {
       });
       if (error) throw error;
       if (!firstRow(data)) {
-        await sendTelegramMessage(botToken, update.chatId, "配對碼無效、已使用或已過期。請回到手帳 AI 頁重新產生配對碼。");
+        await sendMain("這個配對連結已使用或過期。請回到網站的「AI 幫我整理」重新產生。");
         return json({ ok: true });
       }
-      await sendTelegramMessage(botToken, update.chatId, `配對完成。現在可以直接傳送交換事項，我會先收件並在排程執行時整理成待審提案。\n\n手帳：${inboxUrl(companionUrl)}`);
+      await sendMain(`「交換手帳」已連結。\n\n你可以直接傳一句交換事項，我會先放進整理佇列；也可以用下方按鈕找重要資源或抽一道食譜。所有更新都要回網站確認後才會套用。\n\n手帳：${inboxUrl(companionUrl)}`);
       return json({ ok: true });
     }
 
-    if (update.command?.name === "status" || update.command?.name === "disconnect") {
+    if (update.command?.name === "help" || menuAction?.name === "help" || menuAction?.name === "home") {
+      await sendMain("直接輸入一件交換事項，我會收進整理佇列，等排程整理成待確認提案。下方按鈕可直接找重要資源、抽食譜、查連線，或回到網站；不用記任何指令。\n\nTelegram 不會直接修改手帳，提案仍要在網站確認後才會套用。");
+      return json({ ok: true });
+    }
+
+    if (menuAction?.name === "capture") {
+      await sendMain("直接用一句話告訴我就可以，例如：「我已完成 Vodafone eSIM 申請」或「幫我記得抵達後辦 Anmeldung」。我會先收件，不會直接改動手帳。");
+      return json({ ok: true });
+    }
+
+    if (menuAction?.name === "notebook") {
+      await sendMain(`從這裡打開你的交換手帳：\n${inboxUrl(companionUrl)}`);
+      return json({ ok: true });
+    }
+
+    if (update.command?.name === "status" || update.command?.name === "disconnect" || menuAction?.name === "status") {
       const { data: link, error } = await admin
         .from("telegram_links")
         .select("connection_id,linked_at,last_received_at")
@@ -137,22 +195,35 @@ export async function handler(request: Request): Promise<Response> {
         .maybeSingle();
       if (error) throw error;
       if (!link) {
-        await sendTelegramMessage(botToken, update.chatId, "目前沒有連結到 Exchange Companion。請先在手帳 AI 頁產生配對碼，再輸入 /start <配對碼>。");
+        await sendMain("目前還沒連結「交換手帳」。請回到網站的「AI 幫我整理」產生安全配對連結，再從該連結打開 Telegram。");
         return json({ ok: true });
       }
-      if (update.command.name === "status") {
-        await sendTelegramMessage(botToken, update.chatId, `目前已連結 Exchange Companion。你可以直接傳送文字，內容只會進入待審提案流程。\n\n手帳：${inboxUrl(companionUrl)}`);
+      if (update.command?.name !== "disconnect") {
+        await sendMain(`目前已連結「交換手帳」。文字只會先進入整理佇列，完成後仍要回網站確認提案。\n\n手帳：${inboxUrl(companionUrl)}`);
         return json({ ok: true });
       }
       const { error: revokeError } = await admin.rpc("revoke_telegram_connection", {
         requested_connection_id: link.connection_id,
       });
       if (revokeError) throw revokeError;
-      await sendTelegramMessage(botToken, update.chatId, "已中斷 Telegram 連結，尚未處理的原文也已清除。之後可隨時從手帳 AI 頁重新配對。");
+      await sendMain("已中斷 Telegram 連結，尚未處理的原文也已清除。之後可隨時從網站的「AI 幫我整理」重新配對。");
       return json({ ok: true });
     }
 
-    if (update.command?.name === "recipe" || update.command?.name === "random_recipe") {
+    const recipeArgument = update.command?.name === "recipe" || update.command?.name === "random_recipe"
+      ? update.command.argument
+      : menuAction?.name === "recipe" ? menuAction.argument : null;
+    const resourceQuery = update.command?.name === "resource" && update.command.argument
+      ? update.command.argument
+      : menuAction?.name === "resource-search" ? menuAction.argument : null;
+    const resourceGroupId = menuAction?.name === "resource-group" ? menuAction.argument : null;
+
+    if (menuAction?.name === "resources" || (update.command?.name === "resource" && !update.command.argument)) {
+      await sendTelegramMessage(botToken, update.chatId, "先選一個分類；也可以直接輸入「找資源 德鐵」這類自然說法。完整的智慧搜尋仍在網站資料頁。", telegramResourceMenu());
+      return json({ ok: true });
+    }
+
+    if (recipeArgument !== null || resourceQuery !== null || resourceGroupId !== null) {
       const { data: link, error: linkError } = await admin
         .from("telegram_links")
         .select("user_id,connection_id")
@@ -162,7 +233,7 @@ export async function handler(request: Request): Promise<Response> {
         .maybeSingle();
       if (linkError) throw linkError;
       if (!link) {
-        await sendTelegramMessage(botToken, update.chatId, "目前沒有連結到 Exchange Companion。請先在手帳 AI 頁產生配對碼，再輸入 /start <配對碼>。");
+        await sendMain("目前還沒連結「交換手帳」。請回到網站的「AI 幫我整理」產生安全配對連結，再從該連結打開 Telegram。");
         return json({ ok: true });
       }
       const { data: connection, error: connectionError } = await admin
@@ -173,7 +244,7 @@ export async function handler(request: Request): Promise<Response> {
         .maybeSingle();
       if (connectionError) throw connectionError;
       if (!isActiveRecipeConnection(connection)) {
-        await sendTelegramMessage(botToken, update.chatId, "這個 Exchange Companion 連線已過期或停用。請回到手帳 AI 頁重新建立連線與配對。");
+        await sendMain("這個「交換手帳」連線已過期或停用。請回到網站重新建立 Concierge 連線並配對 Telegram。");
         return json({ ok: true });
       }
       const { data: stateRow, error: stateError } = await admin
@@ -182,19 +253,31 @@ export async function handler(request: Request): Promise<Response> {
         .eq("user_id", link.user_id)
         .maybeSingle();
       if (stateError) throw stateError;
-      const recipes = recipesFromAppState(stateRow?.state, update.command.argument);
-      const recipe = pickTelegramRecipe(recipes);
-      if (!recipe) {
-        const suffix = update.command.argument ? `符合「${update.command.argument}」的` : "";
-        await sendTelegramMessage(botToken, update.chatId, `目前資源庫裡沒有${suffix}食譜。請先到手帳審核並套用食譜提案。`);
+      if (recipeArgument !== null) {
+        const recipes = recipesFromAppState(stateRow?.state, recipeArgument);
+        const recipe = pickTelegramRecipe(recipes);
+        if (!recipe) {
+          const suffix = recipeArgument ? `符合「${recipeArgument}」的` : "";
+          await sendMain(`目前資源庫裡沒有${suffix}食譜。你可以回網站的「重要資源」查看或新增。`);
+          return json({ ok: true });
+        }
+        await sendMain(formatTelegramRecipe(recipe, resourcesUrl(companionUrl)));
         return json({ ok: true });
       }
-      await sendTelegramMessage(botToken, update.chatId, formatTelegramRecipe(recipe, inboxUrl(companionUrl)));
+
+      const group = resourceGroupId ? TELEGRAM_RESOURCE_GROUPS.find((item) => item.id === resourceGroupId) : null;
+      const resources = resourcesFromAppState(stateRow?.state, { group: resourceGroupId ?? undefined, query: resourceQuery ?? undefined });
+      const heading = group?.label ?? (resourceQuery ? `搜尋「${resourceQuery}」` : "全部");
+      if (!resources.length) {
+        await sendMain(`目前找不到${group ? `「${group.label}」` : resourceQuery ? `符合「${resourceQuery}」` : "符合條件"}的資源。你可以到網站資料頁改用智慧搜尋。\n\n${resourcesUrl(companionUrl)}`);
+        return json({ ok: true });
+      }
+      await sendMain(formatTelegramResources(resources, heading, resourcesUrl(companionUrl)));
       return json({ ok: true });
     }
 
     if (update.text.trim().startsWith("/")) {
-      await sendTelegramMessage(botToken, update.chatId, "不支援這個指令。可用指令：/start <配對碼>、/recipe [關鍵字]、/random_recipe [關鍵字]、/status、/disconnect、/help；其他文字會作為交換手帳整理需求收件。");
+      await sendMain("不用背指令。請直接輸入交換事項，或使用下方按鈕操作。");
       return json({ ok: true });
     }
 
@@ -211,19 +294,19 @@ export async function handler(request: Request): Promise<Response> {
     const result = firstRow(data);
     const outcome = typeof result?.outcome === "string" ? result.outcome : "unknown";
     if (outcome === "duplicate") {
-      await sendTelegramMessage(botToken, update.chatId, "已收件。內容會在你的 Exchange Companion 排程執行時整理成待審提案；手帳內容不會直接被修改。");
+      await sendMain("這則內容已收進整理佇列，不會重複建立。排程完成後，回網站確認提案再套用。");
       return json({ ok: true });
     }
     if (outcome === "not_linked") {
-      await sendTelegramMessage(botToken, update.chatId, "尚未連結 Exchange Companion。請先在手帳 AI 頁產生配對碼，再輸入 /start <配對碼>。");
+      await sendMain("目前還沒連結「交換手帳」。請回到網站的「AI 幫我整理」產生安全配對連結，再從該連結打開 Telegram。");
       return json({ ok: true });
     }
     if (outcome === "queue_full") {
-      await sendTelegramMessage(botToken, update.chatId, "目前待處理訊息已達上限，請等下一次排程完成後再傳送。");
+      await sendMain("目前整理佇列已滿。請等下一次排程完成後再傳送，現有內容不會遺失。");
       return json({ ok: true });
     }
     if (outcome !== "queued") throw new Error("unexpected_enqueue_outcome");
-    await sendTelegramMessage(botToken, update.chatId, "已收件。內容會在你的 Exchange Companion 排程執行時整理成待審提案；手帳內容不會直接被修改。");
+    await sendMain("已收進整理佇列。排程完成後，回網站確認提案再套用；目前手帳內容沒有被修改。");
     return json({ ok: true });
   } catch {
     return json({ error: "server_error" }, 500);

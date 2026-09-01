@@ -3,8 +3,30 @@ export const TELEGRAM_MAX_WEBHOOK_BYTES = 64 * 1024;
 
 export type TelegramCommand =
   | { name: "start"; argument: string }
-  | { name: "recipe" | "random_recipe"; argument: string }
+  | { name: "recipe" | "random_recipe" | "resource"; argument: string }
   | { name: "help" | "status" | "disconnect"; argument: "" };
+
+export const TELEGRAM_MENU_LABELS = {
+  capture: "整理一件事",
+  recipe: "隨機食譜",
+  resources: "重要資源",
+  status: "連線狀態",
+  help: "使用說明",
+  notebook: "開啟交換手帳",
+  home: "回主選單",
+} as const;
+
+export const TELEGRAM_RESOURCE_GROUPS = [
+  { id: "admin", label: "申請與行政" },
+  { id: "school", label: "學校與學業" },
+  { id: "living", label: "住宿與生活" },
+  { id: "transport", label: "交通與行李" },
+  { id: "food", label: "料理與採買" },
+] as const;
+
+export type TelegramMenuAction =
+  | { name: "capture" | "resources" | "status" | "help" | "notebook" | "home"; argument: "" }
+  | { name: "recipe" | "resource-search" | "resource-group"; argument: string };
 
 export type ParsedTelegramUpdate =
   | { kind: "ignore" }
@@ -48,13 +70,40 @@ export function telegramTextLength(value: string): number {
 }
 
 export function parseTelegramCommand(text: string): TelegramCommand | null {
-  const match = text.trim().match(/^\/(start|help|status|disconnect|recipe|random_recipe)(?:@[A-Za-z0-9_]{5,32})?(?:\s+([\s\S]*))?$/i);
+  const match = text.trim().match(/^\/(start|help|status|disconnect|recipe|random_recipe|resource)(?:@[A-Za-z0-9_]{5,32})?(?:\s+([\s\S]*))?$/i);
   if (!match) return null;
   const name = match[1].toLowerCase() as TelegramCommand["name"];
   const argument = (match[2] ?? "").trim();
-  if (name === "start" || name === "recipe" || name === "random_recipe") return { name, argument };
+  if (name === "start" || name === "recipe" || name === "random_recipe" || name === "resource") return { name, argument };
   if (argument) return null;
   return { name, argument: "" };
+}
+
+export function parseTelegramMenuAction(text: string): TelegramMenuAction | null {
+  const normalized = text.trim().replace(/\s+/g, " ");
+  if (normalized === TELEGRAM_MENU_LABELS.capture) return { name: "capture", argument: "" };
+  if (normalized === TELEGRAM_MENU_LABELS.recipe) return { name: "recipe", argument: "" };
+  if (normalized === TELEGRAM_MENU_LABELS.resources) return { name: "resources", argument: "" };
+  if (normalized === TELEGRAM_MENU_LABELS.status) return { name: "status", argument: "" };
+  if (normalized === TELEGRAM_MENU_LABELS.help) return { name: "help", argument: "" };
+  if (normalized === TELEGRAM_MENU_LABELS.notebook) return { name: "notebook", argument: "" };
+  if (normalized === TELEGRAM_MENU_LABELS.home) return { name: "home", argument: "" };
+
+  const group = TELEGRAM_RESOURCE_GROUPS.find((item) => item.label === normalized);
+  if (group) return { name: "resource-group", argument: group.id };
+
+  const resourceMatch = normalized.match(/^(?:找|搜尋)?(?:重要)?資源(?:[：:\s]+(.+))?$/);
+  if (resourceMatch) return resourceMatch[1]
+    ? { name: "resource-search", argument: resourceMatch[1].trim() }
+    : { name: "resources", argument: "" };
+  const naturalResourceMatch = normalized.match(/^(?:我想|幫我)?(?:找|搜尋)(?:一下)?\s*(.{1,60}?)(?:的)?(?:資源|資料)$/);
+  if (naturalResourceMatch) return { name: "resource-search", argument: naturalResourceMatch[1].trim() };
+
+  const recipeMatch = normalized.match(/^(?:找|搜尋)?食譜(?:[：:\s]+(.+))?$/);
+  if (recipeMatch) return { name: "recipe", argument: recipeMatch[1]?.trim() ?? "" };
+  const recipeSuffixMatch = normalized.match(/^(.{1,60})食譜$/);
+  if (recipeSuffixMatch) return { name: "recipe", argument: recipeSuffixMatch[1].trim() };
+  return null;
 }
 
 export function normalizePairCode(value: string): string | null {

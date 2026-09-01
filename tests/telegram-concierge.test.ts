@@ -5,6 +5,7 @@ import {
   constantTimeEqual,
   normalizePairCode,
   parseTelegramCommand,
+  parseTelegramMenuAction,
   parseTelegramUpdate,
   TELEGRAM_MAX_TEXT_CHARACTERS,
   telegramTextLength,
@@ -96,9 +97,23 @@ test("parses only the supported commands and normalizes one-time pairing codes",
   assert.deepEqual(parseTelegramCommand("/recipe"), { name: "recipe", argument: "" });
   assert.deepEqual(parseTelegramCommand("/recipe 雞肉"), { name: "recipe", argument: "雞肉" });
   assert.deepEqual(parseTelegramCommand("/random_recipe@exchange_bot 義大利麵"), { name: "random_recipe", argument: "義大利麵" });
+  assert.deepEqual(parseTelegramCommand("/resource 德鐵"), { name: "resource", argument: "德鐵" });
   assert.equal(parseTelegramCommand("/status extra"), null);
   assert.equal(parseTelegramCommand("/unknown"), null);
   assert.equal(normalizePairCode(" abcd2345 "), "ABCD2345");
   assert.equal(normalizePairCode("short"), null);
   assert.equal(normalizePairCode("invalid code"), null);
+});
+
+test("maps button-first and natural-language menu text without requiring commands", () => {
+  assert.deepEqual(parseTelegramMenuAction("整理一件事"), { name: "capture", argument: "" });
+  assert.deepEqual(parseTelegramMenuAction("隨機食譜"), { name: "recipe", argument: "" });
+  assert.deepEqual(parseTelegramMenuAction("雞肉食譜"), { name: "recipe", argument: "雞肉" });
+  assert.deepEqual(parseTelegramMenuAction("重要資源"), { name: "resources", argument: "" });
+  assert.deepEqual(parseTelegramMenuAction("交通與行李"), { name: "resource-group", argument: "transport" });
+  assert.deepEqual(parseTelegramMenuAction("找資源 德鐵"), { name: "resource-search", argument: "德鐵" });
+  assert.deepEqual(parseTelegramMenuAction("我想找德鐵買票的資料"), { name: "resource-search", argument: "德鐵買票" });
+  assert.deepEqual(parseTelegramMenuAction("開啟交換手帳"), { name: "notebook", argument: "" });
+  assert.deepEqual(parseTelegramMenuAction("回主選單"), { name: "home", argument: "" });
+  assert.equal(parseTelegramMenuAction("我已完成簽證申請"), null);
 });

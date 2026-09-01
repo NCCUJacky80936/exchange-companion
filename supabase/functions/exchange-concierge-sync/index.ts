@@ -99,6 +99,13 @@ function telegramBotInfo() {
   return { botUsername: `@${username}`, botUrl: `https://t.me/${username}` };
 }
 
+function telegramPairingBotInfo(code: string) {
+  const info = telegramBotInfo();
+  const url = new URL(info.botUrl);
+  url.searchParams.set("start", code);
+  return { ...info, botUrl: url.toString() };
+}
+
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -263,7 +270,7 @@ Deno.serve(async (req: Request) => {
           expires_at: expiresAt,
         });
         if (error) throw error;
-        return json({ pairing: { connectionId: connection.id, code, expiresAt, ...telegramBotInfo() } }, 201);
+        return json({ pairing: { connectionId: connection.id, code, expiresAt, ...telegramPairingBotInfo(code) } }, 201);
       }
 
       if (payload.action === "telegram-status") {

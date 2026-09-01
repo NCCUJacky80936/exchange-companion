@@ -25,6 +25,7 @@ import {
   Search,
   ShieldAlert,
   Shuffle,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   Upload,
@@ -53,6 +54,15 @@ import { exchangeCurrencies, exchangeProfile, exchangeTimeZones } from "../lib/p
 import { limitSidebarNote, notebookCharacterCount, SIDEBAR_NOTE_LIMIT } from "../lib/personalization";
 import { pickRandomRecipe } from "../lib/recipe-resources";
 import { pruneProcessedResourceIntake } from "../lib/resource-intake";
+import {
+  RESOURCE_GROUPS,
+  resourceGroup,
+  searchResources,
+  type ResourceGroup,
+  type ResourcePrivacyFilter,
+  type ResourceSort,
+  type ResourceTypeFilter,
+} from "../lib/resource-search";
 import type { HomeAgendaTarget } from "../lib/home-dashboard";
 import { markExchangePerformance } from "../lib/performance";
 import { loadState, normalizeImportedState, resetState, saveState, validateImport } from "../lib/storage";
@@ -203,14 +213,6 @@ const budgetBasisLabel: Record<BudgetItem["basis"], string> = {
   estimate: "個人估算",
   confirmed: "已有依據",
 };
-
-function resourceGroup(category: string): string {
-  if (/簽證|居留|行政|財力|保險/.test(category)) return "申請與行政";
-  if (/學校|學業|日曆|選課|課程|考試/.test(category)) return "學校與學業";
-  if (/住宿|生活|醫療|緊急/.test(category)) return "住宿與生活";
-  if (/交通|航班|飛機|行李|海關/.test(category)) return "交通與行李";
-  return "其他";
-}
 
 const navItems: Array<{ id: NavSection; label: string; shortLabel: string; doodleIcon: string }> = [
   { id: "home", label: "我的交換", shortLabel: "首頁", doodleIcon: "/images/doodle-icons-v2/home-notebook.webp" },
@@ -1375,19 +1377,55 @@ function ResourceModal({ resource, resourceIntake, onAddResourceUrl, onDeleteRes
 
 function ResourcesPage({ state, setState }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> }) {
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("全部");
+  const [category, setCategory] = useState<"全部" | ResourceGroup>("全部");
+  const [typeFilter, setTypeFilter] = useState<ResourceTypeFilter>("all");
+  const [privacyFilter, setPrivacyFilter] = useState<ResourcePrivacyFilter>("all");
+  const [sort, setSort] = useState<ResourceSort>("relevance");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [editingResource, setEditingResource] = useState<ResourceItem | null | undefined>(undefined);
   const [featuredRecipe, setFeaturedRecipe] = useState<ResourceItem | null>(null);
-  const deferredQuery = useDeferredValue(query.toLowerCase());
-  const categories = ["全部", ...new Set(state.resources.map((resource) => resourceGroup(resource.category)))];
-  const filtered = state.resources.filter((resource) => (category === "全部" || resourceGroup(resource.category) === category) && (!deferredQuery || `${resource.title} ${resource.description} ${resource.details ?? ""} ${resource.region} ${resource.sourceLabel} ${(resource.searchTags ?? []).join(" ")}`.toLowerCase().includes(deferredQuery)));
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const deferredQuery = useDeferredValue(query);
+  const groupCounts = useMemo(() => state.resources.reduce<Record<ResourceGroup, number>>((counts, resource) => {
+    const group = resourceGroup(resource.category);
+    counts[group] += 1;
+    return counts;
+  }, Object.fromEntries(RESOURCE_GROUPS.map((group) => [group, 0])) as Record<ResourceGroup, number>), [state.resources]);
+  const categories: Array<"全部" | ResourceGroup> = ["全部", ...RESOURCE_GROUPS.filter((group) => groupCounts[group] > 0)];
+  const filtered = useMemo(() => searchResources(state.resources, {
+    query: deferredQuery,
+    group: category,
+    type: typeFilter,
+    privacy: privacyFilter,
+    sort,
+  }), [category, deferredQuery, privacyFilter, sort, state.resources, typeFilter]);
+  const groupedResources = useMemo(() => RESOURCE_GROUPS
+    .map((group) => ({ group, items: filtered.filter((resource) => resourceGroup(resource.category) === group) }))
+    .filter((entry) => entry.items.length), [filtered]);
   const randomRecipe = pickRandomRecipe(state.resources, () => 0);
   const typeLabel = { official: "官方", school: "學校", city: "城市", experience: "經驗分享", personal: "個人資料" };
   const latestResourceDate = state.resources.reduce((latest, resource) => resource.verifiedAt > latest ? resource.verifiedAt : latest, "") || exchangeProfile.research.minimumVerifiedDate;
+  const activeAdvancedFilterCount = Number(typeFilter !== "all") + Number(privacyFilter !== "all") + Number(sort !== "relevance");
+  const hasActiveFilters = Boolean(query || category !== "全部" || activeAdvancedFilterCount);
 
   useEffect(() => {
     setState((current) => pruneProcessedResourceIntake(current));
   }, [setState]);
+
+  useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      const target = event.target;
+      const isEditing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable);
+      const quickSearch = event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey && !isEditing;
+      const commandSearch = event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey);
+      if (!quickSearch && !commandSearch) return;
+      event.preventDefault();
+      searchInputRef.current?.focus({ preventScroll: true });
+      searchInputRef.current?.select();
+    };
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
+  }, []);
 
   function addResourceUrl(rawUrl: string, note: string): ResourceIntakeResult {
     try {
@@ -1434,38 +1472,58 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
     if (recipe) setFeaturedRecipe(recipe);
   }
 
+  function clearFilters() {
+    setQuery("");
+    setCategory("全部");
+    setTypeFilter("all");
+    setPrivacyFilter("all");
+    setSort("relevance");
+    searchInputRef.current?.focus();
+  }
+
   return (
     <div className="page-stack">
-      <header className="page-header resources-header"><div className="resources-header-copy"><p className="eyebrow">Verified bookmarks</p><div className="resources-title-line"><h1>重要資源庫</h1><span className="resource-update-mark"><small>UPDATE</small><strong>{latestResourceDate.replaceAll("-", ".")}</strong></span><div className="resources-header-tools"><button className="button secondary resource-random-button" type="button" aria-label="隨機食譜" disabled={!randomRecipe} onClick={openRandomRecipe}><Shuffle size={17} /><span>隨機食譜</span></button><button className="button primary resource-add-button" type="button" aria-label="新增資源" onClick={() => setEditingResource(null)}><Plus size={19} /></button></div></div></div></header>
+      <header className="page-header resources-header"><div className="resources-header-copy"><p className="eyebrow">Verified bookmarks</p><div className="resources-title-line"><h1>重要資源庫</h1><span className="resource-update-mark"><small>UPDATE</small><strong>{latestResourceDate.replaceAll("-", ".")}</strong></span><div className="resources-header-tools"><button className="button secondary resource-random-button" type="button" aria-label="隨機食譜" disabled={!randomRecipe} onClick={openRandomRecipe}><Shuffle size={17} /><span>隨機食譜</span></button><button className="button primary resource-add-button" type="button" aria-label="新增資源" onClick={() => setEditingResource(null)}><Plus size={18} /></button></div></div><p className="resources-lead">直接輸入問題，標題、分類、摘要、關鍵字與常見同義詞會一起比對。</p></div></header>
       <div className="toolbar paper-card resource-toolbar">
-        <label className="search-field"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜尋簽證、住宿、醫療或交通" /></label>
-        <label className="compact-select resource-category-select">
-          <span className="sr-only">資源分類</span>
-          <select value={category} onChange={(event) => setCategory(event.target.value)}>
-            {categories.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
-          <ChevronDown size={16} />
-        </label>
-        <div className="filter-pills scroll-pills" aria-label="資源分類">{categories.map((item) => <button type="button" key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
+        <div className="resource-search-row">
+          <label className="search-field resource-smart-search"><Search size={18} /><span className="sr-only">智慧搜尋資源</span><input ref={searchInputRef} aria-label="智慧搜尋資源" aria-keyshortcuts="/ Meta+K Control+K" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape" && query) { event.preventDefault(); setQuery(""); } }} placeholder="例如：怎麼辦簽證、德鐵買票、雞肉食譜" />{query ? <button className="resource-search-clear" type="button" aria-label="清除搜尋" onClick={() => { setQuery(""); searchInputRef.current?.focus(); }}><X size={15} /></button> : <kbd aria-hidden="true">⌘ K</kbd>}</label>
+          <div className={`resource-filter-details ${filtersOpen ? "open" : ""}`}>
+            <button type="button" aria-expanded={filtersOpen} aria-controls="resource-filter-panel" onClick={() => setFiltersOpen((open) => !open)}><SlidersHorizontal size={16} /><span>篩選</span>{activeAdvancedFilterCount ? <strong>{activeAdvancedFilterCount}</strong> : null}</button>
+          </div>
+          {filtersOpen ? <div className="resource-filter-panel" id="resource-filter-panel">
+            <label><span>來源</span><select aria-label="資料來源類型" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as ResourceTypeFilter)}><option value="all">全部來源</option><option value="official">官方</option><option value="school">學校</option><option value="city">城市</option><option value="experience">經驗分享</option><option value="personal">個人資料</option></select></label>
+            <label><span>隱私</span><select aria-label="資料隱私" value={privacyFilter} onChange={(event) => setPrivacyFilter(event.target.value as ResourcePrivacyFilter)}><option value="all">全部</option><option value="private">私人</option><option value="shareable">可分享</option></select></label>
+            <label><span>排序</span><select aria-label="資料排序" value={sort} onChange={(event) => setSort(event.target.value as ResourceSort)}><option value="relevance">智慧排序</option><option value="updated">最近查核</option><option value="title">名稱 A–Z</option></select></label>
+            <button type="button" className="button text-button" disabled={!hasActiveFilters} onClick={clearFilters}>清除全部</button>
+          </div> : null}
+        </div>
+        <div className="resource-toolbar-meta">
+          <div className="filter-pills scroll-pills" aria-label="快速分類">{categories.map((item) => <button type="button" key={item} aria-pressed={category === item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}><span>{item}</span><small>{item === "全部" ? state.resources.length : groupCounts[item]}</small></button>)}</div>
+          <span className="resource-result-count" role="status" aria-live="polite">顯示 {filtered.length}／{state.resources.length} 筆</span>
+        </div>
+        {query ? <p className="resource-search-note">正在同時比對分類、摘要、關鍵字與常見說法。</p> : null}
       </div>
       <AnimatePresence>{featuredRecipe ? <motion.section className="paper-card random-recipe-preview" aria-labelledby="random-recipe-title" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>
         <div className="random-recipe-heading"><div><p className="eyebrow">Tonight&apos;s pick</p><h2 id="random-recipe-title">{featuredRecipe.title}</h2></div><button className="icon-button" type="button" onClick={() => setFeaturedRecipe(null)} aria-label="關閉隨機食譜"><X size={18} /></button></div>
         <p>{featuredRecipe.description}</p><div className="random-recipe-details">{featuredRecipe.details}</div>
         <div className="random-recipe-actions"><button className="button secondary" type="button" onClick={openRandomRecipe}><Shuffle size={16} />再抽一道</button>{featuredRecipe.url ? <a className="button primary" href={featuredRecipe.url} target="_blank" rel="noreferrer">開啟原始食譜 <ExternalLink size={15} /></a> : null}</div>
       </motion.section> : null}</AnimatePresence>
-      <section className="resource-grid">
-        {!filtered.length ? <div className="paper-card empty-state"><Sparkles size={24} /><div><h2>等待加入你的目的地資源</h2><p>請使用專案內的 AI 整理流程，依交換國家、城市與學校查核官方資料；你也可以先手動新增來源。</p></div></div> : null}
-        {filtered.map((resource, index) => (
-          <motion.article className={`resource-card paper-card resource-${resource.type}`} key={resource.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * 0.035, 0.3) }}>
-            <div className="resource-card-top"><div className="resource-badges"><span className={`source-badge ${resource.type}`}>{typeLabel[resource.type]}</span><span className={`source-badge ${resource.privacy}`}>{resource.privacy === "private" ? "私人" : "可分享"}</span></div><div className="resource-card-actions"><button className="icon-button" onClick={() => setEditingResource(resource)} aria-label={`編輯 ${resource.title}`}><Pencil size={16} /></button><button className="icon-button danger" onClick={() => deleteResource(resource)} aria-label={`刪除 ${resource.title}`}><Trash2 size={16} /></button></div></div>
-            <span className="resource-category">{resourceGroup(resource.category)} · {resource.category}</span>
-            <h2>{resource.title}</h2>
-            <div className="resource-summary"><span>{resource.origin === "ai-research" ? "AI 摘要" : "重點摘要"}</span><p>{resource.description}</p>{resource.details ? <p className="resource-summary-detail">{resource.details}</p> : null}</div>
-            {resource.details ? <details className="resource-details"><summary>查看詳細說明</summary><p>{resource.details}</p></details> : null}
-            <div className="resource-footer"><span><MapIcon size={14} />{resource.region}</span><span><Check size={14} />查核 {resource.verifiedAt.replaceAll("-", ".")}</span><span>{resource.sourceLabel}</span></div>
-            {resource.url ? <a className="resource-open-link" href={resource.url} target="_blank" rel="noreferrer">開啟來源 <ExternalLink size={14} /></a> : null}
-          </motion.article>
-        ))}
+      <section className="resource-results" aria-label="資源搜尋結果">
+        {!filtered.length ? <div className="paper-card empty-state resource-empty-state"><Sparkles size={24} /><div><h2>{state.resources.length ? "找不到符合的資料" : "等待加入你的目的地資源"}</h2><p>{state.resources.length ? "換一個說法，或清除部分分類與來源篩選後再試一次。" : "請使用專案內的 AI 整理流程，依交換國家、城市與學校查核官方資料；你也可以先手動新增來源。"}</p>{state.resources.length ? <button type="button" className="button secondary" onClick={clearFilters}>清除篩選</button> : null}</div></div> : null}
+        {groupedResources.map(({ group, items }, groupIndex) => <section className="resource-group-section" key={group} aria-labelledby={`resource-group-${groupIndex}`}>
+          <header><div><p className="eyebrow">Resource category</p><h2 id={`resource-group-${groupIndex}`}>{group}</h2></div><span>{items.length} 筆</span></header>
+          <div className="resource-grid">{items.map((resource, index) => (
+            <motion.article className={`resource-card paper-card resource-${resource.type}`} key={resource.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min((groupIndex * 2 + index) * 0.025, 0.25) }}>
+              <div className="resource-card-top"><div className="resource-badges"><span className={`source-badge ${resource.type}`}>{typeLabel[resource.type]}</span><span className={`source-badge ${resource.privacy}`}>{resource.privacy === "private" ? "私人" : "可分享"}</span></div><div className="resource-card-actions"><button className="icon-button" onClick={() => setEditingResource(resource)} aria-label={`編輯 ${resource.title}`}><Pencil size={16} /></button><button className="icon-button danger" onClick={() => deleteResource(resource)} aria-label={`刪除 ${resource.title}`}><Trash2 size={16} /></button></div></div>
+              <span className="resource-category">{resource.category}</span>
+              <h3>{resource.title}</h3>
+              <div className="resource-summary"><p>{resource.description}</p></div>
+              {resource.details ? <details className="resource-details"><summary>查看完整內容</summary><p>{resource.details}</p></details> : null}
+              <div className="resource-footer"><span><MapIcon size={14} />{resource.region}</span><span><Check size={14} />查核 {resource.verifiedAt.replaceAll("-", ".")}</span><span>{resource.sourceLabel}</span></div>
+              {resource.url ? <a className="resource-open-link" href={resource.url} target="_blank" rel="noreferrer">開啟來源 <ExternalLink size={14} /></a> : null}
+            </motion.article>
+          ))}</div>
+        </section>)}
       </section>
       <aside className="experience-rule paper-card"><Info size={24} /><div><h2>規定和經驗，不混在一起</h2><p>官方、學校與城市來源用來確認程序；個人經驗只協助補充生活情境與容易遺漏的準備。價格、期限和法律要求一律回到原始官方頁面重新確認。</p></div></aside>
       <AnimatePresence>{editingResource !== undefined ? <ResourceModal resource={editingResource} resourceIntake={state.resourceIntake ?? []} onAddResourceUrl={addResourceUrl} onDeleteResourceIntake={deleteResourceIntake} onClose={() => setEditingResource(undefined)} onSave={saveResource} /> : null}</AnimatePresence>
