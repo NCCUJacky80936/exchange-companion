@@ -1,12 +1,46 @@
 import vinext from "vinext";
 import { defineConfig } from "vite";
-import hostingConfig from "./.openai/hosting.json" with { type: "json" };
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { sites } from "./build/sites-vite-plugin.ts";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
 
-const { d1, r2 } = hostingConfig;
+type HostingBindings = {
+  d1?: string;
+  r2?: string;
+};
+
+function readHostingBindings(): HostingBindings {
+  const configPath = resolve(
+    process.env.SITES_HOSTING_CONFIG_PATH ?? ".openai/hosting.json",
+  );
+
+  // A personal Sites binding is deliberately gitignored. Public template
+  // checkouts must still build without inheriting the original site owner.
+  if (!existsSync(configPath)) return {};
+
+  const parsed: unknown = JSON.parse(readFileSync(configPath, "utf8"));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(".openai/hosting.json must contain a JSON object");
+  }
+
+  const { d1, r2 } = parsed as Record<string, unknown>;
+  if (d1 !== undefined && typeof d1 !== "string") {
+    throw new Error(".openai/hosting.json d1 must be a string");
+  }
+  if (r2 !== undefined && typeof r2 !== "string") {
+    throw new Error(".openai/hosting.json r2 must be a string");
+  }
+
+  return {
+    d1: d1?.trim() || undefined,
+    r2: r2?.trim() || undefined,
+  };
+}
+
+const { d1, r2 } = readHostingBindings();
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
