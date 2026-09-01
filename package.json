@@ -11,6 +11,8 @@
     "validate:profile": "node scripts/validate-profile.mjs",
     "validate:skills": "node scripts/validate-skills.mjs",
     "privacy:check": "node scripts/privacy-check.mjs",
+    "security:check": "npm run privacy:check && node scripts/security-check.mjs",
+    "audit:production": "npm audit --omit=dev --audit-level=high",
     "deploy:preflight": "node scripts/assert-deploy-route.mjs && npx wrangler whoami",
     "deploy:cloudflare": "node scripts/assert-deploy-route.mjs && npm run check && npx wrangler deploy --config dist/server/wrangler.json",
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
@@ -20,7 +22,7 @@
     "test": "npm run build && node --test tests/*.test.mjs && node --import tsx --test tests/*.test.ts",
     "test:cloud": "node tests/cloud-smoke.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "check": "npm run validate:profile && npm run validate:skills && npm run privacy:check && npm run lint && npm test"
+    "check": "npm run validate:profile && npm run validate:skills && npm run security:check && npm run lint && npm test"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.112.2",

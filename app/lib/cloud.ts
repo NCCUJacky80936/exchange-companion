@@ -3,6 +3,7 @@
 import type { RealtimeChannel, Session, SupabaseClient } from "@supabase/supabase-js";
 import type { AiImportBundle, AppState, ConciergeConnectionFile, ConciergeConnectionInfo, TelegramLinkInfo, TelegramPairingInfo, TravelLinkSettings, TravelMemberAccess, TravelPlan, TravelSharingSettings } from "./types";
 import { cloudPlanIdFor, matchesPublicTravelPayload, publicTravelPayload, resolveTravelPermission } from "./travel-cloud";
+import { validateTravelPlan } from "./travel-transfer";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
@@ -10,6 +11,11 @@ const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
 let browserClient: SupabaseClient | null = null;
 let browserClientPromise: Promise<SupabaseClient | null> | null = null;
 let travelSubscriptionSequence = 0;
+
+function validatedSharedPayload(value: unknown): TravelPlan {
+  if (!validateTravelPlan(value)) throw new Error("invalid_shared_travel_payload");
+  return publicTravelPayload(value);
+}
 
 export function cloudIsConfigured(): boolean {
   return Boolean(url && publishableKey);
@@ -56,7 +62,7 @@ function accountIdToEmail(accountId: string): string {
 }
 
 export async function createPasswordAccount(accountId: string, email: string, password: string): Promise<"signed-in" | "confirmation-required"> {
-  if (password.length < 8) throw new Error("weak_password");
+  if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) throw new Error("weak_password");
   const client = await getCloudClient();
   if (!client) throw new Error("cloud_not_configured");
   const normalized = accountId.trim().toLowerCase();
@@ -232,7 +238,7 @@ export async function publishTravelPlan(plan: TravelPlan): Promise<TravelPlan> {
   const record = {
     id: cloudPlanId,
     owner_id: session.user.id,
-    payload: publicTravelPayload(plan),
+    payload: validatedSharedPayload(publicTravelPayload(plan)),
   };
   let mutation = await client.from("travel_plans").insert(record);
   if (mutation.error?.code === "23505") {
@@ -263,7 +269,7 @@ export async function updatePublishedTravelPlan(plan: TravelPlan): Promise<void>
   const client = await getCloudClient();
   if (!client || !plan.cloud?.published || plan.cloud.permission === "viewer") return;
   const cloudPlanId = plan.cloud.cloudPlanId ?? plan.id;
-  const payload = publicTravelPayload(plan);
+  const payload = validatedSharedPayload(publicTravelPayload(plan));
   const { data: current, error: readError } = await client.from("travel_plans").select("payload").eq("id", cloudPlanId).single();
   if (readError) throw readError;
   if (matchesPublicTravelPayload(current.payload, plan)) return;
@@ -413,7 +419,7 @@ export async function redeemTravelShare(token: string): Promise<TravelPlan> {
   const { data, error } = await client.from("travel_plans").select("id, payload, owner_id, updated_at").eq("id", result.plan_id).single();
   if (error) throw error;
   return {
-    ...(data.payload as TravelPlan),
+    ...validatedSharedPayload(data.payload),
     cloud: {
       published: true,
       cloudPlanId: data.id,
@@ -442,8 +448,8 @@ export async function listMemberTravelPlans(seedPlan: TravelPlan): Promise<Trave
     .select("id, payload, owner_id, updated_at")
     .in("id", planIds);
   if (plansError) throw plansError;
-  const accessible: TravelPlan[] = (plans ?? []).map((row) => ({
-    ...(row.payload as TravelPlan),
+  const accessible: TravelPlan[] = (plans ?? []).filter((row) => validateTravelPlan(row.payload)).map((row) => ({
+    ...publicTravelPayload(row.payload),
     cloud: {
       published: true,
       cloudPlanId: row.id,
@@ -487,8 +493,9 @@ export function subscribeToTravelPlan(planId: string, onChange: (plan: TravelPla
   return client.channel(`travel-plan:${planId}:${travelSubscriptionSequence}`)
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "travel_plans", filter: `id=eq.${planId}` }, (event) => {
       const row = event.new as { payload: TravelPlan; owner_id: string; updated_at: string };
+      if (!validateTravelPlan(row.payload)) return;
       onChange({
-        ...row.payload,
+        ...publicTravelPayload(row.payload),
         cloud: { published: true, cloudPlanId: planId, ownerId: row.owner_id, lastSyncedAt: row.updated_at },
       });
     })

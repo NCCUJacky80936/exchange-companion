@@ -1,5 +1,6 @@
 export const TELEGRAM_MAX_TEXT_CHARACTERS = 4096;
 export const TELEGRAM_MAX_WEBHOOK_BYTES = 64 * 1024;
+export { readJsonBodyWithLimit } from "./http.ts";
 
 export type TelegramCommand =
   | { name: "start"; argument: string }
@@ -171,20 +172,4 @@ export function parseTelegramUpdate(value: unknown): ParsedTelegramUpdate {
     text: message.text,
     command: parseTelegramCommand(message.text),
   };
-}
-
-export async function readJsonBodyWithLimit(request: Request, maximumBytes = TELEGRAM_MAX_WEBHOOK_BYTES): Promise<unknown> {
-  const declaredLength = request.headers.get("content-length");
-  if (declaredLength !== null) {
-    const parsedLength = Number(declaredLength);
-    if (!Number.isSafeInteger(parsedLength) || parsedLength < 0) throw new Error("invalid_content_length");
-    if (parsedLength > maximumBytes) throw new Error("body_too_large");
-  }
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.byteLength > maximumBytes) throw new Error("body_too_large");
-  try {
-    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-  } catch {
-    throw new Error("invalid_json");
-  }
 }

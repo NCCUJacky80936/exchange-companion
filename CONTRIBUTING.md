@@ -6,7 +6,9 @@
 
 ```bash
 npm install
+npm run security:check
+npm run audit:production
 npm run check
 ```
 
-若修改畫面，附上桌機、平板與手機驗證結果。不要在 issue、測試資料、圖片或 commit 內放真實證件、住址、Email、訂位代碼、tokens 或正式雲端 project binding。
+若修改畫面，附上桌機、平板與手機驗證結果；若修改 Auth、RLS、RPC、Edge Function 或分享流程，另附未授權、跨帳號 IDOR、錯誤 Origin、超大 body 與重複 request 的驗證結果。不要在 issue、測試資料、圖片或 commit 內放真實證件、住址、Email、訂位代碼、tokens 或正式雲端 project binding。漏洞請依 [Security Policy](SECURITY.md) 私下回報，不要開公開 issue。

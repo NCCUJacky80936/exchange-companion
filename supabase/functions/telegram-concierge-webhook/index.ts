@@ -10,16 +10,14 @@ import {
   TELEGRAM_MENU_LABELS,
   TELEGRAM_RESOURCE_GROUPS,
 } from "../_shared/telegram.ts";
+import { jsonResponse } from "../_shared/http.ts";
 import { formatTelegramRecipe, isActiveRecipeConnection, pickTelegramRecipe, recipesFromAppState } from "../_shared/recipe.ts";
 import { formatTelegramResources, resourcesFromAppState } from "../_shared/resource.ts";
 
 type JsonRecord = Record<string, unknown>;
 
 function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-  });
+  return jsonResponse(body, status);
 }
 
 function requiredEnv(name: string): string {
@@ -121,7 +119,8 @@ export async function handler(request: Request): Promise<Response> {
     payload = await readJsonBodyWithLimit(request);
   } catch (error) {
     const reason = error instanceof Error ? error.message : "invalid_json";
-    return json({ error: reason }, reason === "body_too_large" ? 413 : 400);
+    const status = reason === "body_too_large" ? 413 : reason === "unsupported_media_type" ? 415 : 400;
+    return json({ error: reason }, status);
   }
 
   const update = parseTelegramUpdate(payload);

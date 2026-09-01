@@ -18,11 +18,17 @@ const forbiddenPaths = [/(?:^|\/)(?:passport|visa-document|bank-statement)(?:\/|
 const secretPatterns = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
   /\bsb_secret_[A-Za-z0-9_-]{12,}\b/,
+  /\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}\b/,
+  /\bsk-ant-[A-Za-z0-9_-]{20,}\b/,
+  /\bsk_(?:live|test)_[A-Za-z0-9]{16,}\b/,
+  /\bAKIA[A-Z0-9]{16}\b/,
+  /\b\d{8,12}:[A-Za-z0-9_-]{30,}\b/,
   /\b(?:ghp|gho|github_pat)_[A-Za-z0-9_]{20,}\b/,
   /\beyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b/,
   /"project_id"\s*:\s*"appgprj_[^"]+"/,
   /https:\/\/exchange-companion-tw\.[^\s"']+\.chatgpt\.site/,
   /\/Users\/[A-Za-z0-9._-]+\//,
+  /\bNEXT_PUBLIC_[A-Z0-9_]*(?:SECRET|SERVICE_ROLE|PRIVATE_KEY|PASSWORD|TOKEN)\s*=/,
 ];
 const textExtensions = new Set([".cjs", ".css", ".html", ".js", ".json", ".jsx", ".md", ".mjs", ".sql", ".toml", ".ts", ".tsx", ".txt", ".yaml", ".yml"]);
 const issues = [];

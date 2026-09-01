@@ -1,5 +1,8 @@
 name: Validate template
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -15,4 +18,5 @@ jobs:
           node-version: 22.13.0
           cache: npm
       - run: npm ci
+      - run: npm run audit:production
       - run: npm run check

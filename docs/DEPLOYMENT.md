@@ -3,10 +3,12 @@
 ## Gate
 
 ```bash
+npm run security:check
+npm run audit:production
 npm run check
 ```
 
-並實際檢查 `390×844`、`768×1024`、`1440×900`。確認 `.openai/hosting.json` 沒有別人的 `project_id`，`supabase/config.toml` 沒有別人的正式網址。
+並實際檢查 `390×844`、`768×1024`、`1440×900`。確認 `.openai/hosting.json` 沒有別人的 `project_id`，`supabase/config.toml` 沒有別人的正式網址，且 `PUBLIC_SITE_URL` 是目前正式 origin。完整安全門檻見 [資安上線檢查表](SECURITY-CHECKLIST.md)。
 
 ## Routing precedence (mandatory)
 
@@ -22,7 +24,7 @@ Do not run Wrangler login, Wrangler preflight, or the Cloudflare deploy scripts 
 
 如果環境提供 Sites hosting，請 Codex 使用 `$create-exchange-companion` 完成最後驗證。若 `.openai/hosting.json` 已有 `project_id`，沿用既有站點，不要重新建立站點；第一次部署新站點後取得的 project binding 只留在自己的部署環境，不要提交到公開模板。
 
-`NEXT_PUBLIC_SUPABASE_URL` 與 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` 雖由 Sites 保存，但也必須在 production build 當下提供給前端打包。更新既有站點時，先讀取該站目前的環境設定，再只在建置程序中傳入；不要寫入 `.env`、Git 或公開模板。完成部署後必須用全新瀏覽器狀態確認第一個畫面是登入／建立帳號，而不是本機主畫面。
+`PUBLIC_SITE_URL`、`NEXT_PUBLIC_SUPABASE_URL` 與 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` 雖由 Sites 保存，但也必須在 production build 當下提供。更新既有站點時，先讀取該站目前的環境設定，再只在建置程序中傳入；不要寫入 `.env`、Git 或公開模板。完成部署後必須用全新瀏覽器狀態確認第一個畫面是公開介紹／登入入口，而不是任何私人手帳內容。
 
 正式發布包一律使用 `npm run build:production`；它會在缺少公開 Supabase 設定，或設定沒有真正進入前端檔案時中止，避免發布出看得到登入頁、卻無法送出登入的版本。
 
@@ -51,6 +53,7 @@ Telegram 入口需要專用 Bot，且只能在 action-time 確認後設定正式
 - `TELEGRAM_WEBHOOK_SECRET`
 - `TELEGRAM_BOT_USERNAME`
 - `EXCHANGE_COMPANION_URL`
+- `EXCHANGE_COMPANION_ALLOWED_ORIGINS`（選填；preview／staging origins，以逗號分隔）
 
 先套用 migration，再部署兩個 Function；最後才以 Telegram `setWebhook` 設定 `secret_token` 與只接收 `message` update：
 
@@ -81,4 +84,4 @@ ALLOW_CLOUDFLARE_WORKERS_DEPLOY=1 npm run deploy:cloudflare
 
 也可部署到相容的 Cloudflare Workers 環境。若改用其他平台，先確認 Vinext／Worker build 支援、環境變數、PWA、SPA／RSC routes 與分享連結的重整行為。
 
-部署完成後，重新測試首頁、設定、旅行分享、手機安裝與社群預覽。記錄 public URL 與被驗證的 Git commit。
+部署完成後，重新測試首頁、`robots.txt`、`sitemap.xml`、canonical、JSON-LD、安全標頭、設定、旅行分享、手機安裝與社群預覽。再以無 Token、錯 Token、另一位帳號的 ID 與不允許的 Origin 測試後端，記錄 public URL 與被驗證的 Git commit。

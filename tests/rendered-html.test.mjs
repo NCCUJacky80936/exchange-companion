@@ -20,15 +20,33 @@ test("server-renders the exchange companion shell", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, new RegExp(`<title>${profile.appName}｜AI 優先的交換生旅程控制台<\\/title>`, "i"));
-  assert.match(html, new RegExp(`property="og:image" content="https:\\/\\/exchange-companion\\.example${profile.visual.socialImage.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`, "i"));
+  assert.match(html, /<title>Exchange Companion 交換手帳｜交換學生行前規劃工具<\/title>/i);
+  assert.match(html, /property="og:image" content="https:\/\/exchange-companion\.example\/og\.png"/i);
   assert.match(html, new RegExp(profile.appName));
+  assert.match(html, /Exchange student &amp; study abroad planner/i);
+  assert.match(html, /智慧資源庫/);
+  assert.match(html, /application\/ld\+json/);
+  assert.match(html, /WebApplication/);
   assert.match(html, /initial-loading-shell/);
   assert.match(html, /loading-brand/);
   assert.match(html, /正在打開你的交換手帳/);
   assert.match(html, /我的交換|正在打開/);
   assert.doesNotMatch(html, /Repository Student|Personal Buddy|Private Coordinator/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
+});
+
+test("ships crawler metadata and browser security headers", async () => {
+  const response = await render();
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(response.headers.get("x-frame-options"), "DENY");
+  assert.equal(response.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+  assert.match(response.headers.get("permissions-policy") ?? "", /camera=\(\)/);
+  assert.match(response.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/);
+  assert.doesNotMatch(response.headers.get("content-security-policy") ?? "", /unsafe-eval/);
+  assert.match(response.headers.get("strict-transport-security") ?? "", /max-age=31536000/);
+  const html = await response.text();
+  assert.match(html, /rel="canonical" href="https:\/\/exchange-companion\.example"/i);
+  assert.doesNotMatch(html, /noindex/i);
 });
 
 test("keeps private parent files outside the app bundle", async () => {

@@ -1,11 +1,8 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.112.2";
+import { allowedCorsOrigins, corsHeadersForRequest, jsonResponse, readJsonBodyWithLimit } from "../_shared/http.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+const CONCIERGE_MAX_REQUEST_BYTES = 2_250_000;
 
 const entities = new Set(["journey", "task", "resource", "resource-intake", "packing-item", "bag", "flight-allowance", "budget-item", "study-event", "travel-plan"]);
 const rootFields = new Set(["schemaVersion", "generatedAt", "journeyScope", "baseRevision", "sources", "proposals"]);
@@ -25,10 +22,6 @@ const editableSurfaces = [
 ].map(([id, statePath, proposalEntity]) => ({ id, statePath, proposalEntity }));
 
 type JsonRecord = Record<string, unknown>;
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-}
 
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -173,24 +166,44 @@ function handoff(state: JsonRecord, revision: number, recentChanges: unknown[]) 
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const cors = corsHeadersForRequest(req, allowedCorsOrigins(
+    Deno.env.get("EXCHANGE_COMPANION_URL"),
+    Deno.env.get("EXCHANGE_COMPANION_ALLOWED_ORIGINS") ?? "",
+  ));
+  const json = (body: unknown, status = 200) => jsonResponse(body, status, cors.headers);
+  if (!cors.allowed) return json({ error: "origin_not_allowed" }, 403);
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors.headers });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
   try {
     const supabaseUrl = requiredEnv("SUPABASE_URL");
     const secretKey = defaultKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY");
     const admin = createClient(supabaseUrl, secretKey, { auth: { persistSession: false, autoRefreshToken: false } });
-    const payload = await req.json();
+    let payload: unknown;
+    try {
+      payload = await readJsonBodyWithLimit(req, CONCIERGE_MAX_REQUEST_BYTES);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "invalid_json";
+      const status = reason === "body_too_large" ? 413 : reason === "unsupported_media_type" ? 415 : 400;
+      return json({ error: reason }, status);
+    }
     if (!isRecord(payload) || typeof payload.action !== "string") return json({ error: "invalid_request" }, 400);
     const token = bearer(req);
-    // Retention cleanup is opportunistic and only needed when the inbox is read.
-    // Running two DELETE queries for every pair/context/submit call wastes free-tier CPU.
-    if (payload.action === "pull" || payload.action === "proposals") {
+    const withinRateLimit = async (subject: string): Promise<boolean> => {
+      const { data, error } = await admin.rpc("take_concierge_rate_limit", {
+        requested_subject_hash: await sha256(subject),
+        requested_limit: 120,
+        requested_window_seconds: 300,
+      });
+      if (error) throw error;
+      return data === true;
+    };
+    const cleanupExpiredProposalRuns = async () => {
       const pendingCutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
       const deliveredCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       await admin.from("concierge_proposal_runs").delete().eq("status", "pending").lt("created_at", pendingCutoff);
       await admin.from("concierge_proposal_runs").delete().neq("status", "pending").lt("delivered_at", deliveredCutoff);
-    }
+    };
 
     const authenticateUser = async () => {
       if (!token || token.startsWith("xc_")) return null;
@@ -204,13 +217,13 @@ Deno.serve(async (req: Request) => {
       const tokenHash = await sha256(token);
       const { data, error } = await admin.from("concierge_connections").select("id,user_id,journey_id,scopes,expires_at,revoked_at").eq("token_hash", tokenHash).maybeSingle();
       if (error || !data || data.revoked_at || new Date(data.expires_at).getTime() <= Date.now()) return null;
-      await admin.from("concierge_connections").update({ last_used_at: new Date().toISOString() }).eq("id", data.id);
       return data;
     };
 
     if (payload.action === "pair") {
       const user = await authenticateUser();
       if (!user) return json({ error: "login_required" }, 401);
+      if (!await withinRateLimit(`user:${user.id}`)) return json({ error: "rate_limit_exceeded" }, 429);
       const { data: row, error } = await admin.from("private_app_states").select("state,revision").eq("user_id", user.id).maybeSingle();
       if (error || !row || !isRecord(row.state) || !isRecord(row.state.journey)) return json({ error: "state_not_ready" }, 409);
       const journeyId = String(row.state.journey.id ?? "");
@@ -247,6 +260,7 @@ Deno.serve(async (req: Request) => {
     if (["telegram-pair", "telegram-status", "telegram-revoke"].includes(payload.action)) {
       const user = await authenticateUser();
       if (!user) return json({ error: "login_required" }, 401);
+      if (!await withinRateLimit(`user:${user.id}`)) return json({ error: "rate_limit_exceeded" }, 429);
       const requestedConnectionId = typeof payload.connectionId === "string" ? payload.connectionId : "";
 
       if (payload.action === "telegram-pair") {
@@ -317,6 +331,7 @@ Deno.serve(async (req: Request) => {
     if (["connections", "revoke", "pull", "ack"].includes(payload.action)) {
       const user = await authenticateUser();
       if (!user) return json({ error: "login_required" }, 401);
+      if (!await withinRateLimit(`user:${user.id}`)) return json({ error: "rate_limit_exceeded" }, 429);
       if (payload.action === "connections") {
         const { data, error } = await admin.from("concierge_connections").select("id,label,journey_id,scopes,created_at,last_used_at,expires_at,revoked_at").eq("user_id", user.id).order("created_at", { ascending: false });
         if (error) throw error;
@@ -331,6 +346,9 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true });
       }
       if (payload.action === "pull") {
+        // Cleanup happens only after a permanent account passes authentication
+        // and rate limiting; untrusted requests must never trigger writes.
+        await cleanupExpiredProposalRuns();
         const { data, error } = await admin.from("concierge_proposal_runs").select("id,bundle,base_revision,created_at").eq("user_id", user.id).eq("status", "pending").order("created_at", { ascending: true }).limit(20);
         if (error) throw error;
         return json({ runs: data ?? [] });
@@ -344,6 +362,10 @@ Deno.serve(async (req: Request) => {
 
     const connection = await authenticateConnection();
     if (!connection) return json({ error: "invalid_or_expired_connection" }, 401);
+    if (!await withinRateLimit(`connection:${connection.id}`)) return json({ error: "rate_limit_exceeded" }, 429);
+    const { error: touchError } = await admin.from("concierge_connections")
+      .update({ last_used_at: new Date().toISOString() }).eq("id", connection.id);
+    if (touchError) throw touchError;
     const { data: row, error: stateError } = await admin.from("private_app_states").select("state,revision").eq("user_id", connection.user_id).maybeSingle();
     if (stateError || !row || !isRecord(row.state)) return json({ error: "state_not_ready" }, 409);
     const journey = isRecord(row.state.journey) ? row.state.journey : {};
@@ -474,6 +496,9 @@ Deno.serve(async (req: Request) => {
 
     if (payload.action === "proposals") {
       if (!connection.scopes.includes("submit_proposals")) return json({ error: "scope_denied" }, 403);
+      // As with inbox reads, cleanup is gated by an authenticated, scoped,
+      // rate-limited connection so random requests cannot cause database writes.
+      await cleanupExpiredProposalRuns();
       const baseRevision = Number(payload.baseRevision);
       const journeyScope = stableScope(connection.journey_id);
       if (!Number.isInteger(baseRevision) || baseRevision !== Number(row.revision)) return json({ error: "revision_conflict", currentRevision: row.revision }, 409);

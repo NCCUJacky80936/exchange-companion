@@ -31,7 +31,11 @@ test("avatar imports accept only bounded raster data URLs", () => {
   assert.match(storage, /avatarDataUrl\.length <= 450_000/);
 });
 
-test("the introduction leads with the AI-assisted exchange message", () => {
-  assert.match(welcome, /讓 AI 幫你輕鬆記錄<br \/>交換大小事/);
+test("the introduction leads with the exchange-planning outcome and reviewable AI boundary", () => {
+  assert.match(welcome, /交換大小事，<br \/>整理成下一步/);
+  assert.match(welcome, /Exchange student &amp; study abroad planner/);
+  assert.match(welcome, /智慧資源庫/);
+  assert.match(welcome, /Telegram 直接按按鈕或傳一句話，不用背指令/);
+  assert.match(welcome, /AI 只能送出待確認提案/);
   assert.doesNotMatch(welcome, /交換很複雜/);
 });

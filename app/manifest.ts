@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: `${exchangeProfile.appName}｜Exchange Companion`,
     short_name: exchangeProfile.appName,
-    description: "AI 協助整理、可手動調整，也能安全分享旅行的交換生手帳。",
+    description: "免費的交換學生行前規劃工具：整合待辦、預算、行李、官方資源、旅行與待確認 AI 提案。",
     id: "/",
     start_url: "/",
     scope: "/",

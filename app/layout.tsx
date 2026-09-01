@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { headers } from "next/headers";
 import { Noto_Sans_TC } from "next/font/google";
 // Keep the local preview from reusing a stale service-worker/browser CSS cache
 // after visual skin iterations. Update this token when the global visual layer
@@ -7,6 +6,8 @@ import { Noto_Sans_TC } from "next/font/google";
 import "./globals.css?visual=compact-proposal-actions-20260821e";
 import PwaRegister from "./components/PwaRegister";
 import { exchangeProfile } from "./lib/profile";
+import { PUBLIC_SITE_DESCRIPTION, PUBLIC_SITE_NAME, PUBLIC_SITE_TITLE } from "./lib/public-site";
+import { requestPublicBaseUrl } from "./lib/request-site";
 
 const notoSans = Noto_Sans_TC({
   variable: "--font-body",
@@ -34,18 +35,26 @@ html[data-private-notebook="true"] .app-entry-boot{display:block}
 const restoreHintScript = `try{const p=new URLSearchParams(location.search);if(p.has("share")||p.get("auth")==="login")document.documentElement.dataset.privateNotebook="true"}catch{}`;
 
 export async function generateMetadata(): Promise<Metadata> {
-  const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
-  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const baseUrl = new URL(`${protocol}://${host}`);
-  const title = `${exchangeProfile.appName}｜AI 優先的交換生旅程控制台`;
-  const description = "把交換進度、行李、官方資源與不撞課的旅行規劃整理成真正做得完的下一步。";
-  const socialImage = new URL(exchangeProfile.visual.socialImage, baseUrl);
+  const baseUrl = await requestPublicBaseUrl();
+  const socialImage = new URL("/og.png", baseUrl);
 
   return {
     metadataBase: baseUrl,
-    title,
-    description,
+    title: PUBLIC_SITE_TITLE,
+    description: PUBLIC_SITE_DESCRIPTION,
+    applicationName: PUBLIC_SITE_NAME,
+    alternates: { canonical: "/" },
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+        "max-video-preview": -1,
+      },
+    },
     icons: {
       icon: [
         { url: "/icons/exchange-48.png", sizes: "48x48", type: "image/png" },
@@ -61,15 +70,18 @@ export async function generateMetadata(): Promise<Metadata> {
       title: exchangeProfile.appName,
     },
     openGraph: {
-      title,
-      description,
+      title: PUBLIC_SITE_TITLE,
+      description: PUBLIC_SITE_DESCRIPTION,
       type: "website",
-      images: [{ url: socialImage, width: 1731, height: 909, alt: `${exchangeProfile.appName}：${exchangeProfile.visual.routeLabel} 的手繪旅行手帳` }],
+      url: "/",
+      siteName: PUBLIC_SITE_NAME,
+      locale: "zh_TW",
+      images: [{ url: socialImage, width: 1731, height: 909, alt: `${PUBLIC_SITE_NAME} 的手繪旅行手帳介面` }],
     },
     twitter: {
       card: "summary_large_image",
-      title,
-      description,
+      title: PUBLIC_SITE_TITLE,
+      description: PUBLIC_SITE_DESCRIPTION,
       images: [socialImage],
     },
   };
@@ -91,6 +103,7 @@ export default function RootLayout({
       <head>
         <link rel="apple-touch-startup-image" href="/icons/apple-touch-startup.png" />
         <style dangerouslySetInnerHTML={{ __html: instantBootStyle }} />
+        <noscript><style>{`.initial-loading-shell,.app-entry-boot{display:none!important}.app-entry{visibility:visible!important}`}</style></noscript>
         <script dangerouslySetInnerHTML={{ __html: restoreHintScript }} />
       </head>
       <body className={notoSans.variable} style={{ backgroundColor: "#f7f3eb", color: "#303231" }}>

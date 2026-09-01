@@ -18,6 +18,7 @@ export default function AppEntry() {
 
   useEffect(() => {
     markExchangePerformance("boot-start");
+    if (cloudConfigured || hasPrivateEntryQuery()) document.documentElement.dataset.privateNotebook = "true";
     document.documentElement.dataset.appEntryReady = "true";
     if (!cloudConfigured && !hasPrivateEntryQuery()) return;
     const frame = window.requestAnimationFrame(() => {
@@ -36,8 +37,8 @@ export default function AppEntry() {
     setLaunchApp(true);
   };
 
-  return <div className="app-entry">{cloudConfigured
-    ? <div className="app-entry-boot app-entry-boot-visible"><LoadingShell message="正在確認登入狀態…" /></div>
-    : <div className="app-entry-public"><PublicWelcome onLogin={openLogin} /></div>}
+  return <div className="app-entry">
+    <div className="app-entry-public"><PublicWelcome onLogin={openLogin} /></div>
+    {cloudConfigured ? <div className="app-entry-boot app-entry-boot-visible"><LoadingShell message="正在確認登入狀態…" /></div> : null}
   </div>;
 }

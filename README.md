@@ -1,8 +1,16 @@
-# Exchange Companion｜把這個交換手帳變成你自己的
+# Exchange Companion 交換手帳
 
-一個可 fork／clone 的交換生網站模板，加上三個專案內建 Codex Skills。它不是只適用德國或某一間學校：先填入自己的國家、城市、學校與日期，再讓 Codex 依你授權的資料和最新官方來源，自動整理進度、期限、預算、資源、行李與旅行衝突；網站負責呈現、審核、手動調整與保存。
+[![Validate template](https://github.com/NCCUJacky80936/exchange-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/NCCUJacky80936/exchange-companion/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/NCCUJacky80936/exchange-companion/actions/workflows/codeql.yml/badge.svg)](https://github.com/NCCUJacky80936/exchange-companion/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2f5d50.svg)](LICENSE)
+
+**免費、開源、可自行架設的 exchange student／study abroad planner。** 把交換申請、簽證、住宿、期限、預算、行李、官方資源、課程與旅行整理在同一個 PWA；重要資料可依階段快速篩選，也能用白話與同義詞搜尋。Telegram Bot 提供按鈕選單與自然語言快速收件，不用背指令，所有更新仍要回網站確認。
+
+這個 GitHub template 不只適用德國或某一間學校。先填入自己的國家、城市、學校、日期與幣別，再讓 Codex 依你授權的資料和最新官方來源整理內容；網站負責呈現、審核、手動調整與保存。正式示範網址放在 repository 右側 **About → Website**。
 
 網站預設完全免費、local-first；純本機開發模式不需要帳號。接上自己名下的 Supabase 免費專案後，登入頁會先於私人主畫面出現，登入並載入該帳號的手帳後才能進入。唯一例外是持有旅行分享連結的訪客，只能依連結權限匿名查看或共編被分享的旅行。每個人的簽證、信件、財力、住址、課表與行政進度預設私密；只有明確選取的資源、行李、去敏航班與旅行計畫能分享。
+
+> 純本機資料會以未加密 JSON 存在瀏覽器，不適合保存密碼、API key、證件號碼、完整卡號、訂位代碼或精確住址。公開部署前請先完成 [資安上線檢查表](docs/SECURITY-CHECKLIST.md)。
 
 ## 三分鐘開始
 
@@ -27,12 +35,13 @@ npm run dev
 - React、TypeScript、Vinext／Vite 的 responsive PWA。
 - 任務、個人紀錄、前置條件、依本人機票確認的行李額度、可自行新增的實體行李、資源、可由 AI 提案更新的基礎預算與 JSON 備份。
 - 重要資源庫預設不沿用他人的國家資料；可貼上網址加入私人待辨識清單，再由 `$exchange-concierge` 產生可審閱資源。
+- 重要資源支援快速分類、階段／狀態篩選、排序與智慧搜尋；常見中英文、縮寫及同義詞可找到同一組資料。
 - `config/packing-inspiration.json` 內含兩支交換行李經驗影片，只供 Exchange Concierge 在背景找漏項；網站不顯示影片、頻道或宣傳連結，整理結果直接成為一般行李提案。公斤數、海關與航空規定仍以本人機票與官方來源為準。
 - 年度旅行規劃、Google Maps 地址／連結、課表與考試衝突檢查。
 - localStorage 完整本機模式。
 - 可選的 Supabase 私人同步與限旅行範圍的分享／共編。
 - `config/exchange-profile.json`：可重複的國家、學校與視覺設定。
-- 可選的 Telegram Concierge 自然語言提案入口：可綁定專屬 Telegram Bot，以文字即時傳送筆記／待辦／行李異動；訊息先進入私人佇列，再由排程或 Agent 比對手帳現狀並送回 Pending 提案審核。
+- 可選的 Telegram Concierge：綁定專屬 Telegram Bot 後可直接按選單或傳一句話，快速查資源、抽食譜、看連線狀態或收進待辦；訊息先進私人佇列，再由排程或 Agent 比對手帳現狀並送回 Pending 提案審核。
 - `$create-exchange-companion`：從選目的地、研究、製圖、網站到上雲的完整流程。
 - `$exchange-concierge`：從授權信件／檔案／官方網站／Telegram 訊息抓進度；首次連結後可直接讀取雲端最新版本並送回可審核提案，JSON 保留為離線備援。
 - `$exchange-email-intake`：只在目前使用者明確授權的信箱、訊息、寄件者、查詢與日期範圍內擷取證據，不綁作者帳號或德國寄件者。
@@ -78,6 +87,8 @@ npm run doctor             # 檢查本機是否可開始
 npm run dev                # 開啟本機網站
 npm run check              # 上版前完整驗證
 npm run privacy:check      # 確認沒有把敏感資料或個人雲端綁定放進 Git
+npm run security:check     # secrets、RLS、CORS、輸入限制、rate limit 與安全標頭
+npm run audit:production   # 正式 dependencies 的 High／Critical 漏洞
 ```
 
 ## 文件
@@ -90,6 +101,7 @@ npm run privacy:check      # 確認沒有把敏感資料或個人雲端綁定放
 - [部署流程](docs/DEPLOYMENT.md)
 - [架構與可替換範圍](docs/ARCHITECTURE.md)
 - [安全政策](SECURITY.md)
+- [資安上線檢查表](docs/SECURITY-CHECKLIST.md)
 - [貢獻指南](CONTRIBUTING.md)
 
 ## 驗證
@@ -98,7 +110,7 @@ npm run privacy:check      # 確認沒有把敏感資料或個人雲端綁定放
 npm run check
 ```
 
-CI 會重跑設定、Skills、隱私、lint 與 production build 測試。請另外實際檢查 `390×844`、`768×1024`、`1440×900` 三種畫面。
+CI 會重跑設定、Skills、隱私／資安、production dependency audit、lint 與 production build 測試；CodeQL 與 Dependabot 會持續掃描程式與依賴。請另外實際檢查 `390×844`、`768×1024`、`1440×900` 三種畫面，並以兩個帳號測試 IDOR 與旅行分享邊界。
 
 ## License
 

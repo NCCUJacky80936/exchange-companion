@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 私下回報資安漏洞
+    url: https://github.com/NCCUJacky80936/exchange-companion/security/advisories/new
+    about: 請勿在公開 issue 貼出漏洞細節、secret 或私人交換資料。
