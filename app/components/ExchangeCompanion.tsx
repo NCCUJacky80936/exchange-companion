@@ -24,6 +24,7 @@ import {
   RotateCcw,
   Search,
   ShieldAlert,
+  Shuffle,
   Sparkles,
   Trash2,
   Upload,
@@ -50,6 +51,7 @@ import { cloudIsConfigured } from "../lib/cloud";
 import { phaseMeta } from "../lib/default-data";
 import { exchangeCurrencies, exchangeProfile, exchangeTimeZones } from "../lib/profile";
 import { limitSidebarNote, notebookCharacterCount, SIDEBAR_NOTE_LIMIT } from "../lib/personalization";
+import { pickRandomRecipe } from "../lib/recipe-resources";
 import { pruneProcessedResourceIntake } from "../lib/resource-intake";
 import type { HomeAgendaTarget } from "../lib/home-dashboard";
 import { markExchangePerformance } from "../lib/performance";
@@ -1375,9 +1377,11 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("全部");
   const [editingResource, setEditingResource] = useState<ResourceItem | null | undefined>(undefined);
+  const [featuredRecipe, setFeaturedRecipe] = useState<ResourceItem | null>(null);
   const deferredQuery = useDeferredValue(query.toLowerCase());
   const categories = ["全部", ...new Set(state.resources.map((resource) => resourceGroup(resource.category)))];
   const filtered = state.resources.filter((resource) => (category === "全部" || resourceGroup(resource.category) === category) && (!deferredQuery || `${resource.title} ${resource.description} ${resource.details ?? ""} ${resource.region} ${resource.sourceLabel} ${(resource.searchTags ?? []).join(" ")}`.toLowerCase().includes(deferredQuery)));
+  const randomRecipe = pickRandomRecipe(state.resources, () => 0);
   const typeLabel = { official: "官方", school: "學校", city: "城市", experience: "經驗分享", personal: "個人資料" };
   const latestResourceDate = state.resources.reduce((latest, resource) => resource.verifiedAt > latest ? resource.verifiedAt : latest, "") || exchangeProfile.research.minimumVerifiedDate;
 
@@ -1425,9 +1429,14 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
     setState((current) => ({ ...current, resources: current.resources.filter((item) => item.id !== resource.id) }));
   }
 
+  function openRandomRecipe() {
+    const recipe = pickRandomRecipe(state.resources);
+    if (recipe) setFeaturedRecipe(recipe);
+  }
+
   return (
     <div className="page-stack">
-      <header className="page-header resources-header"><div className="resources-header-copy"><p className="eyebrow">Verified bookmarks</p><div className="resources-title-line"><h1>重要資源庫</h1><span className="resource-update-mark"><small>UPDATE</small><strong>{latestResourceDate.replaceAll("-", ".")}</strong></span><div className="resources-header-tools"><button className="button primary resource-add-button" aria-label="新增資源" onClick={() => setEditingResource(null)}><Plus size={19} /></button></div></div></div></header>
+      <header className="page-header resources-header"><div className="resources-header-copy"><p className="eyebrow">Verified bookmarks</p><div className="resources-title-line"><h1>重要資源庫</h1><span className="resource-update-mark"><small>UPDATE</small><strong>{latestResourceDate.replaceAll("-", ".")}</strong></span><div className="resources-header-tools"><button className="button secondary resource-random-button" type="button" aria-label="隨機食譜" disabled={!randomRecipe} onClick={openRandomRecipe}><Shuffle size={17} /><span>隨機食譜</span></button><button className="button primary resource-add-button" type="button" aria-label="新增資源" onClick={() => setEditingResource(null)}><Plus size={19} /></button></div></div></div></header>
       <div className="toolbar paper-card resource-toolbar">
         <label className="search-field"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜尋簽證、住宿、醫療或交通" /></label>
         <label className="compact-select resource-category-select">
@@ -1439,6 +1448,11 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
         </label>
         <div className="filter-pills scroll-pills" aria-label="資源分類">{categories.map((item) => <button type="button" key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
       </div>
+      <AnimatePresence>{featuredRecipe ? <motion.section className="paper-card random-recipe-preview" aria-labelledby="random-recipe-title" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>
+        <div className="random-recipe-heading"><div><p className="eyebrow">Tonight&apos;s pick</p><h2 id="random-recipe-title">{featuredRecipe.title}</h2></div><button className="icon-button" type="button" onClick={() => setFeaturedRecipe(null)} aria-label="關閉隨機食譜"><X size={18} /></button></div>
+        <p>{featuredRecipe.description}</p><div className="random-recipe-details">{featuredRecipe.details}</div>
+        <div className="random-recipe-actions"><button className="button secondary" type="button" onClick={openRandomRecipe}><Shuffle size={16} />再抽一道</button>{featuredRecipe.url ? <a className="button primary" href={featuredRecipe.url} target="_blank" rel="noreferrer">開啟原始食譜 <ExternalLink size={15} /></a> : null}</div>
+      </motion.section> : null}</AnimatePresence>
       <section className="resource-grid">
         {!filtered.length ? <div className="paper-card empty-state"><Sparkles size={24} /><div><h2>等待加入你的目的地資源</h2><p>請使用專案內的 AI 整理流程，依交換國家、城市與學校查核官方資料；你也可以先手動新增來源。</p></div></div> : null}
         {filtered.map((resource, index) => (

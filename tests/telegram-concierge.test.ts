@@ -93,6 +93,9 @@ test("parses only the supported commands and normalizes one-time pairing codes",
   assert.deepEqual(parseTelegramCommand("/help"), { name: "help", argument: "" });
   assert.deepEqual(parseTelegramCommand("/status@exchange_bot"), { name: "status", argument: "" });
   assert.deepEqual(parseTelegramCommand("/disconnect"), { name: "disconnect", argument: "" });
+  assert.deepEqual(parseTelegramCommand("/recipe"), { name: "recipe", argument: "" });
+  assert.deepEqual(parseTelegramCommand("/recipe 雞肉"), { name: "recipe", argument: "雞肉" });
+  assert.deepEqual(parseTelegramCommand("/random_recipe@exchange_bot 義大利麵"), { name: "random_recipe", argument: "義大利麵" });
   assert.equal(parseTelegramCommand("/status extra"), null);
   assert.equal(parseTelegramCommand("/unknown"), null);
   assert.equal(normalizePairCode(" abcd2345 "), "ABCD2345");

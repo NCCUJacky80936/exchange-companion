@@ -7,6 +7,7 @@ import {
   readJsonBodyWithLimit,
   sha256Hex,
 } from "../_shared/telegram.ts";
+import { formatTelegramRecipe, isActiveRecipeConnection, pickTelegramRecipe, recipesFromAppState } from "../_shared/recipe.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -101,7 +102,7 @@ export async function handler(request: Request): Promise<Response> {
       await sendTelegramMessage(
         botToken,
         update.chatId,
-        "直接傳送文字，我會先安全收件，並交給 Exchange Companion 排程整理成待審提案。\n\n可用指令：\n/start <配對碼>\n/status\n/disconnect\n/help\n\n提案只能在手帳網站審核與套用。",
+        "直接傳送文字，我會先安全收件，並交給 Exchange Companion 排程整理成待審提案。\n\n可用指令：\n/start <配對碼>\n/recipe [關鍵字]\n/random_recipe [關鍵字]\n/status\n/disconnect\n/help\n\n隨機食譜會即時從你的私人資源庫抽取；提案只能在手帳網站審核與套用。",
       );
       return json({ ok: true });
     }
@@ -151,8 +152,49 @@ export async function handler(request: Request): Promise<Response> {
       return json({ ok: true });
     }
 
+    if (update.command?.name === "recipe" || update.command?.name === "random_recipe") {
+      const { data: link, error: linkError } = await admin
+        .from("telegram_links")
+        .select("user_id,connection_id")
+        .eq("telegram_user_id", update.userId)
+        .eq("telegram_chat_id", update.chatId)
+        .is("revoked_at", null)
+        .maybeSingle();
+      if (linkError) throw linkError;
+      if (!link) {
+        await sendTelegramMessage(botToken, update.chatId, "目前沒有連結到 Exchange Companion。請先在手帳 AI 頁產生配對碼，再輸入 /start <配對碼>。");
+        return json({ ok: true });
+      }
+      const { data: connection, error: connectionError } = await admin
+        .from("concierge_connections")
+        .select("scopes,expires_at,revoked_at")
+        .eq("id", link.connection_id)
+        .eq("user_id", link.user_id)
+        .maybeSingle();
+      if (connectionError) throw connectionError;
+      if (!isActiveRecipeConnection(connection)) {
+        await sendTelegramMessage(botToken, update.chatId, "這個 Exchange Companion 連線已過期或停用。請回到手帳 AI 頁重新建立連線與配對。");
+        return json({ ok: true });
+      }
+      const { data: stateRow, error: stateError } = await admin
+        .from("private_app_states")
+        .select("state")
+        .eq("user_id", link.user_id)
+        .maybeSingle();
+      if (stateError) throw stateError;
+      const recipes = recipesFromAppState(stateRow?.state, update.command.argument);
+      const recipe = pickTelegramRecipe(recipes);
+      if (!recipe) {
+        const suffix = update.command.argument ? `符合「${update.command.argument}」的` : "";
+        await sendTelegramMessage(botToken, update.chatId, `目前資源庫裡沒有${suffix}食譜。請先到手帳審核並套用食譜提案。`);
+        return json({ ok: true });
+      }
+      await sendTelegramMessage(botToken, update.chatId, formatTelegramRecipe(recipe, inboxUrl(companionUrl)));
+      return json({ ok: true });
+    }
+
     if (update.text.trim().startsWith("/")) {
-      await sendTelegramMessage(botToken, update.chatId, "不支援這個指令。可用指令：/start <配對碼>、/status、/disconnect、/help；其他文字會作為交換手帳整理需求收件。");
+      await sendTelegramMessage(botToken, update.chatId, "不支援這個指令。可用指令：/start <配對碼>、/recipe [關鍵字]、/random_recipe [關鍵字]、/status、/disconnect、/help；其他文字會作為交換手帳整理需求收件。");
       return json({ ok: true });
     }
 

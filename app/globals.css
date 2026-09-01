@@ -1202,6 +1202,14 @@ h3 {
 .resources-header-copy { max-width: 760px; }
 .resources-header-tools { display: flex; position: relative; z-index: 2; align-items: center; justify-content: flex-end; gap: 22px; }
 .resources-header-tools .button { flex: 0 0 auto; }
+.resource-random-button { white-space: nowrap; }
+.random-recipe-preview { display: grid; gap: 14px; border-left: 7px solid var(--terracotta); background: rgba(255, 245, 238, 0.94); padding: 22px; }
+.random-recipe-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.random-recipe-heading h2 { margin: 2px 0 0; font-size: 25px; }
+.random-recipe-preview > p { margin: 0; color: var(--muted); line-height: 1.65; }
+.random-recipe-details { border-top: 1px dashed rgba(46, 58, 52, 0.35); padding-top: 13px; color: #4e5d55; font-size: 13px; line-height: 1.75; white-space: pre-line; }
+.random-recipe-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.random-recipe-actions .button { text-decoration: none; }
 .resource-intake-card { border-left: 7px solid var(--blue); padding: 0; }
 .resource-intake-card > summary { display: flex; cursor: pointer; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 21px; list-style: none; }
 .resource-intake-card > summary::-webkit-details-marker { display: none; }
@@ -1846,6 +1854,8 @@ h3 {
   .resource-stamp { display: none; }
   .resources-header-tools { align-items: stretch; }
   .resources-header-tools .button { width: 100%; justify-content: center; }
+  .random-recipe-actions { align-items: stretch; flex-direction: column; }
+  .random-recipe-actions .button { width: 100%; justify-content: center; }
   .settings-card { padding: 19px 15px; }
   .budget-row-main { grid-template-columns: auto minmax(0, 1fr); }
   .budget-row-main > span { grid-column: 2; }
@@ -6006,6 +6016,16 @@ img[src*="/images/doodle-icons-v2/"],
 
 @media (max-width: 560px) {
   .home-calendar-board { min-height: 450px; }
+  .resources-header-tools { gap: 8px; }
+  .resources-header-tools .resource-random-button {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    justify-content: center;
+    border-radius: 50%;
+    padding: 0;
+  }
+  .resource-random-button span { display: none; }
 }
 
 /* 2026-08-20 interaction system: shared motion tokens and state feedback. */

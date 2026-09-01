@@ -3,6 +3,7 @@ export const TELEGRAM_MAX_WEBHOOK_BYTES = 64 * 1024;
 
 export type TelegramCommand =
   | { name: "start"; argument: string }
+  | { name: "recipe" | "random_recipe"; argument: string }
   | { name: "help" | "status" | "disconnect"; argument: "" };
 
 export type ParsedTelegramUpdate =
@@ -47,11 +48,11 @@ export function telegramTextLength(value: string): number {
 }
 
 export function parseTelegramCommand(text: string): TelegramCommand | null {
-  const match = text.trim().match(/^\/(start|help|status|disconnect)(?:@[A-Za-z0-9_]{5,32})?(?:\s+([\s\S]*))?$/i);
+  const match = text.trim().match(/^\/(start|help|status|disconnect|recipe|random_recipe)(?:@[A-Za-z0-9_]{5,32})?(?:\s+([\s\S]*))?$/i);
   if (!match) return null;
   const name = match[1].toLowerCase() as TelegramCommand["name"];
   const argument = (match[2] ?? "").trim();
-  if (name === "start") return { name, argument };
+  if (name === "start" || name === "recipe" || name === "random_recipe") return { name, argument };
   if (argument) return null;
   return { name, argument: "" };
 }
