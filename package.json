@@ -25,9 +25,9 @@
     "check": "npm run validate:profile && npm run validate:skills && npm run security:check && npm run lint && npm test"
   },
   "dependencies": {
-    "@supabase/supabase-js": "2.112.2",
-    "framer-motion": "^13.0.0",
-    "lucide-react": "^1.30.0",
+    "@supabase/supabase-js": "2.112.4",
+    "framer-motion": "^13.1.1",
+    "lucide-react": "^1.37.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
