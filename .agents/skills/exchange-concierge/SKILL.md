@@ -15,7 +15,7 @@ Convert authorized evidence into small `pending` proposals for the Exchange Comp
 
 ## Compact workflow
 
-Run from the Exchange Companion repository.
+Run from the Exchange Companion repository root.
 
 1. Prepare a fresh, compact context. Cloud pull is the default:
 
@@ -33,14 +33,12 @@ Run from the Exchange Companion repository.
    python3 .agents/skills/exchange-concierge/scripts/concierge_run.py prepare \
      --mode full \
      --intent "weekly exchange evidence audit" \
-     --include-telegram \
      --scan-root ..
    ```
 
-   `--include-telegram` performs a fresh cloud pull, then leases at most 20 oldest
-   private text requests (32,000 characters total) for two hours. The compact
-   context contains only the request text, received time, and internal request
-   linkage. It never contains Telegram account, chat, or username identifiers.
+   For Telegram queue intake, read the Telegram section in
+   [evidence-coverage.md](references/evidence-coverage.md) and add
+   `--include-telegram` only when that queue is authorized for this run.
 
    If no private cloud connection is available, place the exact latest website handoff at `work/latest-exchange-companion-handoff.json` and add `--no-pull`. Never substitute an old backup when the user says the website is newer.
 
@@ -70,29 +68,14 @@ Run from the Exchange Companion repository.
 
    `finalize` validates the bundle against the complete handoff, audits all surfaces, writes a field-level run summary, and updates the local checkpoint only after a successful push or a valid no-change run. If a revision conflict occurs, prepare again, reconcile against the new revision, and finalize again. Never force-push stale state.
 
-   For Telegram evidence, `finalize --push` marks requests complete and removes
-   raw text only after the pending inbox push succeeds. A valid zero-proposal run
-   is completed as `no_change`. If one request needs a concrete answer instead,
-   ask exactly one Force Reply question and leave it for the next scheduled run:
-
-   ```bash
-   python3 .agents/skills/exchange-concierge/scripts/concierge_run.py clarify \
-     --request-id "REQUEST UUID" \
-     --question "ONE CONCRETE QUESTION"
-   ```
-
-   On a processing failure, release the active lease without claiming success:
-
-   ```bash
-   python3 .agents/skills/exchange-concierge/scripts/concierge_run.py fail \
-     --error "SHORT NON-SENSITIVE REASON"
-   ```
+   For Telegram evidence, follow the queue-specific completion, clarify, and
+   failure commands in [evidence-coverage.md](references/evidence-coverage.md).
 
 ## Cost-aware execution
 
 - Run `prepare`, `inspect`, initialization, deduplication, schema validation, coverage auditing, and `finalize` with the provided deterministic scripts. Do not spend model calls on work those scripts already perform.
 - Keep the compact context and narrow `inspect` output as the only handoff to any delegated model. Never duplicate the complete private handoff, mailbox history, or unrelated website state across agents.
-- When the runtime supports explicit model selection, a bounded independent task that needs no policy judgment may use `gpt-5.6-luna` with `reasoning_effort: none` or `low`. Suitable tasks include classifying already-redacted evidence into a fixed taxonomy, extracting explicitly stated fields into a supplied schema, and normalizing an already-confirmed list.
+- When the target runtime supports explicit model selection, a bounded independent task that needs no policy judgment may use the model and reasoning setting available in that runtime and permitted by the user's explicit or configured preferences; if no preference is set, keep the runtime default. Do not hard-code a model name or effort level in this portable repository. Suitable tasks include classifying already-redacted evidence into a fixed taxonomy, extracting explicitly stated fields into a supplied schema, and normalizing an already-confirmed list.
 - Keep authorization checks, privacy classification, conflicting-evidence resolution, current-rule research, medical/legal/financial interpretation, dependency closure, and the final proposal decision with the primary model. The primary model must review every delegated result before it enters a proposal bundle.
 - Do not delegate when copying enough context would cost more tokens than completing the small task locally. Model routing is a cost optimization, never a reason to broaden source access or weaken validation.
 

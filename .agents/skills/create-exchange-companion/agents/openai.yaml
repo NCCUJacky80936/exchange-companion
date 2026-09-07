@@ -1,4 +1,4 @@
 interface:
   display_name: "建立交換手帳"
-  short_description: "從目的地設定到研究、製圖、網站、進度同步與免費上雲的完整流程"
-  default_prompt: "Use $create-exchange-companion to turn this repository into my own exchange companion from setup through validated deployment."
+  short_description: "初始建立或依明確要求調整交換網站"
+  default_prompt: "Use $create-exchange-companion for first setup or an explicitly requested exchange-site change, loading only the relevant reference and following AGENTS.md for deployment routing."

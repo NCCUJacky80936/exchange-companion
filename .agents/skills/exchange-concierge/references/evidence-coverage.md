@@ -1,6 +1,6 @@
 # Evidence coverage and reconciliation
 
-Use this reference before generating every import bundle. The website handoff describes current state and review history; it does not prove that older archived mail, local attachments, or receipts were searched.
+For a full authorized evidence audit, read the category and search sections below. For a targeted run, use only the affected categories and coverage requirements; for Telegram, read its queue section. The website handoff describes current state and review history; it does not prove that older archived mail, local attachments, or receipts were searched.
 
 ## 1. Build the authorized inventory
 
@@ -58,3 +58,25 @@ The audit script catches visible mapping omissions. It cannot prove that an unli
 ## 5. Deliver only after both validators pass
 
 Run the schema validator first and the coverage audit second. Do not hand off the import JSON when either reports `INVALID`. Explain a `needs-confirmation` gap instead of guessing a value.
+
+## Telegram queue mode
+
+Read this section only when the current run has explicit authorization to process the linked private Telegram text queue.
+
+- Add `--include-telegram` to `prepare` only with a fresh cloud pull. It leases at most 20 oldest requests, up to 32,000 characters total, for two hours. The compact context contains only each request's text, received time, and internal linkage; do not load or retain Telegram account, chat, or username identifiers.
+- Treat the compact request text, timestamps, and internal linkage as private evidence. Keep raw text out of the proposal bundle.
+- After editing and validating the bundle, `finalize --push` marks the leased requests complete and removes raw text only after the pending inbox push succeeds. A valid zero-proposal run is `no_change`.
+- If one request needs a concrete answer, ask exactly one Force Reply question and leave it for the next scheduled run:
+
+  ```bash
+  python3 .agents/skills/exchange-concierge/scripts/concierge_run.py clarify \
+    --request-id "REQUEST UUID" \
+    --question "ONE CONCRETE QUESTION"
+  ```
+
+- On a processing failure, release the active lease without claiming success:
+
+  ```bash
+  python3 .agents/skills/exchange-concierge/scripts/concierge_run.py fail \
+    --error "SHORT NON-SENSITIVE REASON"
+  ```

@@ -1,5 +1,7 @@
 # Free-first cloud and deployment
 
+`AGENTS.md` is the single authority for choosing the deployment route and preserving an existing Sites binding. Use this reference only for the selected provider's setup, validation, and release details; never rewrite the binding to change providers.
+
 ## Local mode first
 
 The website must remain useful with `localStorage`, JSON backup, calendar export, packing, resources, and travel planning when no cloud environment variables exist.
@@ -23,10 +25,10 @@ Only explicitly selected public resources, generic packing, sanitized flight fac
 
 ## Deployment gate
 
-Immediately before release, run `npm run check` and inspect the production build. Confirm `.openai/hosting.json` contains no other person's project ID and `supabase/config.toml` contains no other person's production URL. Preview the public pages and sharing scope with the user.
+Release requires a passing `npm run check` and inspection of the production artifact being published. Reuse a completed check for the same source revision and relevant environment; rerun affected checks when code, dependencies, configuration, or the release environment changes. `check` already includes profile/privacy validation, lint, tests, and a build through `test`; do not run them again individually just to restate a pass. Run the production-specific build/verification when its environment or artifact requires it. Confirm the selected provider binding belongs to the authorized user and preserve the existing route. Preview the public pages and sharing scope with the user.
 
-For a first-time Cloudflare user, run `npx wrangler login`. If the authenticated user can access multiple Cloudflare accounts, set `CLOUDFLARE_ACCOUNT_ID` in that user's local or hosting environment, or add `account_id` only to that user's private Wrangler configuration. Never commit a personal account ID to the public template.
+Follow the route selected under `AGENTS.md`. For an existing Sites binding, use the Sites hosting workflow and reuse the bound project. Run `deploy:preflight` / `deploy:cloudflare` only for an authorized Cloudflare route, honoring the one-command override requirements in `AGENTS.md` when applicable. Cloudflare authentication (`npx wrangler login`) is needed only for that route; account selection stays in the user's local environment or private configuration, never in the public template.
 
-Run `npm run deploy:preflight` to confirm Cloudflare authentication when using the repository's executable default path, then run `npm run deploy:cloudflare`. Alternatively, use an available Sites hosting workflow. Deploy once after local validation. Record the public URL and the exact tested release commit. Do not claim that a clone inherits the demonstration site's cloud account or deployment.
+Deploy once after local validation. Record the public URL and exact tested release commit. Do not claim that a clone inherits the demonstration site's cloud account or deployment.
 
 For Sites, retrieve the existing site's `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` immediately before the production build and expose them only to that build process. Hosted runtime entries alone do not guarantee that a client bundle created elsewhere contains the public configuration. Never persist the values in the repository. After deployment, verify from a fresh browser state that the login/create-account gate appears before any private notebook UI.
