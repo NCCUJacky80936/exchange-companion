@@ -29,6 +29,7 @@ export default async function Home() {
   };
 
   return <>
+    <meta name="exchange-public-shell" content="1" />
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replaceAll("<", "\\u003c") }} />
     <div className="initial-loading-shell"><LoadingShell /></div>
     <AppEntry />

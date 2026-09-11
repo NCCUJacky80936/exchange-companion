@@ -1831,8 +1831,12 @@ export default function ExchangeCompanion({ initialAuthView = "welcome" }: { ini
     );
   }
 
+  if (!localAppPreview && cloud.configured && cloud.authError) {
+    return <main className="auth-shell"><section className="auth-card paper-card" role="alert"><h1>暫時無法確認登入狀態</h1><p>連線等待較久，請再試一次。你的手帳資料會保留。</p><button className="button primary" onClick={cloud.retryAuth}>重新連線</button><div className="startup-recovery"><p>仍然無法開啟？</p><a href="?__fresh=1" data-startup-reload>重新載入頁面</a></div></section></main>;
+  }
+
   if (!localAppPreview && cloud.configured && (!cloud.authReady || cloud.shareStatus === "loading")) {
-    return <div className="boot-shell" role="status"><span className="brand-stamp">旅</span><strong>交換手帳</strong><p>{cloud.shareStatus === "loading" ? "正在確認旅行分享權限…" : "正在確認登入狀態…"}</p></div>;
+    return <div className="boot-shell" role="status"><span className="brand-stamp">旅</span><strong>交換手帳</strong><p>{cloud.shareStatus === "loading" ? "正在確認旅行分享權限…" : "正在確認登入狀態…"}</p><div className="startup-recovery"><p>等待太久？可以重新載入頁面。</p><a href="?__fresh=1" data-startup-reload>重新載入</a></div></div>;
   }
 
   const activeSharedPlan = (state.travelPlans ?? []).find((plan) => plan.id === cloud.sharedPlanId);

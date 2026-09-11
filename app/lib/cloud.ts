@@ -12,6 +12,44 @@ let browserClient: SupabaseClient | null = null;
 let browserClientPromise: Promise<SupabaseClient | null> | null = null;
 let travelSubscriptionSequence = 0;
 
+export const CLOUD_AUTH_STARTUP_TIMEOUT_MS = 8_000;
+
+export class CloudAuthStartupTimeoutError extends Error {
+  constructor() {
+    super("cloud_auth_startup_timeout");
+    this.name = "CloudAuthStartupTimeoutError";
+  }
+}
+
+export function withCloudAuthStartupTimeout<T>(operation: Promise<T>, timeoutMs = CLOUD_AUTH_STARTUP_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = globalThis.setTimeout(() => reject(new CloudAuthStartupTimeoutError()), timeoutMs);
+    operation.then(
+      (value) => {
+        globalThis.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        globalThis.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+export function shouldApplyCloudAuthEvent(event: string, session: Session | null): boolean {
+  return event !== "INITIAL_SESSION" || session !== null;
+}
+
+export function shouldApplyCloudAuthStartupResult(
+  attempt: number,
+  currentAttempt: number,
+  eventRevisionAtStart: number,
+  currentEventRevision: number,
+): boolean {
+  return attempt === currentAttempt && eventRevisionAtStart === currentEventRevision;
+}
+
 function validatedSharedPayload(value: unknown): TravelPlan {
   if (!validateTravelPlan(value)) throw new Error("invalid_shared_travel_payload");
   return publicTravelPayload(value);
@@ -23,16 +61,21 @@ export function cloudIsConfigured(): boolean {
 
 export async function getCloudClient(): Promise<SupabaseClient | null> {
   if (!cloudIsConfigured() || typeof window === "undefined") return null;
-  browserClientPromise ??= import("@supabase/supabase-js").then(({ createClient }) => {
-    browserClient ??= createClient(url, publishableKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
+  browserClientPromise ??= import("@supabase/supabase-js")
+    .then(({ createClient }) => {
+      browserClient ??= createClient(url, publishableKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+        },
+      });
+      return browserClient;
+    })
+    .catch((error) => {
+      browserClientPromise = null;
+      throw error;
     });
-    return browserClient;
-  });
   return browserClientPromise;
 }
 
@@ -44,6 +87,16 @@ export async function ensureCloudSession(): Promise<Session | null> {
   const { data, error } = await client.auth.signInAnonymously();
   if (error) throw error;
   return data.session;
+}
+
+export async function getExistingCloudSession(timeoutMs = CLOUD_AUTH_STARTUP_TIMEOUT_MS): Promise<Session | null> {
+  return withCloudAuthStartupTimeout((async () => {
+    const client = await getCloudClient();
+    if (!client) return null;
+    const { data: { session }, error } = await client.auth.getSession();
+    if (error) throw error;
+    return session;
+  })(), timeoutMs);
 }
 
 export function isPermanentSession(session: Session | null): session is Session {

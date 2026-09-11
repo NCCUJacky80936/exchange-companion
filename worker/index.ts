@@ -79,6 +79,9 @@ const worker = {
     }
 
     const headers = new Headers(response.headers);
+    if (url.pathname === "/sw.js" || response.headers.get("Content-Type")?.includes("text/html")) {
+      headers.set("Cache-Control", "no-cache");
+    }
     if (response.ok && (request.method === "GET" || request.method === "HEAD")) {
       if (url.pathname.startsWith("/_next/static/")) {
         headers.set("Cache-Control", "public, max-age=31536000, immutable");

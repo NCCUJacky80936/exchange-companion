@@ -3,12 +3,14 @@
 import type { Session } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
+  CloudAuthStartupTimeoutError,
   cloudIsConfigured,
   acknowledgeConciergeProposalRuns,
   createConciergeConnection,
   createTelegramPairing,
   createPasswordAccount,
   ensureCloudSession,
+  getExistingCloudSession,
   getCloudClient,
   getTelegramStatus,
   isPermanentSession,
@@ -26,6 +28,8 @@ import {
   revokeTelegramLink,
   sendMagicLink,
   sendTravelGuestMagicLink,
+  shouldApplyCloudAuthEvent,
+  shouldApplyCloudAuthStartupResult,
   signInWithPasswordAccount,
   signOutCloud,
   subscribeToTravelPlan,
@@ -33,6 +37,7 @@ import {
   updateTravelMemberPermission,
   updatePublishedTravelPlan,
   upsertTravelMember,
+  withCloudAuthStartupTimeout,
   writePrivateState,
 } from "./cloud";
 import { findAiBundleCollisions, importAiBundle, matchesAiJourneyScope, validateAiImportBundle } from "./ai-import";
@@ -47,6 +52,7 @@ export type ShareRedemptionStatus = "none" | "loading" | "active" | "login-requi
 export interface ExchangeCloudController {
   configured: boolean;
   authReady: boolean;
+  authError: "timeout" | "unavailable" | null;
   accountDataReady: boolean;
   session: Session | null;
   permanentAccount: boolean;
@@ -62,6 +68,7 @@ export interface ExchangeCloudController {
   busy: boolean;
   notice: string;
   setNotice: (notice: string) => void;
+  retryAuth: () => void;
   createAccount: (accountId: string, email: string, password: string) => Promise<void>;
   accountSignIn: (accountId: string, password: string) => Promise<void>;
   emailSignIn: (email: string) => Promise<void>;
@@ -90,6 +97,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   const configured = cloudIsConfigured();
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!configured);
+  const [authError, setAuthError] = useState<"timeout" | "unavailable" | null>(null);
   const [accountDataReady, setAccountDataReady] = useState(!configured);
   const [shareStatus, setShareStatus] = useState<ShareRedemptionStatus>(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("share") ? "loading" : "none");
   const [sharedPlanId, setSharedPlanId] = useState("");
@@ -115,6 +123,9 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   const publishedPayloads = useRef(new Map<string, string>());
   const lastAutomaticInboxRefresh = useRef(0);
   const automaticInboxAccount = useRef("");
+  const authAttemptGeneration = useRef(0);
+  const authEventRevision = useRef(0);
+  const retryAuthRef = useRef<() => void>(() => undefined);
   const sharedPlanIds = useMemo(() => (state.travelPlans ?? [])
     .filter((plan) => plan.cloud?.published)
     .map((plan) => plan.cloud?.cloudPlanId ?? plan.id), [state.travelPlans]);
@@ -130,11 +141,15 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     if (!configured) return;
     let active = true;
     let unsubscribe: (() => void) | undefined;
+    let listeningClient: Awaited<ReturnType<typeof getCloudClient>> = null;
 
-    void getCloudClient().then(async (client) => {
-      if (!client || !active) return;
-      const { data: listener } = client.auth.onAuthStateChange((_event, nextSession) => {
-        if (!active) return;
+    const attachAuthListener = (client: NonNullable<Awaited<ReturnType<typeof getCloudClient>>>) => {
+      if (!active || listeningClient === client) return;
+      unsubscribe?.();
+      listeningClient = client;
+      const { data: listener } = client.auth.onAuthStateChange((event, nextSession) => {
+        if (!active || !shouldApplyCloudAuthEvent(event, nextSession)) return;
+        authEventRevision.current += 1;
         const nextAccountId = isPermanentSession(nextSession) ? nextSession.user.id : "";
         if (loadedAccount.current !== nextAccountId) {
           accountLoadGeneration.current += 1;
@@ -149,35 +164,60 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
         }
         if (!isPermanentSession(nextSession)) setAccountDataReady(false);
         setSession(nextSession);
+        setAuthError(null);
+        setAuthReady(true);
+        setNotice(!nextSession || nextSession.user.is_anonymous ? "請先登入；旅行分享連結仍可免登入開啟。" : "帳戶已連線。 ");
+        markExchangePerformance("auth-ready");
       });
       unsubscribe = () => listener.subscription.unsubscribe();
+    };
 
+    const runAuthStartup = async () => {
+      const attempt = authAttemptGeneration.current + 1;
+      authAttemptGeneration.current = attempt;
+      const eventRevisionAtStart = authEventRevision.current;
+      setAuthReady(false);
+      setAuthError(null);
       try {
-        const current = await ensureCloudSession();
-        if (!active) return;
+        const hasShareToken = new URLSearchParams(window.location.search).has("share");
+        const current = await withCloudAuthStartupTimeout((async () => {
+          const client = await getCloudClient();
+          if (client) attachAuthListener(client);
+          return hasShareToken ? ensureCloudSession() : getExistingCloudSession();
+        })());
+        if (!active || authAttemptGeneration.current !== attempt) return;
+        if (!shouldApplyCloudAuthStartupResult(attempt, authAttemptGeneration.current, eventRevisionAtStart, authEventRevision.current)) return;
         setSession(current);
-        setNotice(current?.user.is_anonymous ? "請先登入；旅行分享連結仍可免登入開啟。" : "帳戶已連線。 ");
-      } catch {
-        if (active) setNotice("雲端暫時無法連線，請重新整理後再試。");
+        setAuthError(null);
+        setNotice(!current || current.user.is_anonymous ? "請先登入；旅行分享連結仍可免登入開啟。" : "帳戶已連線。 ");
+      } catch (error) {
+        if (active && authAttemptGeneration.current === attempt && authEventRevision.current === eventRevisionAtStart) {
+          setAuthError(error instanceof CloudAuthStartupTimeoutError ? "timeout" : "unavailable");
+          setNotice(error instanceof CloudAuthStartupTimeoutError
+            ? "登入狀態確認逾時；請重試，或確認網路後再試。"
+            : "雲端暫時無法連線，請重試或稍後再試。");
+        }
       } finally {
-        if (active) {
+        if (active && authAttemptGeneration.current === attempt) {
           setAuthReady(true);
           markExchangePerformance("auth-ready");
         }
       }
-    }).catch(() => {
-      if (active) {
-        setNotice("雲端暫時無法連線，請重新整理後再試。");
-        setAuthReady(true);
-        markExchangePerformance("auth-ready");
-      }
-    });
+    };
+
+    retryAuthRef.current = () => { void runAuthStartup(); };
+    void runAuthStartup();
 
     return () => {
       active = false;
+      authAttemptGeneration.current += 1;
+      retryAuthRef.current = () => undefined;
       unsubscribe?.();
+      listeningClient = null;
     };
   }, [configured]);
+
+  const retryAuth = useCallback(() => retryAuthRef.current(), []);
 
   const loadPermanentAccountState = useCallback(async (currentSession: Session) => {
     if (!isPermanentSession(currentSession)) return;
@@ -459,6 +499,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
   return useMemo(() => ({
     configured,
     authReady,
+    authError,
     accountDataReady,
     session,
     permanentAccount: isPermanentSession(session),
@@ -474,6 +515,7 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     busy,
     notice,
     setNotice,
+    retryAuth,
     createAccount: async (accountId: string, email: string, password: string) => {
       try {
         const result = await runBusy(() => createPasswordAccount(accountId, email, password));
@@ -588,5 +630,5 @@ export function useExchangeCloud(state: AppState, setState: Dispatch<SetStateAct
     upsertTravelMember: (plan, account, permission) => runBusy(() => upsertTravelMember(plan, account, permission)),
     updateTravelMember: (plan, memberId, permission) => runBusy(() => updateTravelMemberPermission(plan, memberId, permission)),
     removeTravelMember: (plan, memberId) => runBusy(() => removeTravelMember(plan, memberId)),
-  }), [accountDataReady, authReady, busy, conciergeConnections, conciergeConnectionsReady, configured, loadPermanentAccountState, notice, privateRevision, privateSyncEnabled, refreshConnections, refreshInbox, refreshTelegramStatus, runBusy, session, setState, shareStatus, sharedPlanId, sharedToken, syncConflict, telegramLink, telegramLinkReady]);
+  }), [accountDataReady, authError, authReady, busy, conciergeConnections, conciergeConnectionsReady, configured, loadPermanentAccountState, notice, privateRevision, privateSyncEnabled, refreshConnections, refreshInbox, refreshTelegramStatus, retryAuth, runBusy, session, setState, shareStatus, sharedPlanId, sharedToken, syncConflict, telegramLink, telegramLinkReady]);
 }

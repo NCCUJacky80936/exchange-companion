@@ -12,7 +12,7 @@ export default function PwaRegister() {
 
     const scheduleUpdate = (registration: ServiceWorkerRegistration) => {
       const update = () => {
-        if (!disposed) void registration.update();
+        if (!disposed) void registration.update().catch(() => undefined);
       };
       const standalone = window.matchMedia("(display-mode: standalone)").matches
         || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
