@@ -14,6 +14,7 @@ import type {
   StudyEvent,
   TravelPlan,
 } from "./types";
+import { captureAiUpdates } from "./ai-updates";
 import { stampProcessedResourceIntake } from "./resource-intake";
 
 const SOURCE_KINDS = new Set(["official", "school", "city", "email", "file", "video", "research"]);
@@ -451,7 +452,7 @@ export function importAiBundle(state: AppState, bundle: AiImportBundle, cloudRun
     });
   });
   const importedAt = new Date().toISOString();
-  return {
+  return captureAiUpdates({
     ...state,
     homeExperience: {
       mode: "dashboard",
@@ -461,12 +462,13 @@ export function importAiBundle(state: AppState, bundle: AiImportBundle, cloudRun
       activatedAt: state.homeExperience?.activatedAt ?? importedAt,
     },
     aiInbox: {
+      ...state.aiInbox,
       lastImportedAt: importedAt,
       journeyScope: bundle.journeyScope,
       sources: [...existingSources.values()],
       proposals: [...existingProposals.values()],
     },
-  };
+  }, new Date().toISOString());
 }
 
 export function journeyScopeForState(state: AppState): string {
@@ -616,7 +618,7 @@ export function applyAiProposal(state: AppState, proposalId: string, currentRevi
   if (proposal.entity === "budget-item") next = { ...next, budget: addOrUpdate<BudgetItem>(next.budget, proposal) };
   if (proposal.entity === "study-event") next = { ...next, studyEvents: addOrUpdate<StudyEvent>(next.studyEvents ?? [], proposal) };
   if (proposal.entity === "travel-plan") next = { ...next, travelPlans: addOrUpdate<TravelPlan>(next.travelPlans ?? [], proposal) };
-  return {
+  return captureAiUpdates({
     ...next,
     aiInbox: {
       ...(next.aiInbox ?? { sources: [], proposals: [] }),
@@ -627,7 +629,7 @@ export function applyAiProposal(state: AppState, proposalId: string, currentRevi
         appliedAt: new Date().toISOString(),
       } : item),
     },
-  };
+  }, new Date().toISOString());
 }
 
 function removeById<T extends { id: string }>(items: T[], id: string): T[] {
@@ -686,7 +688,7 @@ export function undoAiProposal(state: AppState, proposalId: string): AppState {
   if (proposal.entity === "budget-item") next = { ...next, budget: revert(next.budget) };
   if (proposal.entity === "study-event") next = { ...next, studyEvents: revert(next.studyEvents ?? []) };
   if (proposal.entity === "travel-plan") next = { ...next, travelPlans: revert(next.travelPlans ?? []) };
-  return {
+  return captureAiUpdates({
     ...next,
     aiInbox: {
       ...(next.aiInbox ?? { sources: [], proposals: [] }),
@@ -697,21 +699,22 @@ export function undoAiProposal(state: AppState, proposalId: string): AppState {
         appliedAt: undefined,
       } : item),
     },
-  };
+  }, new Date().toISOString());
 }
 
 export function dismissAiProposal(state: AppState, proposalId: string): AppState {
   if (!state.aiInbox) return state;
-  return {
+  return captureAiUpdates({
     ...state,
     aiInbox: {
       ...state.aiInbox,
       proposals: state.aiInbox.proposals.map((item) => item.id === proposalId ? { ...item, status: "dismissed" } : item),
     },
-  };
+  }, new Date().toISOString());
 }
 
 export function clearDismissedAiProposals(state: AppState): AppState {
+  state = captureAiUpdates(state);
   if (!state.aiInbox) return state;
   const proposals = state.aiInbox.proposals.filter((item) => item.status !== "dismissed");
   const usedSources = new Set(proposals.flatMap((proposal) => proposal.evidenceIds));
@@ -726,6 +729,7 @@ export function clearDismissedAiProposals(state: AppState): AppState {
 }
 
 export function pruneExpiredAiHistory(state: AppState, now = Date.now()): AppState {
+  state = captureAiUpdates(state);
   if (!state.aiInbox) return state;
   const fallback = state.aiInbox.lastImportedAt ? Date.parse(state.aiInbox.lastImportedAt) : now;
   const proposals = state.aiInbox.proposals.filter((proposal) => {
@@ -741,5 +745,7 @@ export function pruneExpiredAiHistory(state: AppState, now = Date.now()): AppSta
   });
   if (proposals.length === state.aiInbox.proposals.length) return state;
   const usedSources = new Set(proposals.flatMap((proposal) => proposal.evidenceIds));
-  return { ...state, aiInbox: { ...state.aiInbox, proposals, sources: state.aiInbox.sources.filter((source) => usedSources.has(source.id)) } };
+  const remaining = new Set(proposals.map((proposal) => proposal.id));
+  const activity = state.aiInbox.activity?.map((entry) => !remaining.has(entry.id) && (entry.status === "pending" || entry.status === "reverted") ? { ...entry, status: "expired" as const } : entry);
+  return { ...state, aiInbox: { ...state.aiInbox, activity, proposals, sources: state.aiInbox.sources.filter((source) => usedSources.has(source.id)) } };
 }

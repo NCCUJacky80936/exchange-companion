@@ -383,7 +383,25 @@ export interface TelegramLinkInfo {
   botUsername: string;
 }
 
+/** Private, compact update receipts; retained independently of the review inbox. */
+export interface AiUpdateEntry {
+  id: string;
+  entity: AiProposalEntity;
+  action: "add" | "update";
+  targetId?: string;
+  title: string;
+  summary: string;
+  privacy: "private" | "shareable";
+  status: AiProposalStatus | "expired" | "reverted";
+  receivedAt: string;
+  updatedAt: string;
+  sources: Pick<EvidenceSource, "id" | "label" | "kind" | "url" | "capturedAt">[];
+  changes: { field: string; before?: string; after: string }[];
+}
+
 export interface AiInbox {
+  activity?: AiUpdateEntry[];
+  updateReadAt?: Record<string, string>;
   lastImportedAt?: string;
   journeyScope?: string;
   sources: EvidenceSource[];

@@ -7,6 +7,7 @@ import { phaseMeta } from "../lib/default-data";
 import { buildHomeAgenda, buildHomeBulletins, summarizeHomeBudget, type HomeAgendaItem, type HomeAgendaTarget } from "../lib/home-dashboard";
 import type { AppState } from "../lib/types";
 import type { ExchangeCloudController } from "../lib/useExchangeCloud";
+import AiUpdateDigest from "./AiUpdateDigest";
 import HomeActivationGuide from "./HomeActivationGuide";
 import FloatingSurface from "./ui/FloatingSurface";
 
@@ -165,6 +166,8 @@ export default function HomeDashboard({ state, setState, cloud, todayIso, forceG
       <div className="home-status-countdown"><span>{countdown !== null && countdown >= 0 ? "距離出發" : "交換旅程"}</span><strong>{countdown === null ? "—" : countdown >= 0 ? countdown : Math.abs(countdown)}</strong><small>{countdown !== null && countdown < 0 ? "天前出發" : "天"}</small></div>
       <div className="home-status-art"><Image src="/images/exchange-hero-clean.webp" alt="手繪交換旅行路線插畫" width={440} height={220} /></div>
     </section>
+
+    <AiUpdateDigest state={state} setState={setState} onNavigate={onNavigate} />
 
     <div className="home-daily-grid">
       <HomeMonthCalendar state={state} today={todayIso} onNavigate={onNavigate} />

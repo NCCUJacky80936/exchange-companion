@@ -68,6 +68,8 @@ import { markExchangePerformance } from "../lib/performance";
 import { loadState, normalizeImportedState, resetState, saveState, validateImport } from "../lib/storage";
 import { useExchangeCloud, type ExchangeCloudController } from "../lib/useExchangeCloud";
 import AuthGate from "./AuthGate";
+import AiUpdateDigest from "./AiUpdateDigest";
+import { updateScopeForPage } from "../lib/ai-updates";
 import HomeDashboard from "./HomeDashboard";
 import OnboardingWizard from "./OnboardingWizard";
 import QuickNavigation from "./ui/QuickNavigation";
@@ -1167,7 +1169,7 @@ function PackingPage({ state, setState, embedded = false }: { state: AppState; s
   }
 
   const allowanceDisclosure = (
-    <details className={`flight-allowance-disclosure paper-card ${checkedOverLimit ? "over-limit" : ""} ${baggageIsPast ? "past" : ""}`} open={!baggageEvaluation.ready && !baggageIsPast}>
+    <details id="flight-allowances" className={`flight-allowance-disclosure paper-card ${checkedOverLimit ? "over-limit" : ""} ${baggageIsPast ? "past" : ""}`} open={!baggageEvaluation.ready && !baggageIsPast}>
       <summary>
         <Image src="/images/doodle-icons-v2/travel-suitcase.webp" alt="" width={58} height={58} />
         <div className="flight-allowance-summary-copy">
@@ -1245,7 +1247,7 @@ function PackingPage({ state, setState, embedded = false }: { state: AppState; s
           const percentage = bag.limitKg > 0 ? Math.min(100, (weight / bag.limitKg) * 100) : 0;
           const overweight = bag.limitKg > 0 && weight > bag.limitKg;
           return (
-            <motion.article className={`bag-card paper-card ${overweight ? "overweight" : ""}`} key={bag.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.06 }}>
+            <motion.article id={`bag-${bag.id}`} className={`bag-card paper-card ${overweight ? "overweight" : ""}`} key={bag.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.06 }}>
               <div className="bag-handle" />
               <div className="bag-card-top"><span className="bag-kind">{bag.kind === "checked" ? "CHECKED" : bag.kind === "carry-on" ? "CABIN" : "PERSONAL"}</span><div className="bag-card-actions"><Luggage size={21} /><button className="icon-button danger" type="button" onClick={() => deleteBag(bag)} aria-label={`刪除 ${bag.name}`}><Trash2 size={14} /></button></div></div>
               <h3>{bag.name}</h3>
@@ -1288,7 +1290,7 @@ function PackingPage({ state, setState, embedded = false }: { state: AppState; s
           <div className="packing-category" key={category}>
             <h2><span>{category}</span><em>{filteredItems.filter((item) => item.category === category).length} {state.personalization?.headingLanguage === "en" ? "items" : "項"}</em></h2>
             {filteredItems.filter((item) => item.category === category).map((item) => (
-              <motion.div layout className={`packing-row ${item.packed ? "packed" : ""}`} key={item.id}>
+              <motion.div id={`packing-item-${item.id}`} layout className={`packing-row ${item.packed ? "packed" : ""}`} key={item.id}>
                 <button className={`drawn-check ${item.packed ? "checked" : ""}`} onClick={() => updateItem(item.id, { packed: !item.packed })} aria-label={`${item.packed ? "取消" : "標記"}裝入 ${item.name}`}>{item.packed ? <Check size={17} strokeWidth={3} /> : null}</button>
                 <div className="packing-name"><strong>{item.name}</strong><small>{item.warning ? <><AlertTriangle size={13} />{item.warning}</> : item.notes}</small></div>
                 <select className={`decision-select ${decisionMeta[item.decision].className}`} value={item.decision} onChange={(event) => updateItem(item.id, { decision: event.target.value as PackingDecision })} aria-label={`${item.name} 攜帶建議`}>{Object.entries(decisionMeta).map(([id, meta]) => <option value={id} key={id}>{meta.label}</option>)}</select>
@@ -1513,7 +1515,7 @@ function ResourcesPage({ state, setState }: { state: AppState; setState: React.D
         {groupedResources.map(({ group, items }, groupIndex) => <section className="resource-group-section" key={group} aria-labelledby={`resource-group-${groupIndex}`}>
           <header><div><p className="eyebrow">Resource category</p><h2 id={`resource-group-${groupIndex}`}>{group}</h2></div><span>{items.length} 筆</span></header>
           <div className="resource-grid">{items.map((resource, index) => (
-            <motion.article className={`resource-card paper-card resource-${resource.type}`} key={resource.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min((groupIndex * 2 + index) * 0.025, 0.25) }}>
+            <motion.article id={`resource-${resource.id}`} className={`resource-card paper-card resource-${resource.type}`} key={resource.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min((groupIndex * 2 + index) * 0.025, 0.25) }}>
               <div className="resource-card-top"><div className="resource-badges"><span className={`source-badge ${resource.type}`}>{typeLabel[resource.type]}</span><span className={`source-badge ${resource.privacy}`}>{resource.privacy === "private" ? "私人" : "可分享"}</span></div><div className="resource-card-actions"><button className="icon-button" onClick={() => setEditingResource(resource)} aria-label={`編輯 ${resource.title}`}><Pencil size={16} /></button><button className="icon-button danger" onClick={() => deleteResource(resource)} aria-label={`刪除 ${resource.title}`}><Trash2 size={16} /></button></div></div>
               <span className="resource-category">{resource.category}</span>
               <h3>{resource.title}</h3>
@@ -1703,6 +1705,7 @@ export default function ExchangeCompanion({ initialAuthView = "welcome" }: { ini
   const [isHydrated, setIsHydrated] = useState(false);
   const [state, setState] = useState<AppState>(() => loadState(!cloudIsConfigured()));
   const [section, setSection] = useState<NavSection>(initialSection);
+  const [navigationRequest, setNavigationRequest] = useState(0);
   const [journeyView, setJourneyView] = useState<JourneyView>(initialJourneyView);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -1751,6 +1754,7 @@ export default function ExchangeCompanion({ initialAuthView = "welcome" }: { ini
     setHomeGuideOpen(nextSection === "home" && options.guide === "1");
     if (nextSection === "ai" && options.inbox === "open") setAiInboxOpenRequest((request) => request + 1);
     setSection(nextSection);
+    setNavigationRequest((value) => value + 1);
     setMobileMenu(false);
     if (options.hash) {
       const url = new URL(window.location.href);
@@ -1764,7 +1768,7 @@ export default function ExchangeCompanion({ initialAuthView = "welcome" }: { ini
   };
 
   const navigateHomeTarget = (target: HomeAgendaTarget) => {
-    navigateToSection(target.section, target.section === "journey" ? "progress" : undefined, target);
+    navigateToSection(target.section, target.section === "journey" ? target.view ?? "progress" : undefined, target);
   };
 
   useEffect(() => {
@@ -1777,9 +1781,19 @@ export default function ExchangeCompanion({ initialAuthView = "welcome" }: { ini
       window.scrollTo({ top: 0, behavior: "auto" });
       return;
     }
-    const timer = window.setTimeout(() => document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" }), 320);
+    let attempts = 0;
+    let timer: number;
+    const scrollToTarget = () => {
+      const target = document.getElementById(hash);
+      if (!target && attempts++ < 20) { timer = window.setTimeout(scrollToTarget, 100); return; }
+      if (!target) return;
+      let parent: HTMLElement | null = target;
+      while (parent) { if (parent instanceof HTMLDetailsElement) parent.open = true; parent = parent.parentElement; }
+      target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    };
+    timer = window.setTimeout(scrollToTarget, 320);
     return () => window.clearTimeout(timer);
-  }, [section]);
+  }, [section, journeyView, navigationRequest]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -1910,6 +1924,7 @@ export default function ExchangeCompanion({ initialAuthView = "welcome" }: { ini
         <main id="main-content">
           <AnimatePresence initial={false} mode="wait">
             <motion.div key={section} initial={{ opacity: 0, y: 7 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}>
+              {section !== "home" ? <AiUpdateDigest key={`${section}-${journeyView}`} state={state} setState={setState} scope={updateScopeForPage(section, journeyView === "packing")} onNavigate={navigateHomeTarget} /> : null}
               {section === "home" ? <Dashboard state={state} setState={setState} cloud={cloud} navigate={navigateToSection} navigateTarget={navigateHomeTarget} todayIso={todayIso} forceGuide={homeGuideOpen} onCloseGuide={() => setHomeGuideOpen(false)} /> : null}
               {section === "journey" ? <JourneyPage state={state} setState={setState} view={journeyView} onViewChange={setJourneyView} focusTaskId={focusTaskId} /> : null}
               {section === "travel" ? <Suspense fallback={<SectionFallback />}><TravelPlanner state={state} setState={setState} cloud={cloud} focusTripId={focusTripId} /></Suspense> : null}

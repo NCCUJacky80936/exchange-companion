@@ -3,7 +3,8 @@ import type { AppState, BudgetItem, StudyEvent } from "./types";
 export type HomeAgendaSource = "task" | "study" | "travel" | "journey";
 
 export interface HomeAgendaTarget {
-  section: "home" | "journey" | "travel" | "ai" | "settings";
+  section: "home" | "journey" | "travel" | "ai" | "settings" | "resources";
+  view?: "progress" | "packing";
   task?: string;
   trip?: string;
   inbox?: "open";

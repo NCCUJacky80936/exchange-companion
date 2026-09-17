@@ -110,14 +110,15 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
     if (!openInboxRequest) return;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const focusTimer = window.setTimeout(() => {
-      const target = inboxDetailsRef.current;
+      const hash = window.location.hash.slice(1);
+      const target = hash.startsWith("proposal-") ? document.getElementById(hash) ?? inboxDetailsRef.current : inboxDetailsRef.current;
       target?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
       if (target) {
-        window.scrollBy({ top: -88, behavior: reduceMotion ? "auto" : "smooth" });
+        if (target === inboxDetailsRef.current) window.scrollBy({ top: -88, behavior: reduceMotion ? "auto" : "smooth" });
         target.classList.add("attention-target");
       }
     }, reduceMotion ? 0 : 360);
-    const clearTimer = window.setTimeout(() => inboxDetailsRef.current?.classList.remove("attention-target"), 2200);
+    const clearTimer = window.setTimeout(() => { inboxDetailsRef.current?.classList.remove("attention-target"); document.getElementById(window.location.hash.slice(1))?.classList.remove("attention-target"); }, 2200);
     return () => {
       window.clearTimeout(focusTimer);
       window.clearTimeout(clearTimer);
@@ -288,7 +289,7 @@ export default function AiConcierge({ state, setState, cloud, openInboxRequest =
           const current = proposalTarget(state, proposal);
           const applicability = canApplyAiProposal(state, proposal, cloud.privateRevision || undefined);
           return (
-            <article className="paper-card proposal-card" key={proposal.id}>
+            <article id={`proposal-${proposal.id}`} className="paper-card proposal-card" key={proposal.id}>
               <div className="proposal-top"><div className="proposal-labels"><span className={`confidence ${proposal.confidence}`}>{confidenceLabel[proposal.confidence]}</span><span>{entityLabel[proposal.entity]}</span><span className={proposal.privacy === "private" ? "private" : "shareable"}>{proposal.privacy === "private" ? "私人" : "可分享"}</span></div><span className="proposal-action">{proposal.action === "add" ? "新增" : "更新"}</span></div>
               <h3>{proposal.title}</h3><p>{proposal.summary}</p>
               <div className="proposal-sources">{sources.map((source) => source ? <span key={source.id}><FileCheck2 size={14} />{source.url ? <a href={source.url} target="_blank" rel="noreferrer">{source.label}<ExternalLink size={11} /></a> : source.label}<small>{source.capturedAt}</small></span> : null)}</div>

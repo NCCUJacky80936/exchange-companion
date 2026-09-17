@@ -565,7 +565,7 @@ function AcademicSection({ title, eyebrow, emptyTitle, emptyCopy, course, events
   const [editing, setEditing] = useState<StudyEvent | null | "new">(null);
   const [deleting, setDeleting] = useState<StudyEvent | null>(null);
   const close = () => setEditing(null);
-  return <section className={`study-calendar academic-section paper-card ${course ? "course-schedule" : "academic-conflicts"}`}>
+  return <section id={course ? "academic-planning" : "academic-conflicts"} className={`study-calendar academic-section paper-card ${course ? "course-schedule" : "academic-conflicts"}`}>
     <div className="study-calendar-heading"><div><p className="eyebrow">{eyebrow}</p><h3>{title}</h3></div><button className="mini-add-button" onClick={() => setEditing("new")}><Plus size={15} />新增</button></div>
     {events.length && course ? <CourseTimetable events={events} onEdit={setEditing} onDelete={setDeleting} /> : events.length ? <div className="study-event-list">{[...events].sort((a, b) => a.startDate.localeCompare(b.startDate)).map((item) => <div className="study-event" key={item.id}>
       <span className={`study-kind ${studyEventMeta[item.kind].className}`}>{studyEventMeta[item.kind].label}</span>
