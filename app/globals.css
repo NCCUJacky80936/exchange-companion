@@ -5727,7 +5727,7 @@ img[src*="/images/doodle-icons-v2/"] {
 
 /* Travel transfer, scoped AI intake, and externally attributed activity media. */
 .travel-header-actions { display: flex; position: relative; z-index: 2; align-items: center; gap: 8px; }
-.travel-import-dialog { width: min(840px, 100%); }
+.travel-import-dialog { --dialog-width: 840px; width: min(840px, 100%); }
 .travel-import-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 18px; }
 .travel-import-tabs button { display: flex; min-height: 44px; cursor: pointer; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(46, 58, 52, 0.26); border-radius: 10px; background: rgba(255, 255, 255, 0.55); color: var(--ink); font: inherit; font-weight: 800; }
 .travel-import-tabs button.active { border-color: var(--ink); background: var(--yellow-soft); box-shadow: 2px 3px 0 rgba(46, 58, 52, 0.15); }
@@ -6137,8 +6137,49 @@ textarea:focus-visible,
   outline-offset: 3px;
 }
 
-.motion-dialog-backdrop { backdrop-filter: blur(6px); }
-.motion-dialog { transform-origin: center center; }
+/* Native modals stay above sticky navigation and isolate background controls. */
+dialog.motion-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(var(--dialog-width, 760px), calc(100% - 48px));
+  max-height: calc(100dvh - 48px);
+  color: var(--ink);
+  overscroll-behavior: contain;
+  opacity: 0;
+  transition-property: opacity, transform, display, overlay;
+  transition-duration: 180ms;
+  transition-timing-function: ease-out;
+  transition-behavior: allow-discrete;
+}
+dialog.motion-dialog[open]:not([data-closing]) { opacity: 1; }
+dialog.motion-dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgba(48, 50, 49, 0);
+  backdrop-filter: blur(6px);
+  transition-property: background-color, display, overlay;
+  transition-duration: 180ms;
+  transition-behavior: allow-discrete;
+}
+dialog.motion-dialog[open]:not([data-closing])::backdrop { background-color: rgba(48, 50, 49, 0.24); }
+@starting-style {
+  dialog.motion-dialog[open]:not([data-closing]) { opacity: 0; }
+  dialog.motion-dialog[open]:not([data-closing])::backdrop { background-color: transparent; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  dialog.motion-dialog { transform: translateY(10px) scale(0.98); }
+  dialog.motion-dialog[open]:not([data-closing]) { transform: none; }
+  @starting-style {
+    dialog.motion-dialog[open]:not([data-closing]) { transform: translateY(10px) scale(0.98); }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog.motion-dialog, dialog.motion-dialog::backdrop { transition-duration: 0ms; }
+}
+@media (max-width: 560px) {
+  dialog.motion-dialog { width: calc(100% - 20px); max-height: calc(100dvh - 20px); }
+}
 .motion-dialog .modal-heading { position: sticky; top: 0; z-index: 2; background: linear-gradient(var(--paper) 80%, transparent); padding-bottom: 9px; }
 
 .viewport-floating-surface {
@@ -6289,7 +6330,7 @@ textarea:focus-visible,
 .study-event-modal-form .confirmation-field { align-self: end; }
 
 .proposal-json-editor { min-height: 210px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.5; }
-.compact-confirm-dialog { width: min(470px, 100%); }
+.compact-confirm-dialog { --dialog-width: 470px; width: min(470px, 100%); }
 .form-error { margin: 0; border-left: 4px solid var(--danger); background: color-mix(in srgb, var(--pink) 30%, var(--paper)); padding: 10px 12px; color: var(--danger); font-size: 13px; }
 .proposal-actions { flex-wrap: wrap; }
 
